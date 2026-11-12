@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json.Serialization;
 
 namespace ClearCase.Api.Transactions;
 
@@ -12,20 +13,18 @@ public sealed record TransactionListRequest
     [FromQuery(Name = "toDate")] public string? ToDate { get; init; }
 }
 
-public enum TransactionType { CardPurchase, DebitOrder, BankCharge }
-
-public sealed record TransactionQuery(
-    int PageNumber, int PageSize, TransactionType? Type, DateOnly? FromDate, DateOnly? ToDate);
-
-/// <summary>A synthetic transaction; amount is a decimal string in the given currency.</summary>
-public sealed record TransactionResponse(
-    Guid Id, string TransactionType, string Description, string Amount, string Currency,
-    DateTimeOffset TransactionDate, string Status, bool IsDisputable);
-
-/// <summary>A filtered page of synthetic transactions.</summary>
-public sealed record TransactionListResponse(
-    IReadOnlyList<TransactionResponse> Items, int PageNumber, int PageSize,
-    int TotalCount, int TotalPages, bool HasNextPage);
-
 /// <summary>Identifies one invalid query parameter.</summary>
 public sealed record QueryError(string Pointer, string Code, string Message);
+
+/// <summary>Details of an owned synthetic transaction; amount is a decimal string.</summary>
+public sealed record TransactionDetailsResponse(
+    Guid Id,
+    string TransactionType,
+    string Description,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MerchantName,
+    string Amount,
+    string Currency,
+    DateTimeOffset TransactionDate,
+    string Status,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reference,
+    bool IsDisputable);

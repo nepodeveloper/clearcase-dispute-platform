@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { TransactionsPage } from './transactions-page';
 
 describe('TransactionsPage', () => {
@@ -19,7 +20,7 @@ describe('TransactionsPage', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [TransactionsPage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -75,6 +76,83 @@ describe('TransactionsPage', () => {
     const request = http.expectOne((req) => req.url === '/api/v1/transactions');
     expect(request.request.params.get('pageNumber')).toBe('2');
     request.flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
+  });
+
+  it('moves focus to the transaction heading after next and previous page loads', () => {
+    const fixture = render();
+    respond([item], true);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const heading = element.querySelector<HTMLElement>('#transactions-heading')!;
+    const next = element.querySelector<HTMLButtonElement>('[data-testid="next"]')!;
+    next.focus();
+    next.click();
+    http.expectOne((request) => request.url === '/api/v1/transactions')
+      .flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(heading);
+
+    const previous = element.querySelector<HTMLButtonElement>('.pagination button')!;
+    previous.focus();
+    previous.click();
+    http.expectOne((request) => request.url === '/api/v1/transactions')
+      .flush({ items: [item], pageNumber: 1, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: true });
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('explains an invalid date range without sending it and allows correction', () => {
+    const fixture = render();
+    respond();
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const from = element.querySelector<HTMLInputElement>('[name="fromDate"]')!;
+    const to = element.querySelector<HTMLInputElement>('[name="toDate"]')!;
+    const form = element.querySelector<HTMLFormElement>('form')!;
+    from.value = '2026-11-10';
+    from.dispatchEvent(new Event('input'));
+    to.value = '2026-11-09';
+    to.dispatchEvent(new Event('input'));
+    form.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    http.expectNone((request) => request.url === '/api/v1/transactions');
+    expect(element.textContent).toContain('To date must not precede from date.');
+    expect(to.getAttribute('aria-invalid')).toBe('true');
+    expect(to.getAttribute('aria-describedby')).toBe('date-range-error');
+    expect(element.querySelector('[data-testid="retry"]')).toBeNull();
+
+    to.value = '2026-11-11';
+    to.dispatchEvent(new Event('input'));
+    form.dispatchEvent(new Event('submit'));
+    const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
+    expect(request.request.params.get('toDate')).toBe('2026-11-11');
+    request.flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
+  });
+
+  it('shows server validation messages instead of offering a futile retry', () => {
+    const fixture = render();
+    respond();
+    fixture.detectChanges();
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLFormElement>('form')!
+      .dispatchEvent(new Event('submit'));
+    http.expectOne((request) => request.url === '/api/v1/transactions').flush({
+      errors: [{ pointer: '/toDate', code: 'date.invalidRange', message: 'toDate must not precede fromDate.' }],
+    }, { status: 400, statusText: 'Bad Request' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('toDate must not precede fromDate.');
+    expect(fixture.nativeElement.querySelector('[data-testid="retry"]')).toBeNull();
+  });
+
+  it('does not offer network retry when authentication is required', () => {
+    const fixture = render();
+    http.expectOne((request) => request.url === '/api/v1/transactions')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Unable to access transactions');
+    expect(fixture.nativeElement.querySelector('[data-testid="retry"]')).toBeNull();
   });
 
   it('sends filters and resets to page one', () => {

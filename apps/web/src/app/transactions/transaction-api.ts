@@ -23,6 +23,11 @@ export interface TransactionPage {
   hasNextPage: boolean;
 }
 
+export interface TransactionDetails extends Transaction {
+  merchantName?: string;
+  reference?: string;
+}
+
 export interface TransactionQuery {
   pageNumber: number;
   pageSize: number;
@@ -43,5 +48,9 @@ export class TransactionApi {
     if (query.fromDate !== '') params = params.set('fromDate', query.fromDate);
     if (query.toDate !== '') params = params.set('toDate', query.toDate);
     return this.http.get<TransactionPage>('/api/v1/transactions', { params });
+  }
+
+  getDetails(id: string) {
+    return this.http.get<TransactionDetails>(`/api/v1/transactions/${encodeURIComponent(id)}`);
   }
 }

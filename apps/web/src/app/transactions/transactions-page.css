@@ -1,5 +1,6 @@
 section { margin-top: 2rem; }
 h2 { font: 400 1.75rem Georgia, serif; }
+h2:focus { outline: 3px solid #bc8129; outline-offset: 2px; }
 .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1.5rem; }
 label { display: grid; gap: 0.4rem; font-weight: 600; }
 input, select, button { min-height: 2.6rem; padding: 0.5rem 0.7rem; font: inherit; }
@@ -7,6 +8,8 @@ input, select { border: 1px solid #7d8f88; border-radius: 3px; background: #fff;
 button { border: 1px solid #176b58; border-radius: 3px; color: #fff; background: #176b58; cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #bc8129; outline-offset: 2px; }
+a { color: #176b58; }
+a:focus-visible { outline: 3px solid #bc8129; outline-offset: 2px; }
 .table-container { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; background: #fff; text-align: left; }
 th, td { padding: 0.8rem; border-bottom: 1px solid #dce3df; white-space: nowrap; }

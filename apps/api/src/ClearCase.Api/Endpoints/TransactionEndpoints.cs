@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Security.Claims;
+using ClearCase.Application.Transactions;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -26,12 +26,72 @@ public static class TransactionEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .RequireAuthorization();
+
+        app.MapGet("/api/v1/transactions/{id}", GetDetails)
+            .WithName("GetTransactionDetails")
+            .WithSummary("Get an authenticated customer's synthetic transaction")
+            .WithDescription("Returns transaction details only when the authenticated customer owns the transaction.")
+            .Produces<TransactionDetailsResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .RequireAuthorization();
+
+        app.MapGet("/v1/transactions/{id}", GetDetails)
+            .WithName("GetTransactionDetailsAlias")
+            .WithSummary("Compatibility alias for transaction details")
+            .WithDescription("Returns transaction details only when the authenticated customer owns the transaction.")
+            .Produces<TransactionDetailsResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .RequireAuthorization();
         return app;
+    }
+
+    private static async Task<Results<Ok<TransactionDetailsResponse>, ProblemHttpResult>> GetDetails(
+        string id, HttpContext context, IGetTransactionDetailsHandler handler, CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "private, no-store";
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            return Task.CompletedTask;
+        });
+        if (!Guid.TryParse(id, out var transactionId))
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid transaction ID",
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = "transaction.invalidId",
+                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey],
+                    ["errors"] = new[] { new QueryError("/id", "transactionId.invalid", "Enter a valid transaction ID.") }
+                });
+        }
+
+        var transaction = await handler.HandleAsync(transactionId, cancellationToken);
+        if (transaction is null)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
+                title: "Transaction not found",
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = "transaction.notFound",
+                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey]
+                });
+        }
+
+        return TypedResults.Ok(new TransactionDetailsResponse(
+            transaction.Id, transaction.TransactionType, transaction.Description, transaction.MerchantName,
+            transaction.Amount.ToString("0.00", CultureInfo.InvariantCulture), transaction.Currency,
+            transaction.TransactionDate, transaction.Status,
+            transaction.Reference, transaction.IsDisputable));
     }
 
     private static async Task<Results<Ok<TransactionListResponse>, ProblemHttpResult>> List(
         [AsParameters] TransactionListRequest request, HttpContext context,
-        ITransactionReader reader, CancellationToken cancellationToken)
+        IListTransactionsHandler handler, CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "private, no-store";
         var errors = new List<QueryError>();
@@ -62,11 +122,8 @@ public static class TransactionEndpoints
                 });
         }
 
-        var customerClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(customerClaim, out var customerId))
-            throw new InvalidOperationException("The authenticated principal has no valid customer identity.");
-
-        var result = await reader.ReadAsync(customerId, new(pageNumber, pageSize, type, fromDate, toDate), cancellationToken);
+        var result = await handler.HandleAsync(
+            new(pageNumber, pageSize, type, fromDate, toDate), cancellationToken);
         return TypedResults.Ok(result);
     }
 
