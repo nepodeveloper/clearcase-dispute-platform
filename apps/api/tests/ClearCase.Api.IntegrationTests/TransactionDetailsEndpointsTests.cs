@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using ClearCase.Api.Transactions;
 using ClearCase.Application.Transactions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,12 +10,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ClearCase.Api.IntegrationTests;
 
-public sealed class TransactionDetailsEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class TransactionDetailsEndpointsTests : IClassFixture<SqliteWebApplicationFactory>
 {
     private const string OwnedId = "00000000-0000-0000-0000-000000000001";
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly SqliteWebApplicationFactory _factory;
 
-    public TransactionDetailsEndpointsTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    public TransactionDetailsEndpointsTests(SqliteWebApplicationFactory factory) => _factory = factory;
 
     [Theory]
     [InlineData("/api/v1/transactions/")]
@@ -109,7 +108,8 @@ public sealed class TransactionDetailsEndpointsTests : IClassFixture<WebApplicat
     [Fact]
     public async Task Reader_StopsWhenCancellationWasRequested()
     {
-        var reader = new InMemoryTransactionReader();
+        using var scope = _factory.Services.CreateScope();
+        var reader = scope.ServiceProvider.GetRequiredService<ITransactionReader>();
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 

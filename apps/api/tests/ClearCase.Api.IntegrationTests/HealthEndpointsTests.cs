@@ -4,11 +4,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace ClearCase.Api.IntegrationTests;
 
-public sealed class HealthEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointsTests : IClassFixture<SqliteWebApplicationFactory>
 {
     private readonly HttpClient _client;
 
-    public HealthEndpointsTests(WebApplicationFactory<Program> factory)
+    public HealthEndpointsTests(SqliteWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
     }

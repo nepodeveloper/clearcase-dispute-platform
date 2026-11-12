@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ClearCase.Api.IntegrationTests;
 
-public sealed class DisputeEligibilityEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebApplicationFactory>
 {
     private const string CardId = "00000000-0000-0000-0000-000000000001";
     private const string DebitOrderId = "00000000-0000-0000-0000-000000000002";
@@ -20,9 +20,9 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<WebApplicat
     private static readonly DateTimeOffset FixedInstant =
         new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly SqliteWebApplicationFactory _factory;
 
-    public DisputeEligibilityEndpointsTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    public DisputeEligibilityEndpointsTests(SqliteWebApplicationFactory factory) => _factory = factory;
 
     [Theory]
     [InlineData("/api/v1/transactions/")]

@@ -6,7 +6,9 @@ using ClearCase.Application.Transactions;
 using ClearCase.Application.DisputeEligibility;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Transactions;
+using ClearCase.Infrastructure.Transactions;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,7 +31,9 @@ builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
 builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
 builder.Services.AddScoped<IGetTransactionDetailsHandler, GetTransactionDetailsHandler>();
 builder.Services.AddScoped<IGetDisputeEligibilityHandler, GetDisputeEligibilityHandler>();
-builder.Services.AddSingleton<ITransactionReader, InMemoryTransactionReader>();
+builder.Services.AddTransactionPersistence(
+    builder.Environment.ContentRootPath, builder.Environment.WebRootPath,
+    builder.Environment.IsDevelopment());
 var eligibilitySettings = builder.Configuration.GetSection("DisputeEligibility")
     .Get<DisputeEligibilityPolicySettings>()
     ?? throw new InvalidOperationException("DisputeEligibility configuration is required.");
@@ -62,6 +66,15 @@ if (builder.Environment.IsDevelopment())
 }
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.Logger.LogInformation("Applying SQLite migrations and synthetic development seed.");
+    using var scope = app.Services.CreateScope();
+    var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+    await database.Database.MigrateAsync();
+    await SyntheticTransactionSeeder.SeedAsync(database, CancellationToken.None);
+}
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();

@@ -4,7 +4,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 ## Release cut lines
 
-- **Demo A (after PR-05):** current customer journey maintained, versioned API, PostgreSQL, CI.
+- **Demo A (after PR-05):** current transaction journey maintained, versioned API, local SQLite, CI.
 - **Demo B (after PR-10):** all three supported dispute types simulated with truthful case/finance statuses and timelines.
 - **Demo C (after PR-15):** idempotency, crash recovery, outbox/Kafka, reconciliation evidenced by tests.
 - **Demo D (after PR-19):** security, evidence and operational tests.
@@ -18,7 +18,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 | Batch 01 | PR-02 | Extract pure domain assembly | Domain project has no infrastructure dependency |
 | Batch 01 | PR-03 | Introduce application use-case seams | No direct EF access in refactored dispute endpoints |
 | Batch 01 | PR-04 | Implement configurable dispute eligibility | Owned read-only eligibility API and three policies are tested |
-| Batch 01 | PR-05 | PostgreSQL with real migrations | Clean database can migrate and seed |
+| Batch 01 | PR-05 | SQLite persistence with EF migrations | Clean local database can migrate and seed |
 | Batch 02 | PR-06 | Model three dispute types and statuses | Transaction category contract exposed |
 | Batch 02 | PR-07 | Debit order eligibility policy | Day 1/60/61 cases tested |
 | Batch 02 | PR-08 | Debit order case processing | Eligible EFT dispute reaches requested state |
@@ -109,19 +109,20 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-05 — PostgreSQL with real migrations
+### PR-05 — SQLite persistence with EF migrations
 
-**Outcome:** Switch persistence to PostgreSQL via explicit EF migrations; preserve existing customer demo experience.
+**Outcome:** Persist transactions locally with SQLite and EF migrations; preserve the existing transaction demo experience.
 
-**Allowed implementation:** Docker Compose Postgres with env-based connection; EF migration from current schema; local seed only in development; remove `EnsureCreated`; add Testcontainers or disposable Postgres integration tests.
+**Allowed implementation:** SQLite Infrastructure adapter and provider-specific EF migrations; local synthetic seed only in Development; isolated SQLite relational integration tests. PostgreSQL is a possible separately planned future provider.
 
 **Acceptance:**
 - [ ] Clean database can migrate and seed
-- [ ] Existing data read/write tests run against PostgreSQL
+- [ ] Existing data read/write tests run against SQLite
+- [ ] Ownership, exact money, migration upgrades, repeat seeding and rollback are tested
 - [ ] App starts and demos with documented local commands
 - [ ] No secret in repo
 
-**Not in scope:** Do not add Kafka, S3 or AWS deployments; do not claim automatic production migrations are safe.
+**Not in scope:** Do not add PostgreSQL, Docker, Kafka, S3 or AWS deployments, dispute submission or financial processing; do not claim automatic production migrations are safe.
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
