@@ -28,6 +28,20 @@ export interface TransactionDetails extends Transaction {
   reference?: string;
 }
 
+export type DisputeEligibilityOutcome =
+  | 'EligibleToSubmit'
+  | 'RequiresManualReview'
+  | 'Ineligible';
+
+export interface TransactionDisputeEligibility {
+  transactionId: string;
+  outcome: DisputeEligibilityOutcome;
+  reasonCodes: string[];
+  explanation: string;
+  policyVersion: string;
+  evaluatedAt: string;
+}
+
 export interface TransactionQuery {
   pageNumber: number;
   pageSize: number;
@@ -52,5 +66,11 @@ export class TransactionApi {
 
   getDetails(id: string) {
     return this.http.get<TransactionDetails>(`/api/v1/transactions/${encodeURIComponent(id)}`);
+  }
+
+  getDisputeEligibility(id: string) {
+    return this.http.get<TransactionDisputeEligibility>(
+      `/api/v1/transactions/${encodeURIComponent(id)}/dispute-eligibility`,
+    );
   }
 }

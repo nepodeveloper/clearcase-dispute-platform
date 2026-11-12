@@ -21,6 +21,14 @@ describe('TransactionDetailsPage', () => {
     reference: 'TXN-2026-000001',
     isDisputable: true,
   };
+  const eligibility = {
+    transactionId: id,
+    outcome: 'EligibleToSubmit',
+    reasonCodes: [],
+    explanation: 'This transaction can be submitted for review.',
+    policyVersion: 'demo-v1',
+    evaluatedAt: '2026-11-12T10:00:00Z',
+  };
   let http: HttpTestingController;
 
   beforeEach(() => {
@@ -43,6 +51,7 @@ describe('TransactionDetailsPage', () => {
     const request = http.expectOne(`/api/v1/transactions/${id}`);
     expect(request.request.method).toBe('GET');
     request.flush(transaction);
+    expectEligibility();
     harness.detectChanges();
 
     const text = harness.routeNativeElement?.textContent ?? '';
@@ -53,6 +62,62 @@ describe('TransactionDetailsPage', () => {
     expect(text).toContain('Nov 10, 2026');
     expect(text).toContain('TXN-2026-000001');
     expect(text).toContain('Posted');
+    expect(text).toContain('Eligible to submit a dispute.');
+    expect(text).toContain(eligibility.explanation);
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+  });
+
+  it('renders manual review and its customer-safe explanation', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
+    http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`).flush({
+      ...eligibility,
+      outcome: 'RequiresManualReview',
+      explanation: 'This amount needs enhanced review; the amount alone does not prevent you from raising a dispute.',
+    });
+    harness.detectChanges();
+
+    const text = harness.routeNativeElement?.textContent ?? '';
+    expect(text).toContain('Requires further review.');
+    expect(text).toContain('the amount alone does not prevent you from raising a dispute');
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+  });
+
+  it('renders ineligible outcome and its customer-safe explanation', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
+    http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`).flush({
+      ...eligibility,
+      outcome: 'Ineligible',
+      explanation: 'This card transaction is still a pending authorization.',
+    });
+    harness.detectChanges();
+
+    const text = harness.routeNativeElement?.textContent ?? '';
+    expect(text).toContain('Currently ineligible.');
+    expect(text).toContain('This card transaction is still a pending authorization.');
+  });
+
+  it('shows eligibility loading and error states and retries the check', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
+    http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Checking dispute eligibility');
+
+    http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`)
+      .flush({}, { status: 503, statusText: 'Service Unavailable' });
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Unable to check dispute eligibility');
+
+    (harness.routeNativeElement?.querySelector('[data-testid="retry-eligibility"]') as HTMLButtonElement).click();
+    http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`).flush(eligibility);
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('Eligible to submit a dispute.');
   });
 
   it('shows a not-found state for a 404', async () => {
@@ -74,6 +139,7 @@ describe('TransactionDetailsPage', () => {
 
     (harness.routeNativeElement?.querySelector('[data-testid="retry"]') as HTMLButtonElement).click();
     http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    expectEligibility();
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain('TXN-2026-000001');
   });
@@ -93,6 +159,7 @@ describe('TransactionDetailsPage', () => {
     await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
     const { merchantName, reference, ...withoutOptionalDetails } = transaction;
     http.expectOne(`/api/v1/transactions/${id}`).flush(withoutOptionalDetails);
+    expectEligibility();
     harness.detectChanges();
 
     expect(harness.routeNativeElement?.textContent?.match(/Not available/g)?.length).toBe(2);
@@ -102,6 +169,7 @@ describe('TransactionDetailsPage', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
     http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    expectEligibility();
     harness.detectChanges();
     (harness.routeNativeElement?.querySelector('[data-testid="back-to-transactions"]') as HTMLAnchorElement).click();
     await harness.fixture.whenStable();
@@ -122,5 +190,12 @@ describe('TransactionDetailsPage', () => {
 
     expect(TestBed.inject(Router).url).toBe(`/transactions/${id}`);
     http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    expectEligibility();
   });
+
+  function expectEligibility(result = eligibility): void {
+    const request = http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`);
+    expect(request.request.method).toBe('GET');
+    request.flush(result);
+  }
 });

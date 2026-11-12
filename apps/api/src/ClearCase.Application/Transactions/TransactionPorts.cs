@@ -1,3 +1,5 @@
+using ClearCase.Domain.Transactions;
+
 namespace ClearCase.Application.Transactions;
 
 public interface ICustomerContext
@@ -13,6 +15,11 @@ public interface ITransactionReader
         CancellationToken cancellationToken);
 
     Task<TransactionDetails?> ReadByIdAsync(
+        Guid customerId,
+        Guid transactionId,
+        CancellationToken cancellationToken);
+
+    Task<DisputeTransaction?> ReadForEligibilityAsync(
         Guid customerId,
         Guid transactionId,
         CancellationToken cancellationToken);

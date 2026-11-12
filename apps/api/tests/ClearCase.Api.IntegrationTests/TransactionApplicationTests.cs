@@ -1,4 +1,5 @@
 using ClearCase.Application.Transactions;
+using ClearCase.Domain.Transactions;
 
 namespace ClearCase.Api.IntegrationTests;
 
@@ -77,6 +78,17 @@ public sealed class TransactionApplicationTests
             TransactionId = transactionId;
             CancellationToken = cancellationToken;
             return Task.FromResult(details);
+        }
+
+        public Task<DisputeTransaction?> ReadForEligibilityAsync(
+            Guid customerId,
+            Guid transactionId,
+            CancellationToken cancellationToken)
+        {
+            CustomerId = customerId;
+            TransactionId = transactionId;
+            CancellationToken = cancellationToken;
+            return Task.FromResult<DisputeTransaction?>(null);
         }
     }
 }

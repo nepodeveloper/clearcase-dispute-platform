@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
+using ClearCase.Domain.DisputeEligibility;
 
 namespace ClearCase.Api.Transactions;
 
@@ -28,3 +29,19 @@ public sealed record TransactionDetailsResponse(
     string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reference,
     bool IsDisputable);
+
+/// <summary>Eligibility assessment for a transaction, without initiating a dispute or financial operation.</summary>
+public sealed record TransactionDisputeEligibilityResponse(
+    Guid TransactionId,
+    string Outcome,
+    IReadOnlyList<string> ReasonCodes,
+    string Explanation,
+    string PolicyVersion,
+    DateTimeOffset EvaluatedAt)
+{
+    public static TransactionDisputeEligibilityResponse From(
+        Guid transactionId,
+        DisputeEligibilityResult result) =>
+        new(transactionId, result.Outcome.ToString(), result.ReasonCodes,
+            result.Explanation, result.PolicyVersion, result.EvaluatedAt);
+}

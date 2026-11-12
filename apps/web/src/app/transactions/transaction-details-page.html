@@ -24,5 +24,21 @@
       <div><dt>Reference</dt><dd>{{ view.transaction.reference ?? 'Not available' }}</dd></div>
       <div><dt>Status</dt><dd>{{ view.transaction.status }}</dd></div>
     </dl>
+    <section aria-labelledby="dispute-eligibility-heading">
+      <h3 id="dispute-eligibility-heading">Dispute eligibility</h3>
+      @if (view.eligibility.kind === 'loading') {
+        <p role="status">Checking dispute eligibility...</p>
+      } @else if (view.eligibility.kind === 'error') {
+        <div role="alert">
+          <p>{{ view.eligibility.message }}</p>
+          @if (view.eligibility.retryable) {
+            <button type="button" data-testid="retry-eligibility" (click)="retry()">Retry eligibility check</button>
+          }
+        </div>
+      } @else {
+        <p role="status"><strong>{{ eligibilityLabel(view.eligibility.result.outcome) }}</strong></p>
+        <p>{{ view.eligibility.result.explanation }}</p>
+      }
+    </section>
   }
 </section>
