@@ -24,7 +24,7 @@ public sealed class SqliteTransactionReaderTests
             await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
             await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
 
-            Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
             Assert.Equal(31, await context.Transactions.CountAsync());
         }
 
@@ -221,33 +221,4 @@ public sealed class SqliteTransactionReaderTests
         MandateAuthorised = true,
         MandateMatchesCollection = true
     };
-
-    private sealed class TemporaryDatabase : IAsyncDisposable
-    {
-        private readonly string _path = Path.Combine(
-            Path.GetTempPath(), $"clearcase-pr05-{Guid.NewGuid():N}.db");
-
-        public TransactionDbContext CreateContext()
-        {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = _path,
-                Mode = SqliteOpenMode.ReadWriteCreate,
-                ForeignKeys = true,
-                DefaultTimeout = 5,
-                Pooling = false
-            }.ToString();
-            return new TransactionDbContext(
-                new DbContextOptionsBuilder<TransactionDbContext>().UseSqlite(connectionString).Options);
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            File.Delete(_path);
-            File.Delete(_path + "-wal");
-            File.Delete(_path + "-shm");
-            File.Delete(_path + "-journal");
-            return ValueTask.CompletedTask;
-        }
-    }
 }

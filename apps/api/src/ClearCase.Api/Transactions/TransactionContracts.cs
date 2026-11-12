@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
-using ClearCase.Domain.DisputeEligibility;
+using ClearCase.Application.DisputeEligibility;
 
 namespace ClearCase.Api.Transactions;
 
@@ -37,11 +37,17 @@ public sealed record TransactionDisputeEligibilityResponse(
     IReadOnlyList<string> ReasonCodes,
     string Explanation,
     string PolicyVersion,
-    DateTimeOffset EvaluatedAt)
+    DateTimeOffset EvaluatedAt,
+    IReadOnlyList<DisputeReasonResponse> AvailableReasons)
 {
     public static TransactionDisputeEligibilityResponse From(
         Guid transactionId,
-        DisputeEligibilityResult result) =>
-        new(transactionId, result.Outcome.ToString(), result.ReasonCodes,
-            result.Explanation, result.PolicyVersion, result.EvaluatedAt);
+        DisputeEligibilityAssessment assessment) =>
+        new(transactionId, assessment.Result.Outcome.ToString(), assessment.Result.ReasonCodes,
+            assessment.Result.Explanation, assessment.Result.PolicyVersion, assessment.Result.EvaluatedAt,
+            assessment.AvailableReasons.Select(reason => new DisputeReasonResponse(reason.Code, reason.Label))
+                .ToArray());
 }
+
+/// <summary>A dispute reason the customer may select; empty when the transaction is ineligible.</summary>
+public sealed record DisputeReasonResponse(string Code, string Label);

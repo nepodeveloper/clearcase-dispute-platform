@@ -4,7 +4,7 @@ ClearCase is a starter monorepo for incrementally building a financial dispute m
 
 **Security warning: the transaction listing is a synthetic demo, not real customer authentication.** In Development and Testing, every caller is automatically assigned the same server-configured synthetic customer identity. Do not expose these environments to untrusted users or connect real customer data. Production and other environments reject transaction requests until real authentication is implemented. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, dispute submission, a timeline, banking integrations, Kafka, or AWS. SQLite stores only local transaction data in this slice.
+**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, financial reversals, Kafka, or AWS. SQLite stores local transaction data and submitted dispute cases with their initial timeline events.
 
 ## Prerequisites
 
@@ -246,10 +246,69 @@ npm run test:ci -- --include=src/app/transactions/transactions-page.spec.ts --in
 
 The checked-in target-design OpenAPI document describes a future cursor-based contract; the generated Development OpenAPI document describes this implemented, page-number-based slice. Moving to a different contract requires a separately planned compatibility change.
 
+## Dispute submission
+
+The eligibility response now includes `availableReasons` (`[{ "code", "label" }]`, empty when `Ineligible`). The transaction details page shows a minimal form for eligible and manual-review outcomes, then displays the case reference and initial status.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/disputes` (alias `POST /v1/disputes`) | Submit a dispute for one of the caller's transactions |
+| `GET /api/v1/disputes/{id}` (alias `GET /v1/disputes/{id}`) | Read one of the caller's disputes, including its timeline |
+
+```powershell
+curl.exe -X POST "http://localhost:5100/api/v1/disputes" -H "Content-Type: application/json" `
+  -d '{"transactionId":"00000000-0000-0000-0000-000000000001","reasonCode":"unrecognisedTransaction","description":"I did not make this purchase at the store."}'
+```
+
+A successful submission returns `201 Created` with a `Location` header:
+
+```json
+{
+  "id": "…",
+  "reference": "DSP-0A1B2C3D4E5F",
+  "transactionId": "00000000-0000-0000-0000-000000000001",
+  "category": "CardPurchase",
+  "reasonCode": "unrecognisedTransaction",
+  "description": "I did not make this purchase at the store.",
+  "caseStatus": "Submitted",
+  "decisionStatus": "Pending",
+  "financialStatus": "NotInitiated",
+  "createdAt": "2026-11-12T10:00:00+00:00",
+  "timeline": [{ "sequenceNumber": 1, "eventType": "DisputeSubmitted", "caseStatus": "Submitted", "…": "…" }]
+}
+```
+
+Rules:
+
+- The customer is derived from the trusted identity; any `customerId` in the body is ignored. The transaction lookup is customer-scoped, so another customer's transaction is indistinguishable from an unknown one.
+- Eligibility is re-evaluated with the same PR-04 policies at submission time. `Ineligible` is rejected; `RequiresManualReview` creates the case with `caseStatus: ManualReview`.
+- `reasonCode` must belong to the transaction's category (card: `unrecognisedTransaction`, `duplicateCharge`, `goodsOrServicesNotReceived`, `incorrectAmount`; debit order: `unauthorisedDebitOrder`, `amountDiffersFromMandate`, `mandateCancelled`, `duplicateCollection`; bank charge: `incorrectFee`, `duplicateFee`, `feeNotAgreed`). `description` is trimmed and must be 15–2000 characters.
+- `caseStatus`, `decisionStatus`, and `financialStatus` are independent. This slice only produces `Submitted`/`ManualReview`, `Pending`, and `NotInitiated`; no money moves.
+- The dispute row and its first `DisputeEvent` are saved in a single transaction. `DisputeEvents` is append-only: SQLite triggers reject `UPDATE` and `DELETE`.
+- A filtered unique index (`IX_Disputes_CustomerId_TransactionId_Open`, where `CaseStatus <> 'Closed'`) prevents more than one open case per customer transaction, including under concurrent requests.
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | `dispute.invalidRequest` | Malformed JSON or invalid fields (`errors[]` with `/transactionId`, `/reasonCode`, `/description` pointers) |
+| 400 | `dispute.invalidId` | Non-GUID dispute ID on `GET` |
+| 401 | — | Unauthenticated (all non-Development/Testing environments today) |
+| 404 | `dispute.notFound` | Unknown or another customer's dispute |
+| 409 | `dispute.activeCaseExists` | An open dispute already exists for the transaction |
+| 422 | `dispute.transactionNotFound`, `dispute.invalidReason`, `dispute.transactionIneligible` | Unknown/inaccessible transaction, reason not valid for the category, or ineligible transaction (`detail` holds the customer-safe explanation) |
+
+The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Full request idempotency (`Idempotency-Key` replay) is deferred to PR-11; until then a retried submission returns 409 once the first succeeds.
+
+```powershell
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
+Set-Location apps/web
+npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
+```
+
 ## Current limitations
 
 - The temporary demo identity is not authentication for real customers. Production transaction requests are unauthorized.
-- The Angular pages display synthetic data only and cannot submit disputes.
+- The Angular pages display synthetic data only. Dispute submission creates a case record but no reversal, refund, chargeback, notification, or evidence upload.
+- Dispute submission has no `Idempotency-Key` replay or CSRF protection yet (planned with PR-11 and cookie authentication).
 - SQLite persistence is local-only; production authentication, PostgreSQL, event broker, external banking adapter, cloud resources, and deployment manifests are not included.
 - Development CORS permits only the configured local Angular origin. CORS is not enabled outside Development.
 - On 2026-11-12, `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported 16 moderate findings in development tooling; npm's suggested forced fix upgrades Angular CLI to 22, so that breaking upgrade is deferred for a dedicated dependency review.

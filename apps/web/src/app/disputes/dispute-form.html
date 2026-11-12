@@ -1,0 +1,46 @@
+@let current = state();
+@if (current.kind === 'submitted') {
+  <div role="status" data-testid="dispute-confirmation">
+    <p><strong>Dispute submitted.</strong></p>
+    <p>Case reference: <strong data-testid="dispute-reference">{{ current.dispute.reference }}</strong></p>
+    <p>Status: {{ statusLabel(current.dispute.caseStatus) }}</p>
+    @if (current.dispute.timeline.length > 0) {
+      <p>{{ current.dispute.timeline[0].description }}</p>
+    }
+  </div>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
+    <h4 id="dispute-form-heading">Submit a dispute</h4>
+    <p>Submitting a dispute opens a case for review. It does not immediately refund or reverse the transaction.</p>
+
+    <label for="dispute-reason">Reason</label>
+    <select id="dispute-reason" formControlName="reasonCode"
+            [attr.aria-invalid]="showError('reasonCode')"
+            [attr.aria-describedby]="showError('reasonCode') ? 'dispute-reason-error' : null">
+      <option value="">Select a reason</option>
+      @for (reason of reasons(); track reason.code) {
+        <option [value]="reason.code">{{ reason.label }}</option>
+      }
+    </select>
+    @if (showError('reasonCode')) {
+      <p id="dispute-reason-error" class="field-error">Select a reason.</p>
+    }
+
+    <label for="dispute-description">What went wrong?</label>
+    <textarea id="dispute-description" formControlName="description" rows="4" [attr.maxlength]="maxLength"
+              [attr.aria-invalid]="showError('description')"
+              [attr.aria-describedby]="showError('description') ? 'dispute-description-hint dispute-description-error' : 'dispute-description-hint'"></textarea>
+    <p id="dispute-description-hint" class="hint">Between 15 and {{ maxLength }} characters.</p>
+    @if (showError('description')) {
+      <p id="dispute-description-error" class="field-error">Describe the problem in at least 15 characters.</p>
+    }
+
+    @if (current.kind === 'error') {
+      <p role="alert" data-testid="dispute-error">{{ current.message }}</p>
+    }
+
+    <button type="submit" data-testid="submit-dispute" [disabled]="current.kind === 'submitting'">
+      {{ current.kind === 'submitting' ? 'Submitting...' : 'Submit dispute' }}
+    </button>
+  </form>
+}

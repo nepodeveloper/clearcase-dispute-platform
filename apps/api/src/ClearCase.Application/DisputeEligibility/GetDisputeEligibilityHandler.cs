@@ -1,22 +1,25 @@
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.DisputeEligibility;
-using ClearCase.Domain.Transactions;
+using ClearCase.Domain.Disputes;
 
 namespace ClearCase.Application.DisputeEligibility;
 
+/// <summary>An eligibility decision plus the reasons a customer may select when it is not ineligible.</summary>
+public sealed record DisputeEligibilityAssessment(
+    DisputeEligibilityResult Result,
+    IReadOnlyList<DisputeReason> AvailableReasons);
+
 public interface IGetDisputeEligibilityHandler
 {
-    Task<DisputeEligibilityResult?> HandleAsync(Guid transactionId, CancellationToken cancellationToken);
+    Task<DisputeEligibilityAssessment?> HandleAsync(Guid transactionId, CancellationToken cancellationToken);
 }
 
 public sealed class GetDisputeEligibilityHandler(
     ICustomerContext customerContext,
     ITransactionReader transactionReader,
-    IEnumerable<IDisputeEligibilityPolicy> policies,
-    DisputeEligibilityPolicySettings settings,
-    TimeProvider timeProvider) : IGetDisputeEligibilityHandler
+    DisputeEligibilityEvaluator evaluator) : IGetDisputeEligibilityHandler
 {
-    public async Task<DisputeEligibilityResult?> HandleAsync(
+    public async Task<DisputeEligibilityAssessment?> HandleAsync(
         Guid transactionId,
         CancellationToken cancellationToken)
     {
@@ -25,8 +28,10 @@ public sealed class GetDisputeEligibilityHandler(
         if (transaction is null)
             return null;
 
-        var policy = policies.SingleOrDefault(item => item.Category == transaction.Category)
-            ?? throw new InvalidOperationException("No dispute eligibility policy is registered for the transaction type.");
-        return policy.Evaluate(transaction, new DisputeEligibilityContext(timeProvider.GetUtcNow(), settings));
+        var result = evaluator.Evaluate(transaction);
+        return new DisputeEligibilityAssessment(result,
+            result.Outcome == DisputeEligibilityOutcome.Ineligible
+                ? []
+                : DisputeReasonCatalog.For(transaction.Category));
     }
 }

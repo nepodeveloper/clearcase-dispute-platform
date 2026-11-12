@@ -28,6 +28,10 @@ describe('TransactionDetailsPage', () => {
     explanation: 'This transaction can be submitted for review.',
     policyVersion: 'demo-v1',
     evaluatedAt: '2026-11-12T10:00:00Z',
+    availableReasons: [
+      { code: 'unrecognisedTransaction', label: 'I do not recognise this transaction' },
+      { code: 'duplicateCharge', label: 'I was charged more than once' },
+    ],
   };
   let http: HttpTestingController;
 
@@ -64,7 +68,8 @@ describe('TransactionDetailsPage', () => {
     expect(text).toContain('Posted');
     expect(text).toContain('Eligible to submit a dispute.');
     expect(text).toContain(eligibility.explanation);
-    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).not.toBeNull();
+    expect(text).toContain('I do not recognise this transaction');
   });
 
   it('renders manual review and its customer-safe explanation', async () => {
@@ -81,7 +86,7 @@ describe('TransactionDetailsPage', () => {
     const text = harness.routeNativeElement?.textContent ?? '';
     expect(text).toContain('Requires further review.');
     expect(text).toContain('the amount alone does not prevent you from raising a dispute');
-    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).not.toBeNull();
   });
 
   it('renders ineligible outcome and its customer-safe explanation', async () => {
@@ -92,12 +97,14 @@ describe('TransactionDetailsPage', () => {
       ...eligibility,
       outcome: 'Ineligible',
       explanation: 'This card transaction is still a pending authorization.',
+      availableReasons: [],
     });
     harness.detectChanges();
 
     const text = harness.routeNativeElement?.textContent ?? '';
     expect(text).toContain('Currently ineligible.');
     expect(text).toContain('This card transaction is still a pending authorization.');
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
   });
 
   it('shows eligibility loading and error states and retries the check', async () => {
