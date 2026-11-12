@@ -9,5 +9,12 @@ GET {{baseUrl}}/health/ready
 ### Development OpenAPI document
 GET {{baseUrl}}/openapi/v1.json
 
+### Synthetic customer transactions (Development or Testing only)
+GET {{baseUrl}}/api/v1/transactions?pageNumber=1&pageSize=20&transactionType=CardPurchase&fromDate=2026-11-01
+X-Correlation-ID: demo-transaction-list
+
+### Invalid query returns Problem Details
+GET {{baseUrl}}/v1/transactions?pageSize=101
+
 ### Unknown route returns Problem Details
 GET {{baseUrl}}/not-a-route

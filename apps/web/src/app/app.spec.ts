@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
   });
 
@@ -21,7 +24,7 @@ describe('App', () => {
 
     expect(compiled.querySelector('h1')?.textContent?.trim()).toBe('ClearCase');
     expect(compiled.querySelector('[data-testid="scope-note"]')?.textContent).toContain(
-      'Customer workflows and external integrations are not included in this foundation.',
+      'Demo data only.',
     );
   });
 });

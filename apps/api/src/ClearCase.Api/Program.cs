@@ -1,11 +1,26 @@
 using ClearCase.Api.Endpoints;
 using ClearCase.Api.Middleware;
+using ClearCase.Api.Transactions;
+using ClearCase.Api.Authentication;
+using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+var demoAuthenticationEnabled = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
+var authentication = builder.Services.AddAuthentication(demoAuthenticationEnabled ? "Demo" : "Unavailable");
+if (demoAuthenticationEnabled)
+{
+    authentication.AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>("Demo", _ => { });
+}
+else
+{
+    authentication.AddScheme<AuthenticationSchemeOptions, UnavailableAuthenticationHandler>("Unavailable", _ => { });
+}
+builder.Services.AddAuthorization();
+builder.Services.AddSingleton<ITransactionReader, InMemoryTransactionReader>();
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = context =>
@@ -34,6 +49,8 @@ var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -42,6 +59,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapHealthEndpoints();
+app.MapTransactionEndpoints();
 
 app.Run();
 
