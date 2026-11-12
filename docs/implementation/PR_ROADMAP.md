@@ -17,7 +17,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 | Batch 01 | PR-01 | Establish reproducible baseline | Running baseline README and CI both executes real backend build/tests and frontend build/tests |
 | Batch 01 | PR-02 | Extract pure domain assembly | Domain project has no infrastructure dependency |
 | Batch 01 | PR-03 | Introduce application use-case seams | No direct EF access in refactored dispute endpoints |
-| Batch 01 | PR-04 | Version API and normalize contracts | Angular uses `/api/v1` end to end |
+| Batch 01 | PR-04 | Implement configurable dispute eligibility | Owned read-only eligibility API and three policies are tested |
 | Batch 01 | PR-05 | PostgreSQL with real migrations | Clean database can migrate and seed |
 | Batch 02 | PR-06 | Model three dispute types and statuses | Transaction category contract exposed |
 | Batch 02 | PR-07 | Debit order eligibility policy | Day 1/60/61 cases tested |
@@ -92,19 +92,20 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-04 — Version API and normalize contracts
+### PR-04 — Implement dispute eligibility policy
 
-**Outcome:** Introduce `/api/v1` resource routes with typed Angular client and versioned OpenAPI, retaining temporary aliases for legacy routes.
+**Outcome:** Add independently testable, configurable eligibility decisions for card purchases, debit orders, and bank charges; expose the decision through an authenticated read-only API and the transaction-details page.
 
-**Allowed implementation:** Add consistent DTOs, correct HTTP codes, error envelope with field JSON pointers/correlation ID, contract tests. Alias old URLs temporarily; centralize UI base URL.
+**Allowed implementation:** Add a pure domain policy boundary, effective-dated demonstration configuration, an owned transaction-reader query, a versioned API route with compatibility alias, typed Angular response and accessible display, tests, README details, and an ADR. Keep `isDisputable` as a documented provisional indicator.
 
 **Acceptance:**
-- [ ] Angular uses `/api/v1` end to end
-- [ ] OpenAPI reflects routes
-- [ ] 401, 403, 404, 409, validation error shape tested
-- [ ] Legacy API aliases still work
+- [ ] Card, debit-order, and bank-charge policy boundaries and relevant date/amount/mandate conditions are tested with deterministic time.
+- [ ] Debit-order thresholds route to review rather than rejecting complaints; proposed window applicability is not described as verified production policy.
+- [ ] Eligibility endpoint enforces authenticated customer ownership, returns 404 for inaccessible IDs, preserves correlation IDs, and appears in OpenAPI.
+- [ ] Angular renders all outcomes, customer-safe explanations, loading and error states without a submission action.
+- [ ] Existing transaction routes and response contracts remain compatible.
 
-**Not in scope:** No deletion of old endpoints or new domain business rules.
+**Not in scope:** Dispute persistence/submission, chargebacks, reversals, refunds, external integrations, or financial posting.
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 

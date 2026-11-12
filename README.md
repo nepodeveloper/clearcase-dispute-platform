@@ -96,7 +96,7 @@ curl.exe "http://localhost:5100/api/v1/transactions?transactionType=CardPurchase
 }
 ```
 
-Amounts are decimal **strings**, not JSON numbers, to preserve exact decimal values across clients; timestamps are UTC ISO 8601. `isDisputable` is synthetic display data, not a real eligibility decision.
+Amounts are decimal **strings**, not JSON numbers, to preserve exact decimal values across clients; timestamps are UTC ISO 8601. `isDisputable` remains a provisional synthetic display indicator, not an authoritative eligibility decision. A follow-up contract change should derive it from the shared policy or retire it; the detailed eligibility endpoint is authoritative for this PR.
 
 The in-memory reader deterministically generates 30 fixed, dated transactions across all three types for the demo identity and one record for a second synthetic identity to exercise isolation. IDs and dates are fixed, not random or derived from the current clock. The configured `Demo:CustomerId` is trusted server configuration, present only in Development and Testing settings. The demo authentication handler is not registered in Production or other environments. Data resets on restart and is never persisted.
 
@@ -126,6 +126,66 @@ curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-0000
 ```
 
 Amounts are stored as decimals and exposed as decimal strings, consistent with the listing contract. Merchant names and references are synthetic demo data. The Angular transaction list links to `/transactions/{id}`; the details page includes a back link and loading, not-found, and retryable-error states. It does not submit disputes.
+
+## Dispute eligibility
+
+The transaction details page requests a read-only decision from `GET /api/v1/transactions/{id}/dispute-eligibility`. The legacy alias `GET /v1/transactions/{id}/dispute-eligibility` is also available. Both routes require authentication, scope the transaction lookup to the trusted customer identity, return 404 for missing or inaccessible IDs, preserve correlation IDs, and use `Cache-Control: private, no-store`. A decision is a successful 200 response even when its outcome is `Ineligible`; this API never creates a dispute or initiates a reversal, refund, or other financial operation.
+
+```powershell
+curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-000000000001/dispute-eligibility"
+```
+
+```json
+{
+  "transactionId": "00000000-0000-0000-0000-000000000001",
+  "outcome": "EligibleToSubmit",
+  "reasonCodes": [],
+  "explanation": "This transaction can be submitted for review.",
+  "policyVersion": "demo-v1",
+  "evaluatedAt": "2026-11-12T10:00:00+00:00"
+}
+```
+
+`ClearCase.Domain.DisputeEligibility.IDisputeEligibilityPolicy` defines the pure policy boundary. Separate card-purchase, debit-order, and bank-charge implementations receive transaction facts and an evaluation context; the application handler supplies the trusted transaction, configuration, and injected `TimeProvider`. Policies do not access storage or call external systems.
+
+| Category and condition | Outcome | Example reason code |
+| --- | --- | --- |
+| Posted/settled card debit with information inside the configured demo window | `EligibleToSubmit` | — |
+| Pending card authorization, or outside the configured demo window | `Ineligible` | `card.pendingAuthorization`, `card.outsideDemoWindow` |
+| Missing card information or no configured card window | `RequiresManualReview` | `transaction.informationMissing`, `card.windowNotConfigured` |
+| Debit order with effective policy, complete authorized mandate facts, within window, and amount at or below threshold | `EligibleToSubmit` | — |
+| Debit order outside its standard window, above the internal threshold, with unclear/unauthorized mandate facts, or valid authorized DebiCheck | `RequiresManualReview` | `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`, `debitOrder.mandateInformationMissing`, `debitOrder.authorisedDebiCheckRequiresReview` |
+| Bank charge posted with required information and no configured review condition | `EligibleToSubmit` | — |
+| Pending bank charge | `Ineligible` | `bankCharge.notPosted` |
+| Bank charge missing information or meeting the configured review condition | `RequiresManualReview` | `transaction.informationMissing`, `bankCharge.configuredReviewCondition` |
+
+Reason codes are stable machine-readable identifiers; the response explanation is customer-safe text. Every outcome includes `policyVersion` and an ISO-8601 `evaluatedAt` timestamp.
+
+The current policy reason codes are:
+
+- Card: `policy.notConfigured`, `card.unsupportedType`, `transaction.notDebit`, `card.pendingAuthorization`, `transaction.notPosted`, `card.invalidAmount`, `transaction.informationMissing`, `card.windowNotConfigured`, `card.transactionDateInFuture`, `card.outsideDemoWindow`.
+- Debit order: `policy.notConfigured`, `debitOrder.unsupportedType`, `debitOrder.notDebit`, `debitOrder.notPosted`, `debitOrder.invalidAmount`, `debitOrder.collectionInformationMissing`, `debitOrder.policyUnavailable`, `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateMismatch`, `debitOrder.authorisedDebiCheckRequiresReview`, `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`.
+- Bank charge: `policy.notConfigured`, `bankCharge.unsupportedType`, `bankCharge.notPosted`, `transaction.informationMissing`, `bankCharge.invalidAmount`, `bankCharge.configuredReviewCondition`.
+
+### Demonstration configuration and policy caveats
+
+`appsettings.Development.json` and `appsettings.Testing.json` contain the local demonstration settings. The base `appsettings.json` leaves demo policies disabled; an unconfigured policy returns `RequiresManualReview` rather than applying a demo rule.
+
+- Card purchases use a configurable 120-calendar-day **demo-only** window. `DemoWindowEnabled` controls applicability; disabling it routes cases to manual review. This is not a card-network deadline or statement of customer rights.
+- The debit-order example rule has an effective date of 13 April 2026, a 60-calendar-day standard window (day 1 begins after collection), and a configurable R2,000 standard-review threshold. Rule selection uses the collection date. The rule/effective date reflect a proposed demonstration assumption and require confirmation against authoritative bank, scheme, product, legal, and operational guidance before production use.
+- Amounts above R2,000 route to enhanced/manual review, not rejection. The threshold is an illustrative internal routing value, not a legal limit. Outside-window debit orders, unauthorised/unclear mandates, and valid authorised DebiCheck collections remain eligible for further review; no automatic reversal is implied.
+- Bank charges use a separate posted-status, information, and configurable internal review condition (`ManualReviewAboveAmount`, set to R5,000 for this demo). Card-window and debit-order mandate rules are not applied to bank charges.
+- Seeded examples include an eligible card purchase (ID ending `000001`), EFT debit order (`000002`), bank charge (`000003`), pending card authorization (`000004`), high-value debit order (`000005`), incomplete mandate (`000008`), and authorised DebiCheck (`000011`).
+
+The policies use deterministic inputs and never read the system clock directly. The API injects `TimeProvider`; tests use a fixed clock for date boundaries. A future dispute-submission use case must separately revalidate ownership, policy and evidence and must use an authorized, idempotent banking adapter; eligibility is not approval or a promise of funds.
+
+Focused checks:
+
+```powershell
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEligibilityPolicyTests|FullyQualifiedName~DisputeEligibilityEndpointsTests"
+Set-Location apps/web
+npm run test:ci -- --include=src/app/transactions/transaction-details-page.spec.ts
+```
 
 For focused tests:
 

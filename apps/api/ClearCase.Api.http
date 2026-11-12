@@ -26,5 +26,15 @@ GET {{baseUrl}}/v1/transactions/not-a-guid
 ### Unknown or other-customer transaction returns 404
 GET {{baseUrl}}/v1/transactions/00000000-0000-0000-0000-000000000099
 
+### Evaluate owned transaction dispute eligibility (read-only)
+GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000001/dispute-eligibility
+X-Correlation-ID: demo-dispute-eligibility
+
+### Malformed eligibility transaction ID returns Problem Details
+GET {{baseUrl}}/v1/transactions/not-a-guid/dispute-eligibility
+
+### Unknown or other-customer eligibility transaction returns 404
+GET {{baseUrl}}/v1/transactions/00000000-0000-0000-0000-000000000099/dispute-eligibility
+
 ### Unknown route returns Problem Details
 GET {{baseUrl}}/not-a-route
