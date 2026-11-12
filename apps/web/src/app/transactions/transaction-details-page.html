@@ -38,6 +38,10 @@
       } @else {
         <p role="status"><strong>{{ eligibilityLabel(view.eligibility.result.outcome) }}</strong></p>
         <p>{{ view.eligibility.result.explanation }}</p>
+        @if (view.eligibility.result.outcome !== 'Ineligible' && view.eligibility.result.availableReasons.length > 0) {
+          <app-dispute-form [transactionId]="view.transaction.id"
+                            [reasons]="view.eligibility.result.availableReasons" />
+        }
       }
     </section>
   }

@@ -17,6 +17,107 @@ namespace ClearCase.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EligibilityOutcome")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EligibilityPolicyVersion")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinancialStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("CustomerId", "TransactionId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Disputes_CustomerId_TransactionId_Open")
+                        .HasFilter("\"CaseStatus\" <> 'Closed'");
+
+                    b.ToTable("Disputes", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PublicDescription")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisputeId", "SequenceNumber")
+                        .IsUnique();
+
+                    b.ToTable("DisputeEvents", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Transactions.PersistedTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -85,6 +186,29 @@ namespace ClearCase.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_Transactions_ZarCurrency", "\"Currency\" = 'ZAR'");
                         });
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Transactions.PersistedTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeEvent", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany("Events")
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }

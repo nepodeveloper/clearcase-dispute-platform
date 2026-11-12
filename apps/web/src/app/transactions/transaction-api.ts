@@ -33,6 +33,11 @@ export type DisputeEligibilityOutcome =
   | 'RequiresManualReview'
   | 'Ineligible';
 
+export interface DisputeReason {
+  code: string;
+  label: string;
+}
+
 export interface TransactionDisputeEligibility {
   transactionId: string;
   outcome: DisputeEligibilityOutcome;
@@ -40,6 +45,7 @@ export interface TransactionDisputeEligibility {
   explanation: string;
   policyVersion: string;
   evaluatedAt: string;
+  availableReasons: DisputeReason[];
 }
 
 export interface TransactionQuery {

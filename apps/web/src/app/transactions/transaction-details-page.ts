@@ -4,6 +4,7 @@ import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
+import { DisputeForm } from '../disputes/dispute-form';
 import {
   DisputeEligibilityOutcome,
   TransactionApi,
@@ -25,7 +26,7 @@ type ViewState =
 
 @Component({
   selector: 'app-transaction-details-page',
-  imports: [CurrencyPipe, DatePipe, RouterLink],
+  imports: [CurrencyPipe, DatePipe, DisputeForm, RouterLink],
   templateUrl: './transaction-details-page.html',
   styleUrl: './transaction-details-page.css',
 })

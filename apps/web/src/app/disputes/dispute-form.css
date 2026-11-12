@@ -1,0 +1,9 @@
+form, [data-testid='dispute-confirmation'] { max-width: 46rem; margin-top: 1rem; padding: 1rem; background: #fff; border: 1px solid #dce3df; }
+h4 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+label { display: block; margin-top: 0.9rem; font-weight: 600; }
+select, textarea { box-sizing: border-box; width: 100%; margin-top: 0.3rem; padding: 0.5rem; border: 1px solid #6b7c75; border-radius: 3px; font: inherit; }
+select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid #bc8129; outline-offset: 2px; }
+.hint { margin: 0.3rem 0 0; color: #4a5a54; font-size: 0.9rem; }
+.field-error, [role='alert'] { margin: 0.3rem 0 0; color: #a1260d; font-weight: 600; }
+button { margin-top: 1rem; min-height: 2.6rem; padding: 0.5rem 0.9rem; border: 1px solid #176b58; border-radius: 3px; color: #fff; background: #176b58; font: inherit; cursor: pointer; }
+button:disabled { opacity: 0.7; cursor: progress; }

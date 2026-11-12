@@ -1,5 +1,7 @@
 using System.Globalization;
+using ClearCase.Application.Disputes;
 using ClearCase.Application.Transactions;
+using ClearCase.Infrastructure.Disputes;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +21,7 @@ public static class SqlitePersistence
             options.UseSqlite(connectionString, sqlite => sqlite.CommandTimeout(timeout));
         });
         services.AddScoped<ITransactionReader, SqliteTransactionReader>();
+        services.AddScoped<IDisputeStore, SqliteDisputeStore>();
         return services;
     }
 

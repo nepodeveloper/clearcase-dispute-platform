@@ -1,5 +1,6 @@
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.Transactions;
+using ClearCase.Infrastructure.Disputes;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Transactions;
@@ -7,6 +8,8 @@ namespace ClearCase.Infrastructure.Transactions;
 public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> options) : DbContext(options)
 {
     public DbSet<PersistedTransaction> Transactions => Set<PersistedTransaction>();
+    public DbSet<PersistedDispute> Disputes => Set<PersistedDispute>();
+    public DbSet<PersistedDisputeEvent> DisputeEvents => Set<PersistedDisputeEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +27,8 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         transaction.Property(item => item.Currency).IsRequired();
         transaction.HasIndex(item => new { item.CustomerId, item.TransactionDate, item.Id });
         transaction.HasIndex(item => new { item.CustomerId, item.Type, item.TransactionDate, item.Id });
+
+        DisputePersistenceModel.Configure(modelBuilder);
     }
 }
 

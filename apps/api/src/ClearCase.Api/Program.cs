@@ -3,6 +3,7 @@ using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Api.Authentication;
 using ClearCase.Application.Transactions;
+using ClearCase.Application.Disputes;
 using ClearCase.Application.DisputeEligibility;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Transactions;
@@ -31,6 +32,9 @@ builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
 builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
 builder.Services.AddScoped<IGetTransactionDetailsHandler, GetTransactionDetailsHandler>();
 builder.Services.AddScoped<IGetDisputeEligibilityHandler, GetDisputeEligibilityHandler>();
+builder.Services.AddScoped<DisputeEligibilityEvaluator>();
+builder.Services.AddScoped<ISubmitDisputeHandler, SubmitDisputeHandler>();
+builder.Services.AddScoped<IGetDisputeHandler, GetDisputeHandler>();
 builder.Services.AddTransactionPersistence(
     builder.Environment.ContentRootPath, builder.Environment.WebRootPath,
     builder.Environment.IsDevelopment());
@@ -90,6 +94,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapHealthEndpoints();
 app.MapTransactionEndpoints();
+app.MapDisputeEndpoints();
 
 app.Run();
 
