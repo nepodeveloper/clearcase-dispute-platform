@@ -6,11 +6,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace ClearCase.Api.IntegrationTests;
 
-public sealed class TransactionEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class TransactionEndpointsTests : IClassFixture<SqliteWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly SqliteWebApplicationFactory _factory;
 
-    public TransactionEndpointsTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    public TransactionEndpointsTests(SqliteWebApplicationFactory factory) => _factory = factory;
 
     [Fact]
     public async Task List_UsesDemoIdentityAndCannotBeSwitchedByRequest()
