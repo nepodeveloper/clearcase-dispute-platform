@@ -1,0 +1,302 @@
+openapi: 3.1.0
+info:
+  title: ClearCase Dispute Platform API
+  version: 1.0.0
+  description: Design-first API draft. Implementation remains separate from this contract.
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+paths:
+  /transactions:
+    get:
+      operationId: listTransactions
+      summary: List posted customer-owned transactions
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - in: query
+          name: kind
+          schema:
+            $ref: '#/components/schemas/TransactionKind'
+      responses:
+        '200':
+          description: A page of owned transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pageInfo]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  pageInfo:
+                    $ref: '#/components/schemas/PageInfo'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /disputes:
+    get:
+      operationId: listDisputes
+      summary: List customer-owned disputes
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Paged case list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pageInfo]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dispute'
+                  pageInfo:
+                    $ref: '#/components/schemas/PageInfo'
+        '401':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createDispute
+      summary: Create a case; does not itself reverse funds
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/XsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDispute'
+      responses:
+        '201':
+          description: Case durably created
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '200':
+          description: Stored case returned for an identical idempotency-key replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /disputes/{disputeId}:
+    get:
+      operationId: getDispute
+      summary: Get an owned dispute
+      parameters:
+        - $ref: '#/components/parameters/DisputeId'
+      responses:
+        '200':
+          description: Case detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /disputes/{disputeId}/timeline-events:
+    get:
+      operationId: listCaseTimelineEvents
+      summary: Immutable customer-facing case timeline
+      parameters:
+        - $ref: '#/components/parameters/DisputeId'
+      responses:
+        '200':
+          description: Timeline ordered by sequence number
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimelineEvent'
+        '404':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ClearCase.Session
+  parameters:
+    PageSize:
+      in: query
+      name: pageSize
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Cursor:
+      in: query
+      name: cursor
+      schema:
+        type: string
+    DisputeId:
+      name: disputeId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XsrfToken:
+      in: header
+      name: X-XSRF-TOKEN
+      required: true
+      schema:
+        type: string
+  schemas:
+    TransactionKind:
+      type: string
+      enum: [cardPurchase, debitOrder, bankCharge]
+    Transaction:
+      type: object
+      required: [id, description, amountMinorUnits, currency, kind, postedAt, canDispute]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        amountMinorUnits:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        kind:
+          $ref: '#/components/schemas/TransactionKind'
+        postedAt:
+          type: string
+          format: date-time
+        canDispute:
+          type: boolean
+    CreateDispute:
+      type: object
+      required: [transactionId, reasonCode, description]
+      additionalProperties: false
+      properties:
+        transactionId:
+          type: string
+          format: uuid
+        reasonCode:
+          type: string
+          minLength: 2
+        description:
+          type: string
+          minLength: 15
+          maxLength: 2000
+        evidenceIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    Dispute:
+      type: object
+      required: [id, transactionId, type, caseStatus, financialStatus, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        transactionId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/TransactionKind'
+        caseStatus:
+          type: string
+        financialStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TimelineEvent:
+      type: object
+      required: [id, sequenceNo, status, occurredAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        sequenceNo:
+          type: integer
+        status:
+          type: string
+        publicDescription:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    PageInfo:
+      type: object
+      required: [pageSize, hasNextPage]
+      additionalProperties: false
+      properties:
+        pageSize:
+          type: integer
+        hasNextPage:
+          type: boolean
+        nextCursor:
+          type: string
+    Problem:
+      type: object
+      required: [type, title, status, code, correlationId]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+        correlationId:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            required: [pointer, code, message]
+            properties:
+              pointer: { type: string }
+              code: { type: string }
+              message: { type: string }
+  responses:
+    Problem:
+      description: RFC Problem Details with stable extension fields
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

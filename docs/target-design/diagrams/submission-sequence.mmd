@@ -1,0 +1,34 @@
+sequenceDiagram
+  autonumber
+  participant U as Customer/Angular
+  participant API as ASP.NET API
+  participant P as Policy
+  participant DB as PostgreSQL
+  participant PUB as Outbox Publisher
+  participant K as Kafka
+  participant W as Worker
+  participant B as External Bank Mock
+  U->>API: POST /api/v1/disputes; Idempotency-Key
+  API->>API: Authenticate, CSRF, validate, scope owner
+  API->>DB: BEGIN, lock/insert idempotency key
+  API->>P: Evaluate eligibility with policy version
+  P-->>API: Decision and reason
+  API->>DB: Insert case + timeline + outbox + response
+  API->>DB: COMMIT
+  API-->>U: 201 Created, caseStatus=submitted
+  loop Until sent
+    PUB->>DB: Lease pending outbox rows
+    PUB->>K: Publish stable eventId / aggregateId
+    K-->>PUB: Broker ACK
+    PUB->>DB: Mark published
+  end
+  K->>W: Receive event (at least once)
+  W->>DB: BEGIN; insert processed_messages
+  W->>B: Call using stable operation reference
+  alt Partner confirms
+    B-->>W: Status confirmed
+    W->>DB: Update operation + timeline + outbox
+  else Partner response unknown
+    W->>DB: Mark outcomeUnknown and schedule reconciliation
+  end
+  W->>DB: COMMIT

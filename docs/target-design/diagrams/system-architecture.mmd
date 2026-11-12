@@ -1,0 +1,35 @@
+flowchart TB
+  User[Retail Customer] --> FE[Angular Web Portal]
+  Agent[Authorised Bank Agent] --> BO[Operations UI]
+  FE --> Edge[HTTPS / WAF / ALB / same-origin BFF]
+  BO --> Edge
+  Edge --> API[ASP.NET Core API - Authentication / Authorization]
+  subgraph Service[Modular Monolith - Clean Architecture]
+    TX[Transactions Query]
+    Case[Dispute Cases]
+    Policy[Card / Debit Order / Fee Policies]
+    Timeline[Timeline and Audit]
+    Evidence[Evidence Metadata]
+    Finance[Financial Operations]
+    Case --> Policy
+    Case --> Timeline
+    Case --> Finance
+  end
+  API --> TX
+  API --> Case
+  API --> Evidence
+  TX --> PG[(PostgreSQL RDS)]
+  Case --> PG
+  Timeline --> PG
+  Finance --> PG
+  Evidence --> PG
+  Evidence --> S3[(Private S3 & Scan)]
+  Case --> Outbox[(Transactional Outbox)]
+  Outbox --> Pub[Outbox Publisher] --> Kafka[(Kafka / MSK optional)]
+  Kafka --> Work[Integration / Notification Workers]
+  Work --> Card[Card Network / Acquirer Mock]
+  Work --> Debit[Mandate / Bank Core Mock]
+  Work --> Fees[Bank Charges Mock]
+  Work --> PG
+  API --> OT[OpenTelemetry / CloudWatch]
+  Work --> OT

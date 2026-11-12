@@ -1,0 +1,16 @@
+sequenceDiagram
+  participant W as Reversal Worker
+  participant DB as PostgreSQL
+  participant Bank as Bank Core Adapter
+  participant R as Reconciliation Worker
+  W->>DB: Persist operationRef=op-123, status=pending
+  W->>Bank: POST reversal op-123
+  Bank->>Bank: Applies reversal once
+  Bank--xW: Timeout / network failure
+  W->>DB: Mark outcomeUnknown
+  Note over W,Bank: Never issue a new operation reference
+  R->>DB: Find outcomeUnknown op-123
+  R->>Bank: GET status by op-123
+  Bank-->>R: confirmed + amount/currency
+  R->>DB: Atomic status + timeline + outbox
+  Note over DB: Customer sees FundsConfirmed only now
