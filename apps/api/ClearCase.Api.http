@@ -1,0 +1,13 @@
+@baseUrl = http://localhost:5100
+
+### Liveness
+GET {{baseUrl}}/health/live
+
+### Startup readiness
+GET {{baseUrl}}/health/ready
+
+### Development OpenAPI document
+GET {{baseUrl}}/openapi/v1.json
+
+### Unknown route returns Problem Details
+GET {{baseUrl}}/not-a-route
