@@ -1,0 +1,61 @@
+asyncapi: '3.0.0'
+info:
+  title: ClearCase domain event catalogue
+  version: 1.0.0
+  description: Conceptual Kafka contract draft. Not an implemented broker deployment.
+servers:
+  localKafka:
+    host: localhost:9092
+    protocol: kafka
+channels:
+  disputeCaseEvents:
+    address: disputes.case-events.v1
+    messages:
+      caseSubmitted:
+        $ref: '#/components/messages/DisputeSubmitted'
+  financialOperationEvents:
+    address: disputes.operations.v1
+    messages:
+      reversalRequested:
+        $ref: '#/components/messages/ReversalRequested'
+operations:
+  publishDisputeSubmitted:
+    action: send
+    channel:
+      $ref: '#/channels/disputeCaseEvents'
+    messages:
+      - $ref: '#/channels/disputeCaseEvents/messages/caseSubmitted'
+  publishReversalRequested:
+    action: send
+    channel:
+      $ref: '#/channels/financialOperationEvents'
+    messages:
+      - $ref: '#/channels/financialOperationEvents/messages/reversalRequested'
+components:
+  schemas:
+    EventEnvelope:
+      type: object
+      required: [eventId, eventType, eventVersion, aggregateId, aggregateVersion, occurredAt, correlationId, payload]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string }
+        eventVersion: { type: integer }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        causationId: { type: string }
+        payload: { type: object }
+  messages:
+    DisputeSubmitted:
+      name: DisputeSubmitted
+      title: Dispute Submitted
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EventEnvelope'
+    ReversalRequested:
+      name: ReversalRequested
+      title: Debit order reversal requested (not settled)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EventEnvelope'

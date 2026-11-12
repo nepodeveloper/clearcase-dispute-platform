@@ -1,0 +1,33 @@
+flowchart TB
+  A[Customer selects own transaction] --> B[Bank validates identity, ownership, duplicate, evidence]
+  B --> C{Transaction kind?}
+  C --> CARD[Card purchase]
+  C --> DEBIT[Debit order]
+  C --> FEE[Bank charge]
+  CARD --> CD[Issuer checks reason and scheme deadline]
+  CD --> CB[Chargeback initiated / network reference]
+  CB --> MER{Merchant outcome?}
+  MER -->|Accepts| FS[Settlement pending]
+  MER -->|Representment| REP[Issuer reviews evidence and decides]
+  REP --> FS
+  DEBIT --> D1[Effective-dated policy + mandate type]
+  D1 --> D2{Valid authorised DebiCheck?}
+  D2 -->|Yes| REF[Ordinary reversal ineligible / refer to bank]
+  D2 -->|No| D3{Within applicable dispute window?}
+  D3 -->|Yes| AMT[Optional internal review tier <= or > R2000]
+  D3 -->|No| REF2[Out-of-window enquiry or escalation]
+  AMT --> FR[Durable reversal request to bank core]
+  FR --> FS
+  FEE --> BR[Internal investigation]
+  BR --> ADJ{Approve adjustment?}
+  ADJ -->|Yes| FS
+  ADJ -->|No| DEC[Declined with reason]
+  FS --> REC{Ledger confirms posting?}
+  REC -->|Yes| DONE[Funds confirmed and case closed]
+  REC -->|Unknown| UNKNOWN[Pending / reconcile by stable ref]
+  UNKNOWN --> REC
+  REC -->|Rejected| DEC
+  DONE --> TL[Append immutable timeline; notify customer]
+  DEC --> TL
+  REF --> TL
+  REF2 --> TL
