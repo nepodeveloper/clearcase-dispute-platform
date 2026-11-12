@@ -3,18 +3,19 @@
     <span class="brand-mark" aria-hidden="true">C</span>
     <span>{{ title() }}</span>
   </a>
-  <span class="environment-label">Engineering foundation</span>
+  <span class="environment-label">Synthetic demo</span>
 </header>
 
 <main id="main-content">
-  <p class="eyebrow">Dispute operations</p>
+  <p class="eyebrow">Customer overview</p>
   <h1>{{ title() }}</h1>
-  <p class="intro">A starting point for the ClearCase application.</p>
+  <p class="intro">View your recent transactions.</p>
 
   <div class="scope-note" data-testid="scope-note">
     <span class="scope-indicator" aria-hidden="true"></span>
-    <p>Customer workflows and external integrations are not included in this foundation.</p>
+    <p>Demo data only. Real customer authentication and dispute workflows are not yet available.</p>
   </div>
+  <app-transactions-page />
 </main>
 
 <router-outlet />

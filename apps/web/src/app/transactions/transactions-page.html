@@ -1,0 +1,54 @@
+<section aria-labelledby="transactions-heading">
+  <h2 id="transactions-heading">Transactions</h2>
+  <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filters">
+    <label>Transaction type
+      <select name="transactionType" formControlName="transactionType">
+        <option value="">All types</option>
+        <option value="CardPurchase">Card purchase</option>
+        <option value="DebitOrder">Debit order</option>
+        <option value="BankCharge">Bank charge</option>
+      </select>
+    </label>
+    <label>From date <input name="fromDate" type="date" formControlName="fromDate"></label>
+    <label>To date <input name="toDate" type="date" formControlName="toDate"></label>
+    <button type="submit">Apply filters</button>
+  </form>
+
+  @let view = state();
+  @if (view.kind === 'loading') {
+    <p role="status">Loading transactions...</p>
+  } @else if (view.kind === 'error') {
+    <div role="alert">
+      <p>Unable to load transactions. Please try again.</p>
+      <button type="button" data-testid="retry" (click)="load()">Retry</button>
+    </div>
+  } @else if (view.page.items.length === 0) {
+    <p role="status">No transactions found.</p>
+    @if (view.page.pageNumber > 1) {
+      <button type="button" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
+    }
+  } @else {
+    <div class="table-container">
+      <table>
+        <caption class="visually-hidden">Transactions, newest first</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Type</th><th scope="col">Amount</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          @for (transaction of view.page.items; track transaction.id) {
+            <tr>
+              <td>{{ transaction.transactionDate | date:'mediumDate':'UTC' }}</td>
+              <td>{{ transaction.description }}</td>
+              <td>{{ typeLabel(transaction.transactionType) }}</td>
+              <td>{{ transaction.amount | currency:transaction.currency:'code':'1.2-2' }}</td>
+              <td>{{ transaction.status }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <nav aria-label="Transaction pages" class="pagination">
+      <button type="button" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
+      <span>Page {{ view.page.pageNumber }} of {{ view.page.totalPages }}</span>
+      <button type="button" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">Next</button>
+    </nav>
+  }
+</section>
