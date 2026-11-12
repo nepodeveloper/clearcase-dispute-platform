@@ -1,4 +1,5 @@
 using System.Globalization;
+using ClearCase.Application.Transactions;
 
 namespace ClearCase.Api.Transactions;
 
@@ -11,7 +12,10 @@ public sealed class InMemoryTransactionReader : ITransactionReader
     private static readonly DateTimeOffset Start = new(2026, 11, 10, 8, 30, 0, TimeSpan.Zero);
     private static readonly IReadOnlyList<Transaction> Transactions = CreateTransactions();
 
-    public Task<TransactionListResponse> ReadAsync(Guid customerId, TransactionQuery query, CancellationToken cancellationToken)
+    public Task<TransactionListResponse> ReadAsync(
+        Guid customerId,
+        ListTransactionsQuery query,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var matching = Transactions
@@ -36,6 +40,19 @@ public sealed class InMemoryTransactionReader : ITransactionReader
             items, query.PageNumber, query.PageSize, matching.Length, totalPages, query.PageNumber < totalPages));
     }
 
+    public Task<TransactionDetails?> ReadByIdAsync(
+        Guid customerId,
+        Guid transactionId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var item = Transactions.SingleOrDefault(transaction =>
+            transaction.CustomerId == customerId && transaction.Id == transactionId);
+        return Task.FromResult(item is null ? null : new TransactionDetails(
+            item.Id, item.Type.ToString(), item.Description, item.MerchantName, item.Amount,
+            "ZAR", item.Date, "Posted", item.Reference, true));
+    }
+
     private static IReadOnlyList<Transaction> CreateTransactions()
     {
         var items = Enumerable.Range(1, 30).Select(index =>
@@ -44,13 +61,16 @@ public sealed class InMemoryTransactionReader : ITransactionReader
             return new Transaction(
                 Guid.Parse($"00000000-0000-0000-0000-{index:000000000000}"),
                 DemoCustomer, (TransactionType)typeIndex, Descriptions[typeIndex], Amounts[typeIndex],
-                Start.AddDays(-Math.Min(index - 1, 28)));
+                Start.AddDays(-Math.Min(index - 1, 28)),
+                typeIndex == 2 ? null : Descriptions[typeIndex], $"TXN-2026-{index:000000}");
         }).ToList();
         items.Add(new Transaction(Guid.Parse("00000000-0000-0000-0000-000000000099"),
-            OtherCustomer, TransactionType.CardPurchase, "Other synthetic customer", 25m, Start));
+            OtherCustomer, TransactionType.CardPurchase, "Other synthetic customer", 25m, Start,
+            "Other synthetic customer", "TXN-2026-000099"));
         return items;
     }
 
     private sealed record Transaction(
-        Guid Id, Guid CustomerId, TransactionType Type, string Description, decimal Amount, DateTimeOffset Date);
+        Guid Id, Guid CustomerId, TransactionType Type, string Description, decimal Amount,
+        DateTimeOffset Date, string? MerchantName, string? Reference);
 }

@@ -66,6 +66,8 @@ For a manual API smoke check, open `apps/api/ClearCase.Api.http` in VS Code with
 
 Filtering occurs before offset pagination; ordering is transaction date descending, then ID ascending. `totalCount` counts filtered records; `totalPages` is zero for no matches and `hasNextPage` is false on the last page. A page beyond the end has an empty `items` array. Invalid parameters return HTTP 400 `application/problem+json` with a stable code, correlation ID and per-field errors. Responses use `Cache-Control: private, no-store`.
 
+The Angular filters reject an inverted date range before making a request and display validation messages returned by the API. After a page change, focus moves to the transactions heading.
+
 Example, with the API running in Development:
 
 ```powershell
@@ -98,12 +100,40 @@ Amounts are decimal **strings**, not JSON numbers, to preserve exact decimal val
 
 The in-memory reader deterministically generates 30 fixed, dated transactions across all three types for the demo identity and one record for a second synthetic identity to exercise isolation. IDs and dates are fixed, not random or derived from the current clock. The configured `Demo:CustomerId` is trusted server configuration, present only in Development and Testing settings. The demo authentication handler is not registered in Production or other environments. Data resets on restart and is never persisted.
 
+## Transaction details
+
+`GET /api/v1/transactions/{id}` returns an authenticated customer's transaction; `GET /v1/transactions/{id}` is an equivalent alias. A malformed GUID returns 400 Problem Details. A missing transaction or one owned by another customer returns the same 404 response; callers without authentication receive 401. Both successful and error responses include a correlation ID and use `Cache-Control: private, no-store` for authenticated detail requests. Optional merchant and reference fields are omitted when unavailable.
+
+With the API running in Development:
+
+```powershell
+curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-000000000001"
+```
+
+```json
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "transactionType": "CardPurchase",
+  "description": "Woolworths",
+  "merchantName": "Woolworths",
+  "amount": "750.00",
+  "currency": "ZAR",
+  "transactionDate": "2026-11-10T08:30:00+00:00",
+  "status": "Posted",
+  "reference": "TXN-2026-000001",
+  "isDisputable": true
+}
+```
+
+Amounts are stored as decimals and exposed as decimal strings, consistent with the listing contract. Merchant names and references are synthetic demo data. The Angular transaction list links to `/transactions/{id}`; the details page includes a back link and loading, not-found, and retryable-error states. It does not submit disputes.
+
 For focused tests:
 
 ```powershell
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter FullyQualifiedName~TransactionEndpointsTests
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~TransactionDetailsEndpointsTests|FullyQualifiedName~TransactionApplicationTests"
 Set-Location apps/web
-npm run test:ci -- --include=src/app/transactions/transactions-page.spec.ts
+npm run test:ci -- --include=src/app/transactions/transactions-page.spec.ts --include=src/app/transactions/transaction-details-page.spec.ts
 ```
 
 The checked-in target-design OpenAPI document describes a future cursor-based contract; the generated Development OpenAPI document describes this implemented, page-number-based slice. Moving to a different contract requires a separately planned compatibility change.
@@ -111,7 +141,7 @@ The checked-in target-design OpenAPI document describes a future cursor-based co
 ## Current limitations
 
 - The temporary demo identity is not authentication for real customers. Production transaction requests are unauthorized.
-- The Angular page displays synthetic data only and cannot submit disputes.
+- The Angular pages display synthetic data only and cannot submit disputes.
 - No database, migrations, event broker, external banking adapter, cloud resources, or deployment manifests are included.
 - Development CORS permits only the configured local Angular origin. CORS is not enabled outside Development.
 - On 2026-11-12, `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported 16 moderate findings in development tooling; npm's suggested forced fix upgrades Angular CLI to 22, so that breaking upgrade is deferred for a dedicated dependency review.

@@ -2,6 +2,7 @@ using ClearCase.Api.Endpoints;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Api.Authentication;
+using ClearCase.Application.Transactions;
 using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +21,10 @@ else
     authentication.AddScheme<AuthenticationSchemeOptions, UnavailableAuthenticationHandler>("Unavailable", _ => { });
 }
 builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
+builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
+builder.Services.AddScoped<IGetTransactionDetailsHandler, GetTransactionDetailsHandler>();
 builder.Services.AddSingleton<ITransactionReader, InMemoryTransactionReader>();
 builder.Services.AddProblemDetails(options =>
 {

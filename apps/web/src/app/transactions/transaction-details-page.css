@@ -1,0 +1,10 @@
+section { margin-top: 2rem; }
+h2 { font: 400 1.75rem Georgia, serif; }
+a { color: #176b58; }
+a:focus-visible, button:focus-visible { outline: 3px solid #bc8129; outline-offset: 2px; }
+dl { max-width: 46rem; margin: 0; background: #fff; }
+dl div { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: 1rem; padding: 0.8rem; border-bottom: 1px solid #dce3df; }
+dt { font-weight: 600; }
+dd { margin: 0; overflow-wrap: anywhere; }
+button { min-height: 2.6rem; padding: 0.5rem 0.7rem; border: 1px solid #176b58; border-radius: 3px; color: #fff; background: #176b58; font: inherit; cursor: pointer; }
+@media (max-width: 480px) { dl div { grid-template-columns: 1fr; gap: 0.3rem; } }

@@ -16,5 +16,15 @@ X-Correlation-ID: demo-transaction-list
 ### Invalid query returns Problem Details
 GET {{baseUrl}}/v1/transactions?pageSize=101
 
+### Owned synthetic transaction details (Development or Testing only)
+GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000001
+X-Correlation-ID: demo-transaction-details
+
+### Invalid transaction ID returns Problem Details
+GET {{baseUrl}}/v1/transactions/not-a-guid
+
+### Unknown or other-customer transaction returns 404
+GET {{baseUrl}}/v1/transactions/00000000-0000-0000-0000-000000000099
+
 ### Unknown route returns Problem Details
 GET {{baseUrl}}/not-a-route

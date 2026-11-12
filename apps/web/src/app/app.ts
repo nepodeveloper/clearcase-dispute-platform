@@ -1,10 +1,9 @@
 import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { TransactionsPage } from './transactions/transactions-page';
+import { RouterLink, RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, TransactionsPage],
+  imports: [RouterLink, RouterOutlet],
   templateUrl: './foundation.html',
   styleUrl: './foundation.css',
 })
