@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Disputes;
 
-public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeStore
+public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeStore, IDebitOrderProcessingStore
 {
     private const int SqliteConstraintError = 19;
 
@@ -72,7 +72,37 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             item.Events.OrderBy(entry => entry.SequenceNumber)
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
-                .ToArray());
+                .ToArray(), item.ReversalOperationReference);
+    }
+
+    public async Task<DisputeView?> ApplyAsync(
+        Guid customerId, Guid disputeId, DebitOrderCommand command,
+        Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        // SQLite's non-deferred transaction takes the writer lock before reading or calling the pure mock.
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var current = await ReadAsync(customerId, disputeId, cancellationToken);
+        if (current is null) return null;
+        var next = await transition(current);
+        var item = await context.Disputes.SingleAsync(
+            item => item.Id == disputeId && item.CustomerId == customerId, cancellationToken);
+        item.CaseStatus = next.State.Case;
+        item.DecisionStatus = next.State.Decision;
+        item.FinancialStatus = next.State.Financial;
+        if (command == DebitOrderCommand.RequestReversal)
+            item.ReversalOperationReference = $"MOCK-DO-{disputeId:N}";
+        context.DisputeEvents.Add(new PersistedDisputeEvent
+        {
+            Id = Guid.NewGuid(), DisputeId = disputeId,
+            SequenceNumber = current.Timeline.Max(entry => entry.SequenceNumber) + 1,
+            EventType = $"DebitOrder{command}", CaseStatus = item.CaseStatus,
+            PublicDescription = next.Description, OccurredAt = occurredAt
+        });
+        await context.SaveChangesAsync(cancellationToken);
+        var updated = await ReadAsync(customerId, disputeId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     private static bool IsOpenDisputeConflict(DbUpdateException exception) =>

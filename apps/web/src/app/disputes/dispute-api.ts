@@ -2,7 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { TransactionType } from '../transactions/transaction-api';
 
-export type DisputeCaseStatus = 'Submitted' | 'ManualReview' | 'Closed';
+export type DisputeCaseStatus = 'Submitted' | 'ManualReview' | 'Closed'
+  | 'UnderReview' | 'MandateVerified' | 'ReversalRequested' | 'ReversalConfirmed' | 'Rejected';
 
 export interface CreateDisputeRequest {
   transactionId: string;

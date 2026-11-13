@@ -27,6 +27,8 @@ export class DisputeForm {
   private readonly api = inject(DisputeApi);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly state = signal<SubmissionState>({ kind: 'editing' });
+  protected readonly refreshing = signal(false);
+  protected readonly refreshError = signal<string | null>(null);
   protected readonly maxLength = descriptionMaxLength;
   protected readonly form = inject(NonNullableFormBuilder).group({
     reasonCode: ['', Validators.required],
@@ -54,6 +56,23 @@ export class DisputeForm {
       });
   }
 
+  protected refresh(): void {
+    const current = this.state();
+    if (current.kind !== 'submitted' || this.refreshing()) return;
+    this.refreshing.set(true);
+    this.refreshError.set(null);
+    this.api.get(current.dispute.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (dispute) => {
+        this.state.set({ kind: 'submitted', dispute });
+        this.refreshing.set(false);
+      },
+      error: () => {
+        this.refreshError.set('Unable to refresh the case status. Please try again.');
+        this.refreshing.set(false);
+      },
+    });
+  }
+
   protected statusLabel(status: DisputeCaseStatus): string {
     switch (status) {
       case 'Submitted':
@@ -62,6 +81,27 @@ export class DisputeForm {
         return 'Referred for specialist review';
       case 'Closed':
         return 'Closed';
+      case 'UnderReview':
+        return 'Under review';
+      case 'MandateVerified':
+        return 'Mandate verified';
+      case 'ReversalRequested':
+        return 'Reversal requested';
+      case 'ReversalConfirmed':
+        return 'Simulated reversal confirmed';
+      case 'Rejected':
+        return 'Rejected';
+    }
+  }
+
+  protected financialLabel(status: string): string {
+    switch (status) {
+      case 'NotInitiated': return 'Not initiated';
+      case 'Requested': return 'Requested - not confirmed';
+      case 'OutcomeUnknown': return 'Outcome unknown - not confirmed';
+      case 'Failed': return 'Failed - no reversal confirmed';
+      case 'Confirmed': return 'Simulated reversal confirmed - no real money moved';
+      default: return status;
     }
   }
 

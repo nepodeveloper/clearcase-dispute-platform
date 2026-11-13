@@ -95,7 +95,7 @@ public static class DisputeEndpoints
             : TypedResults.Ok(DisputeResponse.From(dispute));
     }
 
-    private static ProblemHttpResult Problem(
+    internal static ProblemHttpResult Problem(
         HttpContext context, int status, string title, string code, string? detail = null,
         IReadOnlyList<QueryError>? errors = null, Dictionary<string, object?>? extensions = null)
     {

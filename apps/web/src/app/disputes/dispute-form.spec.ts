@@ -104,6 +104,46 @@ describe('DisputeForm', () => {
     expect((element.querySelector('[data-testid="submit-dispute"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('refreshes processing and timeline without implying approved funds are confirmed', () => {
+    fill('duplicateCharge', description);
+    submit();
+    http.expectOne('/api/v1/disputes').flush(created);
+    fixture.detectChanges();
+
+    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
+    const request = http.expectOne(`/api/v1/disputes/${created.id}`);
+    expect(request.request.method).toBe('GET');
+    request.flush({
+      ...created, category: 'DebitOrder', caseStatus: 'ReversalRequested',
+      decisionStatus: 'Approved', financialStatus: 'OutcomeUnknown',
+      timeline: [...created.timeline, {
+        ...created.timeline[0], id: 'another-event', sequenceNumber: 2,
+        caseStatus: 'ReversalRequested', description: 'The simulated outcome is unknown.',
+      }],
+    });
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain('Reversal requested');
+    expect(element.textContent).toContain('Decision: Approved');
+    expect(element.textContent).toContain('Outcome unknown - not confirmed');
+    expect(element.querySelectorAll('ol li')).toHaveLength(2);
+    http.expectNone((req) => req.url.includes('simulations'));
+  });
+
+  it('keeps the case visible and allows retry when status refresh fails', () => {
+    fill('duplicateCharge', description);
+    submit();
+    http.expectOne('/api/v1/disputes').flush(created);
+    fixture.detectChanges();
+    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
+    http.expectOne(`/api/v1/disputes/${created.id}`).flush({}, { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain(created.reference);
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain('Unable to refresh');
+    expect((element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('shows the server explanation for an ineligible submission', () => {
     fill('duplicateCharge', description);
     submit();

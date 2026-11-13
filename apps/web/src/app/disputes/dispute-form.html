@@ -4,8 +4,18 @@
     <p><strong>Dispute submitted.</strong></p>
     <p>Case reference: <strong data-testid="dispute-reference">{{ current.dispute.reference }}</strong></p>
     <p>Status: {{ statusLabel(current.dispute.caseStatus) }}</p>
-    @if (current.dispute.timeline.length > 0) {
-      <p>{{ current.dispute.timeline[0].description }}</p>
+    <p>Decision: {{ current.dispute.decisionStatus }}</p>
+    <p>Financial status: {{ financialLabel(current.dispute.financialStatus) }}</p>
+    <ol aria-label="Dispute timeline">
+      @for (event of current.dispute.timeline; track event.id) {
+        <li>{{ statusLabel(event.caseStatus) }}: {{ event.description }}</li>
+      }
+    </ol>
+    <button type="button" data-testid="refresh-dispute" (click)="refresh()" [disabled]="refreshing()">
+      {{ refreshing() ? 'Refreshing...' : 'Refresh status' }}
+    </button>
+    @if (refreshError(); as message) {
+      <p role="alert">{{ message }}</p>
     }
   </div>
 } @else {

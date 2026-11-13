@@ -14,7 +14,8 @@ public sealed record DisputeView(
     DisputeDecisionStatus DecisionStatus,
     DisputeFinancialStatus FinancialStatus,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<DisputeEvent> Timeline)
+    IReadOnlyList<DisputeEvent> Timeline,
+    string? ReversalOperationReference = null)
 {
     public static DisputeView From(Dispute dispute) =>
         new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,

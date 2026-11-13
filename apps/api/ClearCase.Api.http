@@ -57,3 +57,33 @@ GET {{baseUrl}}/v1/transactions/00000000-0000-0000-0000-000000000099/dispute-eli
 
 ### Unknown route returns Problem Details
 GET {{baseUrl}}/not-a-route
+
+### PR-08: submit an eligible synthetic EFT dispute (repeat submission returns 409)
+# @name debitOrderCase
+POST {{baseUrl}}/api/v1/disputes
+Content-Type: application/json
+
+{
+  "transactionId": "00000000-0000-0000-0000-000000000002",
+  "reasonCode": "duplicateCollection",
+  "description": "This collection needs investigation for a duplicate debit."
+}
+
+### Run sequentially, changing command to VerifyMandate, RequestReversal, ExecuteReversal, Close
+# Configure Simulation__DebitOrderKey in the API shell; REST Client must receive the same local value.
+# Never commit the value or pass it to the customer frontend.
+POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__DebitOrderKey}}
+X-Correlation-ID: debit-order-demo
+
+{ "command": "StartReview" }
+
+### Ordinary customer processing is forbidden, even in Development
+POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations
+Content-Type: application/json
+
+{ "command": "ExecuteReversal" }
+
+### Read the customer-owned timeline without simulator privileges
+GET {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}
