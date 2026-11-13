@@ -6,6 +6,10 @@ import { demoRoutes } from './app/ui-demo/demo.routes';
 import { DemoSession } from './app/ui-demo/demo-session';
 import { DemoWorkspace } from './app/ui-demo/demo-workspace';
 
+if (document.querySelector('cc-demo-root') === null) {
+  document.body.appendChild(document.createElement('cc-demo-root'));
+}
+
 bootstrapApplication(DemoApp, {
   providers: [
     provideBrowserGlobalErrorListeners(),

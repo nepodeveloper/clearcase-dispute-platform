@@ -135,6 +135,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
                 services.AddSingleton<IDebitOrderMandateReader>(reader);
             });
         }).CreateClient();
+        await AddCsrfTokenAsync(client);
         const string transactionId = "00000000-0000-0000-0000-000000000002";
         using var eligibilityResponse = await client.GetAsync(
             $"/api/v1/transactions/{transactionId}/dispute-eligibility");
@@ -310,7 +311,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     [InlineData("GET", "/v1/disputes/00000000-0000-0000-0000-000000000001")]
     public async Task Production_RequiresAuthentication(string method, string route)
     {
-        using var client = CreateClient("Production");
+        using var client = CreateClient("Production", includeCsrfToken: false);
         using var request = new HttpRequestMessage(new HttpMethod(method), route);
         if (method == "POST")
             request.Content = JsonContent.Create(new
@@ -359,8 +360,9 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
         return await database.Disputes.CountAsync(item => item.TransactionId == id);
     }
 
-    private HttpClient CreateClient(string environment = "Testing") =>
-        _factory.WithWebHostBuilder(builder =>
+    private HttpClient CreateClient(string environment = "Testing", bool includeCsrfToken = true)
+    {
+        var client = _factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment(environment);
             builder.ConfigureTestServices(services =>
@@ -369,6 +371,22 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
                 services.AddSingleton<TimeProvider>(new FrozenTimeProvider(FixedInstant));
             });
         }).CreateClient();
+        if (includeCsrfToken)
+            AddCsrfTokenAsync(client).GetAwaiter().GetResult();
+
+        return client;
+    }
+
+    private static async Task AddCsrfTokenAsync(HttpClient client)
+    {
+        using var meResponse = await client.GetAsync("/api/v1/auth/me");
+        using var meBody = JsonDocument.Parse(await meResponse.Content.ReadAsStringAsync());
+        var csrfToken = meBody.RootElement.GetProperty("csrfToken").GetString();
+        Assert.Equal(HttpStatusCode.OK, meResponse.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(csrfToken));
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", csrfToken);
+    }
 
     private static async Task<JsonDocument> ReadJson(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());

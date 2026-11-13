@@ -7,28 +7,83 @@ using ClearCase.Application.Disputes;
 using ClearCase.Application.DisputeEligibility;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Transactions;
+using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-var demoAuthenticationEnabled = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
-var authentication = builder.Services.AddAuthentication(demoAuthenticationEnabled ? "Demo" : "Unavailable");
-if (demoAuthenticationEnabled)
+builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
+    {
+        options.Password.RequiredLength = 12;
+        options.Password.RequireDigit = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.User.RequireUniqueEmail = false;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+    })
+    .AddEntityFrameworkStores<TransactionDbContext>()
+    .AddDefaultTokenProviders();
+builder.Services.ConfigureApplicationCookie(options =>
 {
-    authentication.AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>("Demo", _ => { });
+    options.Cookie.Name = "clearcase.auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing")
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+    options.SlidingExpiration = true;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+});
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = "Composite";
+        options.DefaultChallengeScheme = "Composite";
+        options.DefaultSignInScheme = IdentityConstants.ApplicationScheme;
+    })
+    .AddScheme<AuthenticationSchemeOptions, CompositeAuthenticationHandler>("Composite", _ => { });
+builder.Services.AddClearCaseAuthorization();
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = "clearcase.csrf";
+    options.Cookie.HttpOnly = false;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing")
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+    options.HeaderName = "X-CSRF-TOKEN";
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth-login", context =>
+    {
+        var key = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+});
+if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+{
     builder.Services.AddSingleton<IDebitOrderMandateReader, MockDebitOrderMandateReader>();
 }
 else
 {
-    authentication.AddScheme<AuthenticationSchemeOptions, UnavailableAuthenticationHandler>("Unavailable", _ => { });
     builder.Services.AddSingleton<IDebitOrderMandateReader, UnavailableDebitOrderMandateReader>();
 }
-builder.Services.AddAuthorization();
 builder.AddDebitOrderSimulation();
 builder.AddChargebackSimulation();
 builder.AddBankChargeSimulation();
@@ -84,11 +139,13 @@ if (app.Environment.IsDevelopment())
     var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
     await database.Database.MigrateAsync();
     await SyntheticTransactionSeeder.SeedAsync(database, CancellationToken.None);
+    await SyntheticIdentitySeeder.SeedAsync(database, CancellationToken.None);
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -99,6 +156,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapHealthEndpoints();
+app.MapAuthEndpoints();
 app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
 app.MapDebitOrderSimulation();

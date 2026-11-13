@@ -1,4 +1,5 @@
 using ClearCase.Api.Disputes;
+using ClearCase.Api.Authentication;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Application.Disputes;
@@ -20,7 +21,8 @@ public static class DisputeEndpoints
                 .WithSummary("List the authenticated customer's submitted disputes")
                 .WithDescription("Newest first, then reference ascending. pageSize defaults to 20 (1-100). "
                     + "Pass the opaque pageInfo.nextCursor unchanged for the next page. New submissions appear on refresh.")
-                .Produces<DisputeListResponse>().ProducesProblem(400).ProducesProblem(401).RequireAuthorization();
+                .Produces<DisputeListResponse>().ProducesProblem(400).ProducesProblem(401)
+                .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
             app.MapGet($"{prefix}/disputes/{{id}}/events", Events)
                 .WithName("GetDisputeEvents" + suffix)
@@ -28,7 +30,8 @@ public static class DisputeEndpoints
                 .WithDescription("Returns an array in ascending sequenceNumber order; sequence is canonical even when timestamps tie. "
                     + "Never returns internal audit records or operation secrets.")
                 .Produces<DisputeTimelineEventResponse[]>().ProducesProblem(400)
-                .ProducesProblem(401).ProducesProblem(404).RequireAuthorization();
+                .ProducesProblem(401).ProducesProblem(404)
+                .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
             app.MapPost($"{prefix}/disputes", Create)
                 .WithName("CreateDispute" + suffix)
@@ -40,7 +43,8 @@ public static class DisputeEndpoints
                 .ProducesProblem(StatusCodes.Status401Unauthorized)
                 .ProducesProblem(StatusCodes.Status409Conflict)
                 .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
-                .RequireAuthorization();
+                .RequireAuthorization(AuthenticationPolicies.CustomerAccess)
+                .RequireCsrfProtection();
 
             app.MapGet($"{prefix}/disputes/{{id}}", Get)
                 .WithName("GetDispute" + suffix)
@@ -49,7 +53,7 @@ public static class DisputeEndpoints
                 .ProducesProblem(StatusCodes.Status400BadRequest)
                 .ProducesProblem(StatusCodes.Status401Unauthorized)
                 .ProducesProblem(StatusCodes.Status404NotFound)
-                .RequireAuthorization();
+                .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
         }
 
         return app;

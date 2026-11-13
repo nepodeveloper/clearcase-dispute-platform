@@ -1,6 +1,7 @@
 using System.Globalization;
 using ClearCase.Application.DisputeEligibility;
 using ClearCase.Application.Transactions;
+using ClearCase.Api.Authentication;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -18,7 +19,7 @@ public static class TransactionEndpoints
             .Produces<TransactionListResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
         app.MapGet("/v1/transactions", List)
             .WithName("ListTransactionsAlias")
@@ -26,7 +27,7 @@ public static class TransactionEndpoints
             .Produces<TransactionListResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
         app.MapGet("/api/v1/transactions/{id}", GetDetails)
             .WithName("GetTransactionDetails")
@@ -36,7 +37,7 @@ public static class TransactionEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
         app.MapGet("/v1/transactions/{id}", GetDetails)
             .WithName("GetTransactionDetailsAlias")
@@ -46,7 +47,7 @@ public static class TransactionEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
         app.MapGet("/api/v1/transactions/{id}/dispute-eligibility", GetDisputeEligibility)
             .WithName("GetTransactionDisputeEligibility")
@@ -57,7 +58,7 @@ public static class TransactionEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status500InternalServerError)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
 
         app.MapGet("/v1/transactions/{id}/dispute-eligibility", GetDisputeEligibility)
             .WithName("GetTransactionDisputeEligibilityAlias")
@@ -67,7 +68,7 @@ public static class TransactionEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status500InternalServerError)
-            .RequireAuthorization();
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess);
         return app;
     }
 
