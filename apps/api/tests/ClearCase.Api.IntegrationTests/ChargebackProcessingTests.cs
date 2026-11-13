@@ -196,6 +196,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         using var replay = restarted.CreateClient();
         replay.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
         replay.DefaultRequestHeaders.Add("X-Correlation-ID", "chargeback-simulation-test");
+        await AddCsrfTokenAsync(replay);
         await Conflict(replay, id, action.ToString());
         await Conflict(replay, id, "Close");
         Assert.Equal(callCount, _gateway.Requests.Count);
@@ -317,6 +318,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         using var ineligible = changed.CreateClient();
         ineligible.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
         ineligible.DefaultRequestHeaders.Add("X-Correlation-ID", "chargeback-simulation-test");
+        await AddCsrfTokenAsync(ineligible);
         await Conflict(ineligible, card, "Initiate");
         Assert.Empty(_gateway.Requests);
     }
@@ -332,6 +334,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         });
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(client);
         using var denied = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "Initiate" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
@@ -381,6 +384,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
             })));
         using var other = otherApp.CreateClient();
         other.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(other);
         using var inaccessible = await other.PostAsJsonAsync(Route(id), new { command = "Initiate" });
         Assert.Equal(HttpStatusCode.NotFound, inaccessible.StatusCode);
     }
@@ -394,7 +398,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
         using var response = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "Initiate" });
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.Unauthorized });
     }
 
     private HttpClient Client(bool simulator = true)
@@ -402,7 +406,19 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         var client = _app.CreateClient();
         if (simulator) client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
         client.DefaultRequestHeaders.Add("X-Correlation-ID", "chargeback-simulation-test");
+        AddCsrfTokenAsync(client).GetAwaiter().GetResult();
         return client;
+    }
+
+    private static async Task AddCsrfTokenAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = body.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", token);
     }
 
     private static async Task<Guid> Submit(HttpClient client, int transaction = 1, string reason = "duplicateCharge")

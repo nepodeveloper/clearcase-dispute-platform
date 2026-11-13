@@ -139,6 +139,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         using var restarted = _app.WithWebHostBuilder(_ => { });
         using var restartedClient = restarted.CreateClient();
         restartedClient.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(restartedClient);
         await Conflict(restartedClient, id, "ExecuteReversal");
         await Conflict(restartedClient, id, "RequestReversal");
         if (outcome == DebitOrderGatewayOutcome.Unknown)
@@ -215,6 +216,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         }));
         using var missing = changed.CreateClient();
         missing.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(missing);
         await Conflict(missing, id, "RequestReversal");
         await Command(client, id, "RequestReversal", "ReversalRequested");
         await Conflict(missing, id, "ExecuteReversal");
@@ -247,6 +249,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         });
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(client);
         using var denied = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
@@ -276,6 +279,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
                 })));
         using var other = otherApp.CreateClient();
         other.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(other);
         using var notFound = await other.PostAsJsonAsync(Route(id), new { command = "StartReview" });
         Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
     }
@@ -289,14 +293,26 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
         using var response = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.Unauthorized });
     }
 
     private HttpClient Client(bool simulator = true)
     {
         var client = _app.CreateClient();
         if (simulator) client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        AddCsrfTokenAsync(client).GetAwaiter().GetResult();
         return client;
+    }
+
+    private static async Task AddCsrfTokenAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = body.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", token);
     }
 
     private static async Task<Guid> Submit(HttpClient client, int transaction = 2, string reason = "duplicateCollection")

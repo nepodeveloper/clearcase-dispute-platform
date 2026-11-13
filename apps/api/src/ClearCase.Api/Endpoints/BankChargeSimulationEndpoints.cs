@@ -25,6 +25,7 @@ public static class BankChargeSimulationEndpoints
         if (!SimulationAuthorization.IsEnabled(app.Environment)) return;
         app.MapPost("/api/v1/disputes/{id}/bank-charge-simulations", Process)
             .RequireAuthorization("BankChargeSimulation")
+            .RequireCsrfProtection()
             .WithName("SimulateBankChargeProcessing")
             .WithSummary("Simulate internal fee investigation and adjustment")
             .WithDescription("Development/Testing only. Requires the authenticated owner and server-configured X-Simulation-Key. "

@@ -1,5 +1,21 @@
 @baseUrl = http://localhost:5100
 
+### Login with a synthetic user (Development/Testing)
+# @name authLogin
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "customer.demo",
+  "password": "ClearCase!Customer1"
+}
+
+### Refresh current session identity and CSRF token
+# @name authMe
+GET {{baseUrl}}/api/v1/auth/me
+
+@csrfToken = {{authMe.response.body.$.csrfToken}}
+
 ### Liveness
 GET {{baseUrl}}/health/live
 
@@ -42,6 +58,7 @@ GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000023/dispute
 ### Authorization complaint enters manual review only; repeat submission returns 409
 POST {{baseUrl}}/api/v1/disputes
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
 
 {
   "transactionId": "00000000-0000-0000-0000-000000000011",
@@ -62,6 +79,7 @@ GET {{baseUrl}}/not-a-route
 # @name debitOrderCase
 POST {{baseUrl}}/api/v1/disputes
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
 
 {
   "transactionId": "00000000-0000-0000-0000-000000000002",
@@ -76,12 +94,14 @@ POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-ord
 Content-Type: application/json
 X-Simulation-Key: {{$processEnv Simulation__DebitOrderKey}}
 X-Correlation-ID: debit-order-demo
+X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "StartReview" }
 
 ### Ordinary customer processing is forbidden, even in Development
 POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "ExecuteReversal" }
 
@@ -92,6 +112,7 @@ GET {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}
 # @name cardCase
 POST {{baseUrl}}/api/v1/disputes
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
 
 {
   "transactionId": "00000000-0000-0000-0000-000000000001",
@@ -108,6 +129,7 @@ POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simu
 Content-Type: application/json
 X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
 X-Correlation-ID: card-chargeback-demo
+X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "Initiate" }
 
@@ -115,6 +137,7 @@ X-Correlation-ID: card-chargeback-demo
 POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simulations
 Content-Type: application/json
 X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
+X-CSRF-TOKEN: {{csrfToken}}
 
 {
   "command": "ReceiveRepresentment",
@@ -128,6 +151,7 @@ X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
 POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simulations
 Content-Type: application/json
 X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
+X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "ExecuteSettlement" }
 
@@ -144,6 +168,7 @@ GET {{baseUrl}}/v1/disputes/{{cardCase.response.body.$.id}}/events
 # @name bankFeeCase
 POST {{baseUrl}}/api/v1/disputes
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
 
 {
   "transactionId": "00000000-0000-0000-0000-000000000003",
@@ -156,6 +181,7 @@ Content-Type: application/json
 POST {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}/bank-charge-simulations
 Content-Type: application/json
 X-Simulation-Key: {{$processEnv Simulation__BankChargeKey}}
+X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "StartReview" }
 

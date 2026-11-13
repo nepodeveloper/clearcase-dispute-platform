@@ -56,6 +56,27 @@ Open `http://localhost:4200`. The Angular development server proxies `/api` to `
 
 For a manual API smoke check, open `apps/api/ClearCase.Api.http` in VS Code with the REST Client extension, or request the endpoints directly with `curl`.
 
+## Local authentication foundation (PR-12)
+
+The backend now uses ASP.NET Core Identity with SQLite-backed tables in the same local database as disputes and transactions. Cookie authentication is the primary path:
+
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+
+Development/Testing seed deterministic synthetic users and roles:
+
+| Username | Password | Role | Actor type | Customer mapping |
+| --- | --- | --- | --- | --- |
+| `customer.demo` | `ClearCase!Customer1` | `Customer` | `customer` | `11111111-1111-1111-1111-111111111111` |
+| `customer.other` | `ClearCase!Customer2` | `Customer` | `customer` | `22222222-2222-2222-2222-222222222222` |
+| `agent.demo` | `ClearCase!Agent1` | `Agent` | `bankEmployee` | none |
+| `supervisor.demo` | `ClearCase!Supervisor1` | `Supervisor` | `bankEmployee` | none |
+
+`GET /api/v1/auth/me` returns a `csrfToken`. Send that token in `X-CSRF-TOKEN` for every state-changing request (for example dispute submission and simulation commands). Requests without a valid token are rejected with Problem Details (`code: auth.csrfInvalid`).
+
+To preserve the current demo customer journey while the login UI is not yet integrated, Development/Testing retain a temporary compatibility path (`Authentication:EnableDevelopmentCompatibilityPath=true`) that auto-authenticates as the configured demo customer only when no identity cookie is present. Production and non-demo environments never enable this fallback.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both require authorization and return `401` outside Development and Testing. No customer ID from a request header or query parameter is trusted.

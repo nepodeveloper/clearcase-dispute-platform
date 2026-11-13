@@ -25,6 +25,7 @@ public static class DebitOrderSimulationEndpoints
         if (!SimulationAuthorization.IsEnabled(app.Environment)) return;
         app.MapPost("/api/v1/disputes/{id}/debit-order-simulations", Process)
             .RequireAuthorization("DebitOrderSimulation")
+            .RequireCsrfProtection()
             .WithName("SimulateDebitOrderProcessing")
             .WithSummary("Simulate one debit-order processing command (local demo only)")
             .WithDescription("Requires authentication and the server-configured X-Simulation-Key. "

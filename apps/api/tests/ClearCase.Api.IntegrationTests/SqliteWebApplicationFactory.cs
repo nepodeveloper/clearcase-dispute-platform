@@ -1,4 +1,5 @@
 using ClearCase.Infrastructure.Transactions;
+using ClearCase.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -26,6 +27,7 @@ public sealed class SqliteWebApplicationFactory : WebApplicationFactory<Program>
             new DbContextOptionsBuilder<TransactionDbContext>().UseSqlite(connectionString).Options);
         await context.Database.MigrateAsync();
         await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticIdentitySeeder.SeedAsync(context, CancellationToken.None);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>

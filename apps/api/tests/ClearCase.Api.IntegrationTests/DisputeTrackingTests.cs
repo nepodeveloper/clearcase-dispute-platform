@@ -117,6 +117,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         using var restarted = _app.WithWebHostBuilder(_ => { });
         using var replay = restarted.CreateClient();
         replay.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await AddCsrfTokenAsync(replay);
         await Conflict(replay, id, "ExecuteAdjustment");
         if (outcome != BankChargeAdjustmentOutcome.Confirmed) await Conflict(replay, id, "Close");
         var result = await replay.GetFromJsonAsync<JsonElement>($"/api/v1/disputes/{id}");
@@ -171,6 +172,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     {
         using var host = _app.WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
         using var client = host.CreateClient();
+        await AddCsrfTokenAsync(client);
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
         var paths = document.GetProperty("paths");
         foreach (var prefix in new[] { "/v1", "/api/v1" })
@@ -238,6 +240,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
                 ["Demo:CustomerId"] = "22222222-2222-2222-2222-222222222222"
             })));
         using var other = otherApp.CreateClient();
+        await AddCsrfTokenAsync(other);
         var empty = await other.GetFromJsonAsync<JsonElement>("/api/v1/disputes");
         Assert.Empty(empty.GetProperty("items").EnumerateArray());
         Assert.False(empty.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean());
@@ -291,7 +294,19 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     {
         var client = _app.CreateClient();
         if (simulator) client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        AddCsrfTokenAsync(client).GetAwaiter().GetResult();
         return client;
+    }
+
+    private static async Task AddCsrfTokenAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = body.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", token);
     }
 
     private static string Route(Guid id) => $"/api/v1/disputes/{id}/bank-charge-simulations";
