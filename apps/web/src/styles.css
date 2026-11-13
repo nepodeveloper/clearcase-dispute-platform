@@ -1,13 +1,3 @@
-* {
-	box-sizing: border-box;
-}
-
-html,
-body {
-	min-height: 100%;
-	margin: 0;
-}
-
-body {
-	min-width: 320px;
-}
+@import './styles/clearcase-tokens.css';
+@import './styles/clearcase-components.css';
+@import './styles/clearcase-shell.css';

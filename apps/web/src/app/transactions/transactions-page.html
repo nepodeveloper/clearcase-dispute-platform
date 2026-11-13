@@ -1,21 +1,35 @@
-<section aria-labelledby="transactions-heading">
-  <h2 id="transactions-heading" #transactionsHeading tabindex="-1">Transactions</h2>
-  <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filters">
-    <label>Transaction type
-      <select name="transactionType" formControlName="transactionType">
+<section class="page-section" aria-labelledby="transactions-heading">
+  <header class="page-heading">
+    <p class="eyebrow">Customer portal</p>
+    <h1 class="cc-page-title" id="transactions-heading" #transactionsHeading tabindex="-1">Your transactions</h1>
+    <p class="cc-description">Browse recent activity and raise a dispute if something doesn't look right.</p>
+  </header>
+
+  <section class="content-panel cc-card" aria-labelledby="recent-transactions-heading">
+    <div class="section-heading">
+      <h2 id="recent-transactions-heading">Recent transactions</h2>
+      @if (state(); as current) {
+        @if (current.kind === 'loaded') {
+          <span class="results-count">Showing {{ current.page.items.length }} of {{ current.page.totalCount }}</span>
+        }
+      }
+    </div>
+    <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filters">
+    <label class="cc-field">Transaction type
+      <select class="cc-control" name="transactionType" formControlName="transactionType">
         <option value="">All types</option>
         <option value="CardPurchase">Card purchase</option>
         <option value="DebitOrder">Debit order</option>
         <option value="BankCharge">Bank charge</option>
       </select>
     </label>
-    <label>From date <input name="fromDate" type="date" formControlName="fromDate"></label>
-    <label>To date
-      <input name="toDate" type="date" formControlName="toDate"
+    <label class="cc-field">From date <input class="cc-control" name="fromDate" type="date" formControlName="fromDate"></label>
+    <label class="cc-field">To date
+      <input class="cc-control" name="toDate" type="date" formControlName="toDate"
         [attr.aria-invalid]="dateRangeError() ? 'true' : null"
         [attr.aria-describedby]="dateRangeError() ? 'date-range-error' : null">
     </label>
-    <button type="submit">Apply filters</button>
+    <button class="cc-button cc-button--primary" type="submit">Apply filters</button>
     @if (dateRangeError(); as message) {
       <p id="date-range-error" role="alert">{{ message }}</p>
     }
@@ -23,16 +37,16 @@
 
   @let view = state();
   @if (view.kind === 'loading') {
-    <p role="status">Loading transactions...</p>
+    <p class="state-message" role="status">Loading transactions...</p>
   } @else if (view.kind === 'error') {
-    <div role="alert">
+    <div class="state-message" role="alert">
       <p>{{ view.message }}</p>
       @if (view.retryable) {
-        <button type="button" data-testid="retry" (click)="load()">Retry</button>
+        <button class="cc-button cc-button--secondary" type="button" data-testid="retry" (click)="load()">Retry</button>
       }
     </div>
   } @else if (view.kind === 'invalid') {
-    <div role="alert">
+    <div class="state-message" role="alert">
       <p>Please check your filters.</p>
       <ul>
         @for (message of view.messages; track $index) {
@@ -41,13 +55,13 @@
       </ul>
     </div>
   } @else if (view.page.items.length === 0) {
-    <p role="status">No transactions found.</p>
+    <p class="cc-empty" role="status">No transactions found.</p>
     @if (view.page.pageNumber > 1) {
-      <button type="button" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
+      <button class="cc-button cc-button--secondary" type="button" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
     }
   } @else {
-    <div class="table-container">
-      <table>
+    <div class="cc-table-scroll">
+      <table class="cc-table">
         <caption class="visually-hidden">Transactions, newest first</caption>
         <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Type</th><th scope="col">Amount</th><th scope="col">Status</th></tr></thead>
         <tbody>
@@ -57,16 +71,17 @@
               <td><a data-testid="transaction-link" [routerLink]="['/transactions', transaction.id]">{{ transaction.description }}</a></td>
               <td>{{ typeLabel(transaction.transactionType) }}</td>
               <td>{{ transaction.amount | currency:transaction.currency:'code':'1.2-2' }}</td>
-              <td>{{ transaction.status }}</td>
+              <td><span class="cc-status cc-status--success">{{ transaction.status }}</span></td>
             </tr>
           }
         </tbody>
       </table>
     </div>
     <nav aria-label="Transaction pages" class="pagination">
-      <button type="button" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
+      <button class="cc-button cc-button--secondary" type="button" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
       <span>Page {{ view.page.pageNumber }} of {{ view.page.totalPages }}</span>
-      <button type="button" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">Next</button>
+      <button class="cc-button cc-button--secondary" type="button" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">Next</button>
     </nav>
   }
+  </section>
 </section>

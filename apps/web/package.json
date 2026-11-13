@@ -4,10 +4,13 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:ui": "ng serve --configuration ui-demo",
     "build": "ng build",
+    "build:ui": "ng build --configuration production,ui-demo",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "test:ci": "ng test --watch=false"
+    "test:ci": "ng test --watch=false",
+    "test:e2e": "playwright test"
   },
   "private": true,
   "packageManager": "npm@11.16.0",
@@ -25,6 +28,7 @@
     "@angular/build": "^21.2.29",
     "@angular/cli": "^21.2.29",
     "@angular/compiler-cli": "^21.2.0",
+    "@playwright/test": "1.65.0",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2",

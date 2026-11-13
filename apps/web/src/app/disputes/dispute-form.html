@@ -1,10 +1,10 @@
 @let current = state();
 @if (current.kind === 'submitted') {
-  <div data-testid="dispute-confirmation">
+  <div class="confirmation-card" data-testid="dispute-confirmation">
     <p role="status"><strong>Dispute submitted.</strong></p>
     <app-dispute-details [dispute]="current.dispute" />
     <p><a [routerLink]="['/disputes', current.dispute.id]" data-testid="track-dispute">Track this dispute</a></p>
-    <button type="button" data-testid="refresh-dispute" (click)="refresh()" [disabled]="refreshing()">
+    <button class="cc-button cc-button--secondary" type="button" data-testid="refresh-dispute" (click)="refresh()" [disabled]="refreshing()">
       {{ refreshing() ? 'Refreshing...' : 'Refresh status' }}
     </button>
     @if (refreshError(); as message) {
@@ -12,12 +12,12 @@
     }
   </div>
 } @else {
-  <form [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
-    <h4 id="dispute-form-heading">Submit a dispute</h4>
+  <form class="dispute-form" [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
+    <h3 id="dispute-form-heading">Tell us what happened</h3>
     <p>Submitting a dispute opens a case for review. It does not immediately refund or reverse the transaction.</p>
 
-    <label for="dispute-reason">Reason</label>
-    <select id="dispute-reason" formControlName="reasonCode"
+    <label class="cc-field" for="dispute-reason">Dispute reason
+    <select class="cc-control" id="dispute-reason" formControlName="reasonCode"
             [attr.aria-invalid]="showError('reasonCode')"
             [attr.aria-describedby]="showError('reasonCode') ? 'dispute-reason-error' : null">
       <option value="">Select a reason</option>
@@ -25,14 +25,16 @@
         <option [value]="reason.code">{{ reason.label }}</option>
       }
     </select>
+    </label>
     @if (showError('reasonCode')) {
       <p id="dispute-reason-error" class="field-error">Select a reason.</p>
     }
 
-    <label for="dispute-description">What went wrong?</label>
-    <textarea id="dispute-description" formControlName="description" rows="4" [attr.maxlength]="maxLength"
+    <label class="cc-field" for="dispute-description">Describe the issue
+    <textarea class="cc-control" id="dispute-description" formControlName="description" rows="5" [attr.maxlength]="maxLength"
               [attr.aria-invalid]="showError('description')"
               [attr.aria-describedby]="showError('description') ? 'dispute-description-hint dispute-description-error' : 'dispute-description-hint'"></textarea>
+    </label>
     <p id="dispute-description-hint" class="hint">Between 15 and {{ maxLength }} characters.</p>
     @if (showError('description')) {
       <p id="dispute-description-error" class="field-error">Describe the problem in at least 15 characters.</p>
@@ -42,7 +44,7 @@
       <p role="alert" data-testid="dispute-error">{{ current.message }}</p>
     }
 
-    <button type="submit" data-testid="submit-dispute" [disabled]="current.kind === 'submitting'">
+    <button class="cc-button cc-button--primary submit-button" type="submit" data-testid="submit-dispute" [disabled]="current.kind === 'submitting'">
       {{ current.kind === 'submitting' ? 'Submitting...' : 'Submit dispute' }}
     </button>
   </form>
