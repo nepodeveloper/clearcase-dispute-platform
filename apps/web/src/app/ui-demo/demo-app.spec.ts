@@ -8,6 +8,20 @@ describe('UI demo navigation', () => {
     TestBed.configureTestingModule({ imports: [DemoApp], providers: [provideRouter([]), DemoSession] });
   });
 
+  it('preserves focus moved into the drawer before the opening render completes', async () => {
+    const fixture = TestBed.createComponent(DemoApp);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const toggle = root.querySelector<HTMLButtonElement>('.mobile-menu-toggle')!;
+    const timeline = root.querySelector<HTMLAnchorElement>('.sidebar nav a:last-child')!;
+
+    toggle.click();
+    timeline.focus();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(timeline);
+  });
+
   it('shows only the selected role destinations and traps and restores mobile drawer focus', async () => {
     const fixture = TestBed.createComponent(DemoApp);
     await fixture.whenStable();

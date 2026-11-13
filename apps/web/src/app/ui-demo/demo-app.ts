@@ -72,8 +72,12 @@ export class DemoApp {
 
   protected openMenu(): void {
     this.menuOpen.set(true);
-    afterNextRender(() => this.sidebar()?.nativeElement.querySelector<HTMLElement>('button')?.focus(),
-      { injector: this.injector });
+    afterNextRender(() => {
+      const sidebar = this.sidebar()?.nativeElement;
+      if (this.menuOpen() && sidebar !== undefined && !sidebar.contains(document.activeElement)) {
+        sidebar.querySelector<HTMLElement>('button')?.focus();
+      }
+    }, { injector: this.injector });
   }
 
   protected closeMenu(): void {
