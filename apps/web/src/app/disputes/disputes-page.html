@@ -1,34 +1,46 @@
 @let current = state();
-<section class="panel" aria-labelledby="disputes-heading" [attr.aria-busy]="current.kind === 'loading'">
-  <h2 id="disputes-heading">Your disputes</h2>
-  <p>Track each case and its financial outcome separately.</p>
+<section class="page-section" aria-labelledby="disputes-heading" [attr.aria-busy]="current.kind === 'loading'">
+  <header class="page-heading">
+    <p class="eyebrow">Customer portal</p>
+    <h1 class="cc-page-title" id="disputes-heading">My disputes</h1>
+    <p class="cc-description">Follow every case from submission to final outcome.</p>
+  </header>
+  <div class="panel cc-card">
   @if (current.kind === 'loading') {
-    <p role="status">Loading disputes...</p>
+    <p class="cc-empty" role="status">Loading disputes...</p>
   } @else if (current.kind === 'error') {
-    <p role="alert">{{ current.message }}</p>
-    @if (current.retryable) { <button type="button" data-testid="retry" (click)="load()">Retry</button> }
+    <p class="state-message" role="alert">{{ current.message }}</p>
+    @if (current.retryable) { <button class="cc-button cc-button--secondary" type="button" data-testid="retry" (click)="load()">Retry</button> }
   } @else {
     @if (current.page.items.length === 0) {
-      <p role="status">No disputes submitted yet.</p>
-      <a routerLink="/">Browse transactions to submit a dispute</a>
+      <div class="cc-empty">
+        <h2>No disputes submitted yet</h2>
+        <p role="status">When you submit a dispute, it will appear here with its latest status.</p>
+        <a class="cc-button cc-button--primary" routerLink="/">Browse transactions</a>
+      </div>
     } @else {
       <ul class="case-list" aria-label="Submitted disputes">
         @for (dispute of current.page.items; track dispute.id) {
           <li>
-            <h3><a [routerLink]="['/disputes', dispute.id]">{{ dispute.reference }}</a></h3>
-            <p>{{ typeLabel(dispute.category) }} - {{ statusLabel(dispute.caseStatus) }}</p>
+            <div class="case-card-heading">
+              <h2><a [routerLink]="['/disputes', dispute.id]">{{ dispute.reference }}</a></h2>
+              <span class="cc-status cc-status--progress">{{ statusLabel(dispute.caseStatus) }}</span>
+            </div>
+            <p class="case-category">{{ typeLabel(dispute.category) }}</p>
             <p>{{ dispute.statusDescription }}</p>
+            <a class="case-link" [routerLink]="['/disputes', dispute.id]">View timeline <span aria-hidden="true">→</span></a>
           </li>
         }
       </ul>
     }
-    @if (current.error; as error) { <p role="alert">{{ error.message }}</p> }
+    @if (current.error; as error) { <p class="state-message" role="alert">{{ error.message }}</p> }
     @if (current.page.pageInfo.nextCursor; as cursor) {
-      <button type="button" data-testid="more-disputes" (click)="load(cursor)"
+      <button class="cc-button cc-button--secondary" type="button" data-testid="more-disputes" (click)="load(cursor)"
               [disabled]="current.loadingMore || current.error?.retryable === false">
         {{ current.loadingMore ? 'Loading more...' : 'Load more disputes' }}
       </button>
     }
-    <button type="button" (click)="load()" [disabled]="current.loadingMore">Refresh list</button>
+    <button class="cc-button cc-button--secondary" type="button" (click)="load()" [disabled]="current.loadingMore">Refresh list</button>
   }
+  </div>
 </section>

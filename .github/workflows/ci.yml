@@ -46,3 +46,18 @@ jobs:
         run: npm run test:ci
       - name: Build
         run: npm run build
+      - name: Build isolated UI demo
+        run: npm run build:ui
+      - name: Install browser for UI checks
+        run: npx playwright install --with-deps chromium
+      - name: Test complete UI journeys
+        run: npm run test:e2e
+      - name: Upload UI screenshots and test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-demo-browser-evidence
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 14

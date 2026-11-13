@@ -1,23 +1,66 @@
-<header class="masthead">
-  <a class="brand" routerLink="/" aria-label="ClearCase home">
-    <span class="brand-mark" aria-hidden="true">C</span>
-    <span>{{ title() }}</span>
-  </a>
-  <nav aria-label="Main navigation">
-    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Transactions</a>
-    <a routerLink="/disputes" routerLinkActive="active" ariaCurrentWhenActive="page">Your disputes</a>
-  </nav>
-  <span class="environment-label">Synthetic demo</span>
-</header>
+<div class="announcement-bar">Unofficial assessment concept · Synthetic demo data</div>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<div class="app-frame">
+  <aside class="sidebar" [class.is-open]="mobileNavigationOpen()">
+    <a class="brand" routerLink="/" aria-label="ClearCase home" (click)="closeMobileNavigation()">
+      <span class="brand-mark" aria-hidden="true">C</span>
+      <span class="brand-name">
+        <strong>{{ title() }}</strong>
+        <small>Dispute management</small>
+      </span>
+    </a>
+    <p class="nav-group-label">Customer journeys</p>
+    <nav id="customer-navigation" aria-label="Customer navigation">
+      <a #firstCustomerLink routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
+         ariaCurrentWhenActive="page" (click)="closeMobileNavigation()">
+        <span class="nav-icon" aria-hidden="true">▦</span> Transactions
+      </a>
+      <a routerLink="/disputes" routerLinkActive="active" ariaCurrentWhenActive="page"
+         (click)="closeMobileNavigation()">
+        <span class="nav-icon" aria-hidden="true">▤</span> Your disputes
+      </a>
+    </nav>
+    <div class="sidebar-note">
+      <strong>Concept only</strong>
+      <p>Inspired by public Capitec visual cues. Not an official Capitec interface.</p>
+    </div>
+  </aside>
 
-<main id="main-content">
-  <p class="eyebrow">Customer overview</p>
-  <h1>{{ title() }}</h1>
-  <p class="intro">View your transactions and track your disputes.</p>
+  @if (mobileNavigationOpen()) {
+    <button class="navigation-backdrop" type="button" aria-label="Close navigation"
+            (click)="closeMobileNavigation()"></button>
+  }
 
-  <div class="scope-note" data-testid="scope-note">
-    <span class="scope-indicator" aria-hidden="true"></span>
-    <p>Demo data only. Real customer authentication is not yet available, and submitted disputes never move money.</p>
+  <div class="main-column">
+    <header class="utility-header">
+      <button class="mobile-menu-toggle" type="button"
+              #mobileMenuToggle
+              [attr.aria-label]="mobileNavigationOpen() ? 'Close navigation' : 'Open navigation'"
+              [attr.aria-expanded]="mobileNavigationOpen()" aria-controls="customer-navigation"
+              (click)="toggleMobileNavigation()">
+        <span class="menu-icon" aria-hidden="true"></span>
+      </button>
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a routerLink="/">ClearCase</a></li>
+          <li aria-current="page">Customer portal</li>
+        </ol>
+      </nav>
+      <div class="user-tools">
+        <span class="environment-label">Unofficial demo</span>
+        <span class="user-avatar" aria-hidden="true">TN</span>
+        <span class="demo-user">Demo user</span>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <router-outlet />
+    </main>
+    <footer class="app-footer">
+      <div class="scope-note" data-testid="scope-note">
+        <span class="scope-indicator" aria-hidden="true"></span>
+        <p>ClearCase · Demo data only. Real customer authentication is not available, and submitted disputes never move money.</p>
+      </div>
+    </footer>
   </div>
-  <router-outlet />
-</main>
+</div>

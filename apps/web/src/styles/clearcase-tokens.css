@@ -1,0 +1,59 @@
+/* ClearCase assessment design tokens — unofficial Capitec-inspired concept.
+   Do not represent this as Capitec's official digital design system.
+   Flama was reported as a headline font by a third party, but is not bundled/licensed here.
+   Nunito Sans is used as an accessible, freely available visual substitute. */
+:root {
+  color-scheme: light;
+  --cc-brand-reference: #2f70ef;
+  --cc-brand: #2d6de9;
+  --cc-brand-hover: #1d57cc;
+  --cc-brand-strong: #0e45a8;
+  --cc-navy: #07365c;
+  --cc-navy-deep: #082b4a;
+  --cc-sidebar-text: #c5d6e5;
+  --cc-sidebar-muted: #9ab0c5;
+  --cc-red: #e51718;
+  --cc-red-dark: #bb1d21;
+  --cc-ink: #102b4c;
+  --cc-ink-strong: #09243f;
+  --cc-muted: #596d82;
+  --cc-muted-strong: #43576d;
+  --cc-canvas: #f4f8fd;
+  --cc-canvas-alt: #ecf3fa;
+  --cc-surface: #ffffff;
+  --cc-surface-blue: #eaf2ff;
+  --cc-border: #dae4f0;
+  --cc-border-strong: #b9cadd;
+  --cc-success: #126c49;
+  --cc-success-bg: #e5f6ed;
+  --cc-warning: #93530c;
+  --cc-warning-bg: #fff2d9;
+  --cc-danger: #ad252b;
+  --cc-danger-bg: #ffeded;
+  --cc-review: #5543a7;
+  --cc-review-bg: #efeafb;
+  --cc-debit: #006a75;
+  --cc-debit-bg: #e0f8fa;
+  --cc-info-bg: #eaf2ff;
+  --cc-focus: #2f70ef;
+  --cc-shadow-card: 0 10px 34px rgba(8, 43, 74, 0.065);
+  --cc-shadow-overlay: 0 24px 64px rgba(8, 43, 74, 0.22);
+  --cc-radius-xs: 6px;
+  --cc-radius-sm: 10px;
+  --cc-radius-md: 14px;
+  --cc-radius-lg: 20px;
+  --cc-radius-xl: 28px;
+  --cc-space-1: 4px;
+  --cc-space-2: 8px;
+  --cc-space-3: 12px;
+  --cc-space-4: 16px;
+  --cc-space-5: 20px;
+  --cc-space-6: 24px;
+  --cc-space-8: 32px;
+  --cc-space-10: 40px;
+  --cc-space-12: 48px;
+  --cc-font: 'Nunito Sans', 'Segoe UI', Aptos, Arial, sans-serif;
+  --cc-content-width: 1220px;
+  --cc-control-height: 44px;
+  --cc-transition: 160ms ease;
+}

@@ -48,6 +48,12 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "ui-demo": {
+              "browser": "src/main.ui-demo.ts",
+              "index": "src/index.ui-demo.html",
+              "styles": ["src/ui-demo.css"],
+              "outputPath": "dist/clearcase-ui-demo"
             }
           },
           "defaultConfiguration": "production"
@@ -63,6 +69,9 @@
             },
             "development": {
               "buildTarget": "clearcase-web:build:development"
+            },
+            "ui-demo": {
+              "buildTarget": "clearcase-web:build:development,ui-demo"
             }
           },
           "defaultConfiguration": "development"
