@@ -1,7 +1,9 @@
 using System.Globalization;
 using ClearCase.Application.Disputes;
+using ClearCase.Application.Chargebacks;
 using ClearCase.Application.Transactions;
 using ClearCase.Infrastructure.Disputes;
+using ClearCase.Infrastructure.Chargebacks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +25,7 @@ public static class SqlitePersistence
         services.AddScoped<ITransactionReader, SqliteTransactionReader>();
         services.AddScoped<IDisputeStore, SqliteDisputeStore>();
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
+        services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();
         return services;
     }
 

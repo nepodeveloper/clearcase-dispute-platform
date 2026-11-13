@@ -2,6 +2,7 @@ using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Transactions;
+using ClearCase.Infrastructure.Chargebacks;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Disputes;
@@ -70,6 +71,7 @@ public sealed class PersistedDispute
     public string EligibilityPolicyVersion { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public string? ReversalOperationReference { get; set; }
+    public PersistedChargeback? Chargeback { get; set; }
     public List<PersistedDisputeEvent> Events { get; set; } = [];
 }
 

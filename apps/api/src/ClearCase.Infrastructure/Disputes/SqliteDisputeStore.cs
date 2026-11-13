@@ -64,6 +64,7 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
     {
         var item = await context.Disputes.AsNoTracking()
             .Include(dispute => dispute.Events)
+            .Include(dispute => dispute.Chargeback)
             .SingleOrDefaultAsync(dispute => dispute.Id == disputeId && dispute.CustomerId == customerId,
                 cancellationToken);
         return item is null ? null : new DisputeView(
@@ -72,7 +73,7 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             item.Events.OrderBy(entry => entry.SequenceNumber)
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
-                .ToArray(), item.ReversalOperationReference);
+                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain());
     }
 
     public async Task<DisputeView?> ApplyAsync(

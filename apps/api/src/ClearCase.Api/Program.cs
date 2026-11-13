@@ -30,6 +30,7 @@ else
 }
 builder.Services.AddAuthorization();
 builder.AddDebitOrderSimulation();
+builder.AddChargebackSimulation();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
 builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
@@ -99,6 +100,7 @@ app.MapHealthEndpoints();
 app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
 app.MapDebitOrderSimulation();
+app.MapChargebackSimulation();
 
 app.Run();
 

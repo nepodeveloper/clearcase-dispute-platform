@@ -144,6 +144,37 @@ describe('DisputeForm', () => {
     expect((element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('shows chargeback acceptance separately from an explicit simulated settlement result', () => {
+    fill('duplicateCharge', description);
+    submit();
+    http.expectOne('/api/v1/disputes').flush(created);
+    fixture.detectChanges();
+    const accepted = {
+      ...created, caseStatus: 'UnderReview', decisionStatus: 'Approved',
+      chargeback: {
+        reference: 'MOCK-CB-test', reasonCode: 'duplicateCharge',
+        status: 'MerchantAccepted', lastOperationOutcome: 'Succeeded',
+      },
+    };
+    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
+    http.expectOne(`/api/v1/disputes/${created.id}`).flush(accepted);
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain('MOCK-CB-test');
+    expect(element.textContent).toContain('Merchant accepted');
+    expect(element.textContent).toContain('Decision: Approved');
+    expect(element.textContent).toContain('Financial status: Not initiated');
+    expect(element.textContent).not.toContain('settlement confirmed');
+
+    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
+    http.expectOne(`/api/v1/disputes/${created.id}`).flush({ ...accepted, financialStatus: 'Confirmed' });
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain('Simulated settlement confirmed - no real money moved');
+    expect(element.textContent).not.toContain('reversal confirmed');
+    http.expectNone((request) => request.url.includes('simulations'));
+  });
+
   it('shows the server explanation for an ineligible submission', () => {
     fill('duplicateCharge', description);
     submit();

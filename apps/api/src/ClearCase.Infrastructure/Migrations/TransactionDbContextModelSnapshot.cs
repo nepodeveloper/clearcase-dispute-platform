@@ -17,6 +17,106 @@ namespace ClearCase.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Chargebacks.ChargebackAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChargebackStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Command")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("EvidenceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvidenceKind")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinancialStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OperationReference")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisputeId");
+
+                    b.HasIndex("OperationReference")
+                        .IsUnique();
+
+                    b.ToTable("ChargebackAuditEvents", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Chargebacks.PersistedChargeback", b =>
+                {
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("EvidenceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvidenceKind")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("EvidenceReceivedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastOperationOutcome")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DisputeId");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.ToTable("Chargebacks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Chargebacks_EvidenceMetadata", "(\"EvidenceId\" IS NULL AND \"EvidenceKind\" IS NULL AND \"EvidenceReceivedAt\" IS NULL) OR (\"EvidenceId\" IS NOT NULL AND \"EvidenceKind\" IS NOT NULL AND \"EvidenceReceivedAt\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
                 {
                     b.Property<Guid>("Id")
@@ -194,6 +294,24 @@ namespace ClearCase.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Chargebacks.ChargebackAuditEvent", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Chargebacks.PersistedChargeback", null)
+                        .WithMany()
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Chargebacks.PersistedChargeback", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithOne("Chargeback")
+                        .HasForeignKey("ClearCase.Infrastructure.Chargebacks.PersistedChargeback", "DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
                 {
                     b.HasOne("ClearCase.Infrastructure.Transactions.PersistedTransaction", null)
@@ -214,6 +332,8 @@ namespace ClearCase.Infrastructure.Migrations
 
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
                 {
+                    b.Navigation("Chargeback");
+
                     b.Navigation("Events");
                 });
 #pragma warning restore 612, 618

@@ -1,6 +1,7 @@
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Disputes;
+using ClearCase.Infrastructure.Chargebacks;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Transactions;
@@ -10,6 +11,8 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedTransaction> Transactions => Set<PersistedTransaction>();
     public DbSet<PersistedDispute> Disputes => Set<PersistedDispute>();
     public DbSet<PersistedDisputeEvent> DisputeEvents => Set<PersistedDisputeEvent>();
+    public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
+    public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,6 +32,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         transaction.HasIndex(item => new { item.CustomerId, item.Type, item.TransactionDate, item.Id });
 
         DisputePersistenceModel.Configure(modelBuilder);
+        ChargebackPersistenceModel.Configure(modelBuilder);
     }
 }
 
