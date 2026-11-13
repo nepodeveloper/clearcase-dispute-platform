@@ -26,8 +26,8 @@ public sealed class DebitOrderEligibilityPolicy : IDisputeEligibilityPolicy
             return EligibilityResult.ManualReview(context, "debitOrder.invalidAmount",
                 "The debit-order amount needs to be confirmed before review.");
         if (!transaction.HasRequiredDisputeInformation || transaction.CollectionDate is null)
-            return EligibilityResult.ManualReview(context, "debitOrder.collectionInformationMissing",
-                "More collection information is needed before this request can be reviewed.");
+            return Investigation(context, "debitOrder.collectionInformationMissing",
+                "More collection information is needed; submit a complaint for investigation.");
 
         var collectionDate = transaction.CollectionDate.Value;
         var policy = context.Settings.DebitOrder
@@ -35,26 +35,40 @@ public sealed class DebitOrderEligibilityPolicy : IDisputeEligibilityPolicy
                 && (item.EffectiveTo is null || item.EffectiveTo >= collectionDate))
             .OrderByDescending(item => item.EffectiveFrom)
             .FirstOrDefault();
+        context = context with { PolicyVersion = policy?.PolicyVersion };
+
+        var mandate = transaction.VerifiedMandate;
+        if (mandate?.Type is null || !Enum.IsDefined(mandate.Type.Value)
+            || mandate.StatusAtCollection is null || !Enum.IsDefined(mandate.StatusAtCollection.Value)
+            || mandate.Authorised is null || mandate.AuthorisedAmount is null
+            || string.IsNullOrWhiteSpace(mandate.Currency) || mandate.CollectionDate is null)
+            return Investigation(context, "debitOrder.mandateInformationMissing",
+                "The mandate details need to be confirmed; submit a complaint for investigation.");
+        if (!mandate.Authorised.Value)
+            return Investigation(context, "debitOrder.unauthorisedCollection",
+                "Mandate authorisation is not confirmed; submit a complaint for investigation.");
+        if (mandate.StatusAtCollection != DebitOrderMandateStatus.Active)
+            return Investigation(context, "debitOrder.mandateNotActive",
+                "The mandate was not active at collection; submit a complaint for investigation.");
+        if (mandate.AuthorisedAmount != transaction.Amount || mandate.Currency != transaction.Currency
+            || mandate.CollectionDate != collectionDate)
+            return Investigation(context, "debitOrder.mandateMismatch",
+                "The collection amount, currency or date does not match the mandate; submit a complaint for investigation.");
+        if (mandate.Type == DebitOrderMandateType.DebiCheck)
+            return Investigation(context, "debitOrder.authorisedDebiCheckRequiresReview",
+                "This valid authorised DebiCheck collection is ineligible for ordinary reversal and is not automatically reversible. "
+                + "If you dispute the authorisation, submit a complaint for investigation.") with
+            {
+                OrdinaryReversalOutcome = DisputeEligibilityOutcome.Ineligible
+            };
+
         if (policy is null || policy.WindowCalendarDays <= 0 || policy.StandardReviewAmountLimit < 0)
             return EligibilityResult.ManualReview(context, "debitOrder.policyUnavailable",
                 "The applicable debit-order review policy needs to be confirmed.");
 
-        if (transaction.MandateType is null
-            || transaction.MandateAuthorised is null
-            || transaction.MandateMatchesCollection is null)
-            return EligibilityResult.ManualReview(context, "debitOrder.mandateInformationMissing",
-                "The mandate details need to be confirmed before this request can be reviewed.");
-        if (!transaction.MandateAuthorised.Value)
-            return EligibilityResult.ManualReview(context, "debitOrder.unauthorisedCollection",
-                "This collection needs further review because mandate authorisation is not confirmed.");
-        if (!transaction.MandateMatchesCollection.Value)
-            return EligibilityResult.ManualReview(context, "debitOrder.mandateMismatch",
-                "This collection needs further review because the mandate details do not match.");
-        if (transaction.MandateType == DebitOrderMandateType.DebiCheck)
-            return EligibilityResult.ManualReview(context, "debitOrder.authorisedDebiCheckRequiresReview",
-                "This authorised DebiCheck collection requires further review and is not automatically reversible.");
-
-        var daysAfterCollection = DateOnly.FromDateTime(context.EvaluatedAt.UtcDateTime).DayNumber
+        // South African collection dates use UTC+02:00, with no daylight-saving transitions.
+        var daysAfterCollection = DateOnly.FromDateTime(
+            context.EvaluatedAt.ToOffset(TimeSpan.FromHours(2)).DateTime).DayNumber
             - collectionDate.DayNumber;
         if (daysAfterCollection < 1 || daysAfterCollection > policy.WindowCalendarDays)
             return EligibilityResult.ManualReview(context, "debitOrder.outsideStandardWindow",
@@ -65,4 +79,11 @@ public sealed class DebitOrderEligibilityPolicy : IDisputeEligibilityPolicy
 
         return EligibilityResult.Eligible(context);
     }
+
+    private static DisputeEligibilityResult Investigation(
+        DisputeEligibilityContext context, string reasonCode, string explanation) =>
+        EligibilityResult.ManualReview(context, reasonCode, explanation) with
+        {
+            ReviewRoute = DisputeReviewRoute.Investigation
+        };
 }

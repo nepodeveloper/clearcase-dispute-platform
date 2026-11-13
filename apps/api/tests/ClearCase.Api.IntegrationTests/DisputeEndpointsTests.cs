@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using ClearCase.Application.DisputeEligibility;
+using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -96,6 +98,66 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
         Assert.Equal("NotInitiated", body.RootElement.GetProperty("financialStatus").GetString());
         Assert.Equal("ManualReview",
             body.RootElement.GetProperty("timeline")[0].GetProperty("caseStatus").GetString());
+    }
+
+    [Fact]
+    public async Task Post_DebiCheckAuthorizationComplaint_CreatesInvestigationWithoutFinancialAction()
+    {
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        {
+            transactionId = "00000000-0000-0000-0000-000000000011",
+            reasonCode = "unauthorisedDebitOrder",
+            description = "I dispute the authorization recorded for this mandate."
+        });
+        using var body = await ReadJson(response);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("ManualReview", body.RootElement.GetProperty("caseStatus").GetString());
+        Assert.Equal("Pending", body.RootElement.GetProperty("decisionStatus").GetString());
+        Assert.Equal("NotInitiated", body.RootElement.GetProperty("financialStatus").GetString());
+        Assert.Equal("unauthorisedDebitOrder", body.RootElement.GetProperty("reasonCode").GetString());
+        Assert.Single(body.RootElement.GetProperty("timeline").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Post_RechecksMandateAfterEligibilityRead_BeforeCreatingCase()
+    {
+        var reader = new ChangingMandateReader();
+        using var client = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton<TimeProvider>(new FrozenTimeProvider(FixedInstant));
+                services.RemoveAll<IDebitOrderMandateReader>();
+                services.AddSingleton<IDebitOrderMandateReader>(reader);
+            });
+        }).CreateClient();
+        const string transactionId = "00000000-0000-0000-0000-000000000002";
+        using var eligibilityResponse = await client.GetAsync(
+            $"/api/v1/transactions/{transactionId}/dispute-eligibility");
+        using var eligibility = await ReadJson(eligibilityResponse);
+        Assert.Equal("EligibleToSubmit", eligibility.RootElement.GetProperty("outcome").GetString());
+        reader.MandateMissing = true;
+
+        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        {
+            transactionId,
+            reasonCode = "unauthorisedDebitOrder",
+            description = "I dispute the authorisation for this collection."
+        });
+        using var body = await ReadJson(response);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("ManualReview", body.RootElement.GetProperty("caseStatus").GetString());
+        Assert.Equal("NotInitiated", body.RootElement.GetProperty("financialStatus").GetString());
+        Assert.Equal(2, reader.Calls);
+        using var scope = _factory.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var stored = await database.Disputes.SingleAsync(item => item.Id == body.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal("proposed-debit-order-2026-04-13-v2", stored.EligibilityPolicyVersion);
     }
 
     [Fact]
@@ -314,5 +376,19 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     private sealed class FrozenTimeProvider(DateTimeOffset instant) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => instant;
+    }
+
+    private sealed class ChangingMandateReader : IDebitOrderMandateReader
+    {
+        public bool MandateMissing { get; set; }
+        public int Calls { get; private set; }
+
+        public Task<DebitOrderMandate?> ReadAsync(
+            Guid customerId, Guid transactionId, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return MandateMissing ? Task.FromResult<DebitOrderMandate?>(null)
+                : new MockDebitOrderMandateReader().ReadAsync(customerId, transactionId, cancellationToken);
+        }
     }
 }

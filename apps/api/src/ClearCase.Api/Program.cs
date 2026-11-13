@@ -21,10 +21,12 @@ var authentication = builder.Services.AddAuthentication(demoAuthenticationEnable
 if (demoAuthenticationEnabled)
 {
     authentication.AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>("Demo", _ => { });
+    builder.Services.AddSingleton<IDebitOrderMandateReader, MockDebitOrderMandateReader>();
 }
 else
 {
     authentication.AddScheme<AuthenticationSchemeOptions, UnavailableAuthenticationHandler>("Unavailable", _ => { });
+    builder.Services.AddSingleton<IDebitOrderMandateReader, UnavailableDebitOrderMandateReader>();
 }
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();

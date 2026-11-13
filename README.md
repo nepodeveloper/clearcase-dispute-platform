@@ -202,7 +202,9 @@ curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-0000
 | Pending card authorization, or outside the configured demo window | `Ineligible` | `card.pendingAuthorization`, `card.outsideDemoWindow` |
 | Missing card information or no configured card window | `RequiresManualReview` | `transaction.informationMissing`, `card.windowNotConfigured` |
 | Debit order with effective policy, complete authorized mandate facts, within window, and amount at or below threshold | `EligibleToSubmit` | — |
-| Debit order outside its standard window, above the internal threshold, with unclear/unauthorized mandate facts, or valid authorized DebiCheck | `RequiresManualReview` | `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`, `debitOrder.mandateInformationMissing`, `debitOrder.authorisedDebiCheckRequiresReview` |
+| Debit order outside its standard window or above the internal threshold | `RequiresManualReview` | `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold` |
+| Missing, unauthorized, inactive or mismatched mandate | `RequiresManualReview`, investigation route | `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateNotActive`, `debitOrder.mandateMismatch` |
+| Valid authorized DebiCheck | Ordinary reversal `Ineligible`; authorization complaint remains `RequiresManualReview`, investigation route | `debitOrder.authorisedDebiCheckRequiresReview` |
 | Bank charge posted with required information and no configured review condition | `EligibleToSubmit` | — |
 | Pending bank charge | `Ineligible` | `bankCharge.notPosted` |
 | Bank charge missing information or meeting the configured review condition | `RequiresManualReview` | `transaction.informationMissing`, `bankCharge.configuredReviewCondition` |
@@ -212,7 +214,7 @@ Reason codes are stable machine-readable identifiers; the response explanation i
 The current policy reason codes are:
 
 - Card: `policy.notConfigured`, `card.unsupportedType`, `transaction.notDebit`, `card.pendingAuthorization`, `transaction.notPosted`, `card.invalidAmount`, `transaction.informationMissing`, `card.windowNotConfigured`, `card.transactionDateInFuture`, `card.outsideDemoWindow`.
-- Debit order: `policy.notConfigured`, `debitOrder.unsupportedType`, `debitOrder.notDebit`, `debitOrder.notPosted`, `debitOrder.invalidAmount`, `debitOrder.collectionInformationMissing`, `debitOrder.policyUnavailable`, `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateMismatch`, `debitOrder.authorisedDebiCheckRequiresReview`, `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`.
+- Debit order: `policy.notConfigured`, `debitOrder.unsupportedType`, `debitOrder.notDebit`, `debitOrder.notPosted`, `debitOrder.invalidAmount`, `debitOrder.collectionInformationMissing`, `debitOrder.policyUnavailable`, `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateNotActive`, `debitOrder.mandateMismatch`, `debitOrder.authorisedDebiCheckRequiresReview`, `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`.
 - Bank charge: `policy.notConfigured`, `bankCharge.unsupportedType`, `bankCharge.notPosted`, `transaction.informationMissing`, `bankCharge.invalidAmount`, `bankCharge.configuredReviewCondition`.
 
 ### Demonstration configuration and policy caveats
@@ -221,16 +223,41 @@ The current policy reason codes are:
 
 - Card purchases use a configurable 120-calendar-day **demo-only** window. `DemoWindowEnabled` controls applicability; disabling it routes cases to manual review. This is not a card-network deadline or statement of customer rights.
 - The debit-order example rule has an effective date of 13 April 2026, a 60-calendar-day standard window (day 1 begins after collection), and a configurable R2,000 standard-review threshold. Rule selection uses the collection date. The rule/effective date reflect a proposed demonstration assumption and require confirmation against authoritative bank, scheme, product, legal, and operational guidance before production use.
-- Amounts above R2,000 route to enhanced/manual review, not rejection. The threshold is an illustrative internal routing value, not a legal limit. Outside-window debit orders, unauthorised/unclear mandates, and valid authorised DebiCheck collections remain eligible for further review; no automatic reversal is implied.
+- Amounts above R2,000 route to enhanced/manual review, not rejection. The threshold is an illustrative internal routing value, not a legal limit or an actual bank self-service limit. Outside-window debit orders, unauthorised/unclear mandates, and authorization complaints about valid authorised DebiCheck collections remain eligible for further review; no automatic reversal is implied.
 - Bank charges use a separate posted-status, information, and configurable internal review condition (`ManualReviewAboveAmount`, set to R5,000 for this demo). Card-window and debit-order mandate rules are not applied to bank charges.
-- Seeded examples include an eligible card purchase (ID ending `000001`), EFT debit order (`000002`), bank charge (`000003`), pending card authorization (`000004`), high-value debit order (`000005`), incomplete mandate (`000008`), and authorised DebiCheck (`000011`).
+- Seeded examples include an eligible card purchase (ID ending `000001`), EFT debit order (`000002`), bank charge (`000003`), pending card authorization (`000004`), high-value debit order (`000005`), incomplete mandate (`000008`), authorised DebiCheck (`000011`), Registered Mandate (`000014`), unauthorized EFT (`000017`), cancelled mandate (`000020`), DebiCheck amount mismatch (`000023`), and suspended Registered Mandate (`000026`).
 
 The policies use deterministic inputs and never read the system clock directly. The API injects `TimeProvider`; tests use a fixed clock for date boundaries. A future dispute-submission use case must separately revalidate ownership, policy and evidence and must use an authorized, idempotent banking adapter; eligibility is not approval or a promise of funds.
+
+### PR-07 mandate verification and investigation
+
+The existing eligibility evaluator now reads `IDebitOrderMandateReader` after the customer-scoped transaction lookup, for debit orders only. Both the GET eligibility query and POST dispute submission use this evaluator; submission reads the mandate again rather than trusting a previous GET. The domain policy stays pure. The reader accepts the trusted customer ID, transaction ID and cancellation token.
+
+Development and Testing use fixed, customer-scoped synthetic snapshots: EFT, Registered Mandate and DebiCheck, status **at collection** (`Active`, `Cancelled`, `Suspended`), authorization, authorized amount/currency and collection date. Unknown records or unavailable fields require investigation; legacy mandate flags stored on transactions are retained for schema compatibility but are **not** a verification fallback. Outside demo environments no banking adapter is configured: the reader returns missing information, never synthetic verification. Production authentication remains disabled.
+
+This demo assumes exact amount, currency and collection-date matching, not real mandate tolerances or variable-amount rules. A later cancellation is not evidence that a mandate was cancelled at collection. A real source, lifecycle mapping and scheme-specific matching rules require separate confirmation and implementation. Raw mandate records are not exposed in HTTP responses or logged.
+
+Debit-order configuration is under `DisputeEligibility:DebitOrder`:
+
+| Setting | Meaning |
+| --- | --- |
+| `PolicyVersion` | Optional per-rule identifier; current demo `proposed-debit-order-2026-04-13-v2`. Falls back to the existing top-level version when omitted. |
+| `EffectiveFrom`, `EffectiveTo` | Inclusive collection-date bounds; absent/null end means no expiry. Latest matching `EffectiveFrom` wins, independent of list order. Use unique start dates. Gaps or invalid window/threshold values require policy confirmation, never a guessed historical rule. |
+| `WindowCalendarDays` | Proposed EFT/Registered Mandate standard window: `60`. |
+| `StandardReviewAmountLimit` | Existing compatible name for the internal review tier: `2000.00` ZAR. At/below is standard, strictly above is enhanced/manual review, not refusal. No bank self-service limit is configured or inferred. |
+
+Collection dates are South African calendar dates. Evaluation converts the injected UTC instant to South African time (UTC+02:00, no daylight saving). The collection day is day 0; the next calendar day is day 1; day 60 is included and day 61 is referred for review. Day 0/future collections also need review. This refines the earlier UTC-date calculation at the South African midnight boundary. Dates, the proposed 13 April 2026 applicability and the 60-day window still require operational/legal confirmation; no historical production rule is invented.
+
+Valid, active, authorized, matching DebiCheck collections are excluded from ordinary reversal, independently of the EFT/RM window and review threshold. To preserve the existing complaint flow, the overall outcome remains `RequiresManualReview`; the response adds `ordinaryReversalOutcome: "Ineligible"` and `reviewRoute: "Investigation"`. Missing/unauthorized/inactive/mismatched mandate information also sets the investigation route, without claiming a definitive ordinary-reversal outcome. Optional fields are omitted elsewhere, including card/bank-charge responses. Existing outcomes, reason codes and `availableReasons` remain compatible.
+
+For example, GET the eligibility route for transaction `00000000-0000-0000-0000-000000000011`, then submit `unauthorisedDebitOrder` with a description via the existing POST disputes endpoint. It creates `ManualReview` / `Pending` / `NotInitiated` and one initial event, not a reversal. Angular displays the server explanation and keeps the existing complaint form available; it implements no mandate policy.
+
+The investigation route is an assessment and manual-review intake path, **not** an implemented investigator queue or bank-core workflow. Existing case storage retains the selected eligibility policy version, overall outcome and complaint reason; this PR adds no mandate snapshot storage or new case states. No migrations, packages, external API, Kafka or financial execution are added. Roll back by reverting this PR and redeploying; the database and existing routes need no rollback migration. Cases already created remain manual-review cases with their recorded policy version.
 
 Focused checks:
 
 ```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEligibilityPolicyTests|FullyQualifiedName~DisputeEligibilityEndpointsTests"
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEligibilityPolicyTests|FullyQualifiedName~DisputeEligibilityEndpointsTests|FullyQualifiedName~DebitOrderMandateReaderTests|FullyQualifiedName~DisputeEndpointsTests"
 Set-Location apps/web
 npm run test:ci -- --include=src/app/transactions/transaction-details-page.spec.ts
 ```

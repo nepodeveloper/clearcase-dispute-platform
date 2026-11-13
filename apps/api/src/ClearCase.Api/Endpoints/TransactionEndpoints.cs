@@ -51,7 +51,7 @@ public static class TransactionEndpoints
         app.MapGet("/api/v1/transactions/{id}/dispute-eligibility", GetDisputeEligibility)
             .WithName("GetTransactionDisputeEligibility")
             .WithSummary("Evaluate dispute eligibility for an owned transaction")
-            .WithDescription("Returns a read-only eligibility policy decision. It does not submit a dispute or initiate a financial operation.")
+            .WithDescription("Returns a read-only eligibility policy decision. Debit-order decisions may distinguish ordinary-reversal restrictions from investigation intake. It does not submit a dispute or initiate a financial operation.")
             .Produces<TransactionDisputeEligibilityResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)

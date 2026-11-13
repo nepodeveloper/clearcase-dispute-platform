@@ -30,6 +30,25 @@ GET {{baseUrl}}/v1/transactions/00000000-0000-0000-0000-000000000099
 GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000001/dispute-eligibility
 X-Correlation-ID: demo-dispute-eligibility
 
+### Valid DebiCheck: ordinary reversal blocked, authorization investigation remains available
+GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000011/dispute-eligibility
+
+### Registered Mandate (fixed collection date; window eligibility depends on current date)
+GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000014/dispute-eligibility
+
+### Mismatched DebiCheck amount requires investigation
+GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000023/dispute-eligibility
+
+### Authorization complaint enters manual review only; repeat submission returns 409
+POST {{baseUrl}}/api/v1/disputes
+Content-Type: application/json
+
+{
+  "transactionId": "00000000-0000-0000-0000-000000000011",
+  "reasonCode": "unauthorisedDebitOrder",
+  "description": "I dispute the authorization recorded for this mandate."
+}
+
 ### Malformed eligibility transaction ID returns Problem Details
 GET {{baseUrl}}/v1/transactions/not-a-guid/dispute-eligibility
 

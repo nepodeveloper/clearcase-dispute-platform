@@ -43,7 +43,7 @@ public sealed class SubmitDisputeHandler(
         if (!DisputeReasonCatalog.IsValid(transaction.Category, command.ReasonCode))
             return new SubmitDisputeResult.InvalidReason();
 
-        var eligibility = evaluator.Evaluate(transaction);
+        var eligibility = await evaluator.EvaluateAsync(customerId, transaction, cancellationToken);
         if (eligibility.Outcome == DisputeEligibilityOutcome.Ineligible)
             return new SubmitDisputeResult.Ineligible(eligibility);
         if (await disputeStore.HasOpenDisputeAsync(customerId, transaction.Id, cancellationToken))

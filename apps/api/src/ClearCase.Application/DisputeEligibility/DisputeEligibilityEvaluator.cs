@@ -7,12 +7,21 @@ namespace ClearCase.Application.DisputeEligibility;
 public sealed class DisputeEligibilityEvaluator(
     IEnumerable<IDisputeEligibilityPolicy> policies,
     DisputeEligibilityPolicySettings settings,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDebitOrderMandateReader mandateReader)
 {
-    public DisputeEligibilityResult Evaluate(DisputeTransaction transaction)
+    public async Task<DisputeEligibilityResult> EvaluateAsync(
+        Guid customerId, DisputeTransaction transaction, CancellationToken cancellationToken)
     {
         var policy = policies.SingleOrDefault(item => item.Category == transaction.Category)
             ?? throw new InvalidOperationException("No dispute eligibility policy is registered for the transaction type.");
+        if (transaction.Category == TransactionCategory.DebitOrder)
+        {
+            transaction = transaction with
+            {
+                VerifiedMandate = await mandateReader.ReadAsync(customerId, transaction.Id, cancellationToken)
+            };
+        }
         return policy.Evaluate(transaction, new DisputeEligibilityContext(timeProvider.GetUtcNow(), settings));
     }
 }

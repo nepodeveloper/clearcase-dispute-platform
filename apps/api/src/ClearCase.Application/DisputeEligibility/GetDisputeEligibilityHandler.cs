@@ -23,12 +23,13 @@ public sealed class GetDisputeEligibilityHandler(
         Guid transactionId,
         CancellationToken cancellationToken)
     {
+        var customerId = customerContext.CustomerId;
         var transaction = await transactionReader.ReadForEligibilityAsync(
-            customerContext.CustomerId, transactionId, cancellationToken);
+            customerId, transactionId, cancellationToken);
         if (transaction is null)
             return null;
 
-        var result = evaluator.Evaluate(transaction);
+        var result = await evaluator.EvaluateAsync(customerId, transaction, cancellationToken);
         return new DisputeEligibilityAssessment(result,
             result.Outcome == DisputeEligibilityOutcome.Ineligible
                 ? []

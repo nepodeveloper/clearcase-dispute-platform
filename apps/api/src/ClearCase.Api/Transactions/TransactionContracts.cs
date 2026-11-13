@@ -38,7 +38,9 @@ public sealed record TransactionDisputeEligibilityResponse(
     string Explanation,
     string PolicyVersion,
     DateTimeOffset EvaluatedAt,
-    IReadOnlyList<DisputeReasonResponse> AvailableReasons)
+    IReadOnlyList<DisputeReasonResponse> AvailableReasons,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? OrdinaryReversalOutcome = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReviewRoute = null)
 {
     public static TransactionDisputeEligibilityResponse From(
         Guid transactionId,
@@ -46,7 +48,8 @@ public sealed record TransactionDisputeEligibilityResponse(
         new(transactionId, assessment.Result.Outcome.ToString(), assessment.Result.ReasonCodes,
             assessment.Result.Explanation, assessment.Result.PolicyVersion, assessment.Result.EvaluatedAt,
             assessment.AvailableReasons.Select(reason => new DisputeReasonResponse(reason.Code, reason.Label))
-                .ToArray());
+                .ToArray(),
+            assessment.Result.OrdinaryReversalOutcome?.ToString(), assessment.Result.ReviewRoute?.ToString());
 }
 
 /// <summary>A dispute reason the customer may select; empty when the transaction is ineligible.</summary>
