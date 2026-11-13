@@ -39,7 +39,7 @@ public sealed class SqliteStartupTests
             }.ToString();
             await using var context = new TransactionDbContext(
                 new DbContextOptionsBuilder<TransactionDbContext>().UseSqlite(connectionString).Options);
-            Assert.Equal(5, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(6, (await context.Database.GetAppliedMigrationsAsync()).Count());
             Assert.Equal(31, await context.Transactions.CountAsync());
         }
         finally

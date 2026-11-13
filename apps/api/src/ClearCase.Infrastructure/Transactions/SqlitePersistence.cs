@@ -26,6 +26,7 @@ public static class SqlitePersistence
         services.AddScoped<IDisputeStore, SqliteDisputeStore>();
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();
+        services.AddScoped<IBankChargeProcessingStore, SqliteBankChargeProcessingStore>();
         return services;
     }
 

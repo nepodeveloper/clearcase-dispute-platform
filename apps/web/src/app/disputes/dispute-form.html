@@ -1,25 +1,9 @@
 @let current = state();
 @if (current.kind === 'submitted') {
-  <div role="status" data-testid="dispute-confirmation">
-    <p><strong>Dispute submitted.</strong></p>
-    <p>Case reference: <strong data-testid="dispute-reference">{{ current.dispute.reference }}</strong></p>
-    <p>Status: {{ statusLabel(current.dispute.caseStatus) }}</p>
-    <p>Decision: {{ current.dispute.decisionStatus }}</p>
-    <p>Financial status: {{ financialLabel(current.dispute.financialStatus, current.dispute.category) }}</p>
-    @if (current.dispute.chargeback; as chargeback) {
-      <p>Chargeback reference: {{ chargeback.reference }}</p>
-      <p>Chargeback status: {{ chargebackLabel(chargeback.status) }}</p>
-      @if (chargeback.lastOperationOutcome !== 'Succeeded') {
-        <p>{{ chargeback.lastOperationOutcome === 'OutcomeUnknown'
-          ? 'Network outcome unknown - investigation required.'
-          : 'Network operation failed - investigation required.' }}</p>
-      }
-    }
-    <ol aria-label="Dispute timeline">
-      @for (event of current.dispute.timeline; track event.id) {
-        <li>{{ statusLabel(event.caseStatus) }}: {{ event.description }}</li>
-      }
-    </ol>
+  <div data-testid="dispute-confirmation">
+    <p role="status"><strong>Dispute submitted.</strong></p>
+    <app-dispute-details [dispute]="current.dispute" />
+    <p><a [routerLink]="['/disputes', current.dispute.id]" data-testid="track-dispute">Track this dispute</a></p>
     <button type="button" data-testid="refresh-dispute" (click)="refresh()" [disabled]="refreshing()">
       {{ refreshing() ? 'Refreshing...' : 'Refresh status' }}
     </button>

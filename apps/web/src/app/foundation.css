@@ -42,6 +42,11 @@
   font-size: 0.875rem;
 }
 
+nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+nav a { color: #176b58; text-underline-offset: 0.2em; }
+nav a.active { font-weight: 700; }
+nav a:focus-visible { outline: 3px solid #bc8129; outline-offset: 3px; }
+
 main {
   max-width: 76rem;
   margin: 0 auto;
@@ -98,6 +103,8 @@ h1 {
 @media (max-width: 600px) {
   .masthead {
     padding-inline: 1rem;
+    flex-wrap: wrap;
+    padding-block: 1rem;
   }
 
   main {

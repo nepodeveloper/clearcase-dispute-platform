@@ -133,3 +133,31 @@ X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
 
 ### Read separate chargeback, case, decision and financial statuses without the simulator key
 GET {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}
+
+### PR-10: owned dispute dashboard (pageInfo.nextCursor is opaque; omit it on the first page)
+GET {{baseUrl}}/v1/disputes?pageSize=20
+
+### Customer-safe chronological events, without simulator privileges
+GET {{baseUrl}}/v1/disputes/{{cardCase.response.body.$.id}}/events
+
+### Submit an internal bank-fee complaint (repeat submission returns 409)
+# @name bankFeeCase
+POST {{baseUrl}}/api/v1/disputes
+Content-Type: application/json
+
+{
+  "transactionId": "00000000-0000-0000-0000-000000000003",
+  "reasonCode": "incorrectFee",
+  "description": "Please investigate this bank fee and explain the charge."
+}
+
+### StartReview, then Approve, RequestAdjustment, ExecuteAdjustment, Close
+# Alternatively StartReview, Reject, Close. Configure this private key in the API and REST Client environments.
+POST {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}/bank-charge-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__BankChargeKey}}
+
+{ "command": "StartReview" }
+
+### Refresh case status and timeline; approval is not financial confirmation
+GET {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}

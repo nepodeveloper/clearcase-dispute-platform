@@ -30,6 +30,8 @@ internal static class DisputePersistenceModel
             value => new DateTimeOffset(value, TimeSpan.Zero));
         dispute.HasIndex(item => item.Reference).IsUnique();
         dispute.HasIndex(item => item.ReversalOperationReference).IsUnique();
+        dispute.HasIndex(item => item.BankChargeAdjustmentReference).IsUnique();
+        dispute.HasIndex(item => new { item.CustomerId, item.CreatedAt, item.Reference });
         // Database-enforced rule: at most one open case per customer transaction.
         dispute.HasIndex(item => new { item.CustomerId, item.TransactionId })
             .IsUnique()
@@ -71,6 +73,7 @@ public sealed class PersistedDispute
     public string EligibilityPolicyVersion { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public string? ReversalOperationReference { get; set; }
+    public string? BankChargeAdjustmentReference { get; set; }
     public PersistedChargeback? Chargeback { get; set; }
     public List<PersistedDisputeEvent> Events { get; set; } = [];
 }

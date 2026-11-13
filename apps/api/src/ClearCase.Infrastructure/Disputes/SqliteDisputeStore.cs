@@ -10,6 +10,20 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
 {
     private const int SqliteConstraintError = 19;
 
+    public async Task<DisputeListPage> ReadPageAsync(
+        Guid customerId, ListDisputesQuery query, CancellationToken cancellationToken)
+    {
+        var matching = context.Disputes.AsNoTracking().Where(item => item.CustomerId == customerId);
+        if (query.After is { } cursor)
+            matching = matching.Where(item => item.CreatedAt < cursor.CreatedAt
+                || (item.CreatedAt == cursor.CreatedAt && string.Compare(item.Reference, cursor.Reference) > 0));
+        var items = await matching.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Reference)
+            .Select(item => new DisputeListItem(item.Id, item.Reference, item.TransactionId, item.Category,
+                item.CaseStatus, item.DecisionStatus, item.FinancialStatus, item.CreatedAt))
+            .Take(query.PageSize + 1).ToArrayAsync(cancellationToken);
+        return new(items.Take(query.PageSize).ToArray(), items.Length > query.PageSize);
+    }
+
     public Task<bool> HasOpenDisputeAsync(
         Guid customerId, Guid transactionId, CancellationToken cancellationToken) =>
         context.Disputes.AsNoTracking().AnyAsync(item =>
@@ -73,7 +87,7 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             item.Events.OrderBy(entry => entry.SequenceNumber)
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
-                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain());
+                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain(), item.BankChargeAdjustmentReference);
     }
 
     public async Task<DisputeView?> ApplyAsync(

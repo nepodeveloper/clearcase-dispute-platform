@@ -1,0 +1,14 @@
+:host { display: block; }
+.panel { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid #dce3df; background: #fff; }
+a { color: #176b58; text-underline-offset: 0.2em; }
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #bc8129; outline-offset: 3px; }
+.case-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; padding: 0; list-style: none; }
+.case-list > li { padding: 1rem; border: 1px solid #dce3df; overflow-wrap: anywhere; }
+.case-list h3 { margin-top: 0; }
+.timeline { padding-left: 1.5rem; }
+.timeline li { padding: 0.5rem; border-bottom: 1px solid #dce3df; }
+.timeline time { color: #52635f; font-size: 0.9rem; }
+p { line-height: 1.5; overflow-wrap: anywhere; }
+[role='alert'] { color: #a1260d; }
+button { min-height: 2.6rem; margin: 0.5rem 0; padding: 0.5rem 0.9rem; border: 1px solid #176b58; border-radius: 3px; color: #fff; background: #176b58; font: inherit; cursor: pointer; }
+button:disabled { opacity: 0.7; cursor: progress; }

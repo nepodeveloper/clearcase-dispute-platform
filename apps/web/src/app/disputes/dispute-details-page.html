@@ -1,0 +1,16 @@
+@let current = state();
+<section class="panel" aria-labelledby="dispute-heading" [attr.aria-busy]="current.kind === 'loading'">
+  <a routerLink="/disputes" data-testid="back-to-disputes">Back to your disputes</a>
+  <h2 id="dispute-heading" tabindex="-1" #heading>Dispute details</h2>
+  @if (current.kind === 'loading') {
+    <p role="status">Loading dispute...</p>
+  } @else if (current.kind === 'not-found') {
+    <p role="status">Dispute not found.</p>
+  } @else if (current.kind === 'error') {
+    <p role="alert">{{ current.message }}</p>
+    @if (current.retryable) { <button type="button" data-testid="retry" (click)="refresh()">Retry</button> }
+  } @else {
+    <app-dispute-details [dispute]="current.dispute" />
+    <button type="button" data-testid="refresh-dispute" (click)="refresh()">Refresh status</button>
+  }
+</section>

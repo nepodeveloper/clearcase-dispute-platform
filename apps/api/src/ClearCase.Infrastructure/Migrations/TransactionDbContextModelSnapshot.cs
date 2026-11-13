@@ -123,6 +123,9 @@ namespace ClearCase.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BankChargeAdjustmentReference")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CaseStatus")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -173,6 +176,9 @@ namespace ClearCase.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BankChargeAdjustmentReference")
+                        .IsUnique();
+
                     b.HasIndex("Reference")
                         .IsUnique();
 
@@ -185,6 +191,8 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Disputes_CustomerId_TransactionId_Open")
                         .HasFilter("\"CaseStatus\" <> 'Closed'");
+
+                    b.HasIndex("CustomerId", "CreatedAt", "Reference");
 
                     b.ToTable("Disputes", (string)null);
                 });

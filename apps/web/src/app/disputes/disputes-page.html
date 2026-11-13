@@ -1,0 +1,34 @@
+@let current = state();
+<section class="panel" aria-labelledby="disputes-heading" [attr.aria-busy]="current.kind === 'loading'">
+  <h2 id="disputes-heading">Your disputes</h2>
+  <p>Track each case and its financial outcome separately.</p>
+  @if (current.kind === 'loading') {
+    <p role="status">Loading disputes...</p>
+  } @else if (current.kind === 'error') {
+    <p role="alert">{{ current.message }}</p>
+    @if (current.retryable) { <button type="button" data-testid="retry" (click)="load()">Retry</button> }
+  } @else {
+    @if (current.page.items.length === 0) {
+      <p role="status">No disputes submitted yet.</p>
+      <a routerLink="/">Browse transactions to submit a dispute</a>
+    } @else {
+      <ul class="case-list" aria-label="Submitted disputes">
+        @for (dispute of current.page.items; track dispute.id) {
+          <li>
+            <h3><a [routerLink]="['/disputes', dispute.id]">{{ dispute.reference }}</a></h3>
+            <p>{{ typeLabel(dispute.category) }} - {{ statusLabel(dispute.caseStatus) }}</p>
+            <p>{{ dispute.statusDescription }}</p>
+          </li>
+        }
+      </ul>
+    }
+    @if (current.error; as error) { <p role="alert">{{ error.message }}</p> }
+    @if (current.page.pageInfo.nextCursor; as cursor) {
+      <button type="button" data-testid="more-disputes" (click)="load(cursor)"
+              [disabled]="current.loadingMore || current.error?.retryable === false">
+        {{ current.loadingMore ? 'Loading more...' : 'Load more disputes' }}
+      </button>
+    }
+    <button type="button" (click)="load()" [disabled]="current.loadingMore">Refresh list</button>
+  }
+</section>
