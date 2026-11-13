@@ -4,7 +4,7 @@ ClearCase is a starter monorepo for incrementally building a financial dispute m
 
 **Security warning: the transaction listing is a synthetic demo, not real customer authentication.** In Development and Testing, every caller is automatically assigned the same server-configured synthetic customer identity. Do not expose these environments to untrusted users or connect real customer data. Production and other environments reject transaction requests until real authentication is implemented. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order processing is a restricted local simulation only.
+**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order and card-chargeback processing are restricted local simulations only.
 
 ## Prerequisites
 
@@ -400,6 +400,102 @@ investigation. Seed date-based eligibility changes as time passes; tests use a f
 
 ```powershell
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~DebitOrderProcessingTests|FullyQualifiedName~SqliteDisputeStoreTests"
+Set-Location apps/web
+npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
+```
+
+### PR-09 card chargeback and representment simulation
+
+`POST /api/v1/disputes/{id}/chargeback-simulations` reuses the owned dispute resource and accepts
+`{ "command": "Initiate" }`. Like debit-order processing, it exists only in Development/Testing
+and requires both authentication and `X-Simulation-Key`. This workflow uses its own server setting,
+`Simulation:CardNetworkKey`; the debit-order key does not grant card privileges.
+Generate a private local key before starting the API:
+
+```powershell
+$env:Simulation__CardNetworkKey = [guid]::NewGuid().ToString('N')
+dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
+```
+
+Missing/unconfigured/wrong keys return 403. Production/Staging have no simulation endpoint or mock
+gateway registration, even if a key is configured. No processing controls or keys are added to Angular.
+
+| Command | Required chargeback state | Result |
+| --- | --- | --- |
+| `Initiate` | No chargeback; owned submitted/manual-review card dispute with freshly eligible transaction | `Initiated` on mock acknowledgement; case `UnderReview`, decision `Pending`, financial `NotInitiated` |
+| `ForwardToAcquirer` | `Initiated` | Mock network forwards to acquirer; `MerchantReview` |
+| `MerchantAccept` | `MerchantReview` | `MerchantAccepted`, decision `Approved`; financial remains `NotInitiated` |
+| `MerchantContest` | `MerchantReview` | `MerchantContested`, decision still `Pending`; contest is not a customer loss |
+| `ReceiveRepresentment` | `MerchantContested` with valid metadata | `RepresentmentReceived` |
+| `ReviewRepresentment` | `RepresentmentReceived` with stored evidence | `IssuerReview` |
+| `Approve` / `Reject` | `IssuerReview` | `DecisionIssued`; final dispute decision `Approved` (customer favoured) or `Rejected`, no financial confirmation |
+| `RequestSettlement` | Merchant acceptance or issuer approval; financial `NotInitiated` | Financial `Requested` only |
+| `ExecuteSettlement` | Approved decision and financial `Requested` | Explicit mock result sets financial `Confirmed`, `Failed` or `OutcomeUnknown` |
+| `Close` | Approved and financially confirmed, or rejected without settlement | Chargeback and case `Closed`, preserving decision and financial status |
+
+`Chargeback` is linked one-to-one to the dispute. Its stable `MOCK-CB-{caseId}` reference is reserved
+locally, **not proof of network acknowledgement**. The reason code comes from the existing card complaint
+catalog, not real Visa/Mastercard scheme codes. GET dispute details adds an optional `chargeback` object:
+`reference`, `reasonCode`, `status`, `lastOperationOutcome`, and optional `evidence`. Other cases omit it.
+The existing confirmation/refresh display shows chargeback progress separately from the case decision
+and financial status; a card settlement is not labelled a debit-order reversal.
+
+Representment accepts only synthetic metadata, for example:
+
+```json
+{
+  "command": "ReceiveRepresentment",
+  "evidence": {
+    "id": "aaaaaaaa-1111-4222-8333-444455556666",
+    "kind": "Receipt"
+  }
+}
+```
+
+The ID must be a nonempty GUID. Kinds are `Receipt`, `DeliveryConfirmation`, or `AuthorizationRecord`;
+`receivedAt` comes from the server clock. Metadata is required for representment and forbidden on other
+commands. No file is uploaded or verified, and no filename, content or storage URL is accepted/exposed.
+Actual evidence storage/authorization remains future work.
+
+The deterministic `ICardNetworkGateway` mock handles initiation, forwarding and explicit settlement;
+tests inject failed and unknown results (unknown models a timeout). A failed/unknown operation retains
+the prior chargeback stage (`InitiationPending` if initiation never acknowledged) and exposes its
+`lastOperationOutcome`. It blocks all further processing, including repeated attempts and closure.
+An initiation/forwarding timeout never changes financial status to confirmed. Recovery is deferred;
+there is no retry loop, automatic refund, arbitration, real network call or Kafka.
+
+Each command atomically updates the case and chargeback, appends a customer-safe `DisputeEvent`, and
+appends a separate `ChargebackAuditEvent` with authenticated actor ID, correlation ID, command,
+resulting statuses, evidence metadata and timestamp. A unique `MOCK-CARD-{caseId}-{command}` operation
+reference, one chargeback per dispute, and SQLite's writer lock prevent duplicate committed operations,
+including across races/restarts. Audit UPDATE/DELETE is rejected by SQLite triggers.
+The gateway is pure and runs inside that local transaction; rollback may recompute it without external
+effects. Do not substitute a real network call here. External intent/outbox/reconciliation need a
+separate design before integration.
+
+Invalid fields return 400 `chargeback.invalidRequest` with JSON Pointer errors; invalid transitions
+or repeated commands return 409 `chargeback.invalidTransition`; inaccessible cases return 404
+`dispute.notFound`. A 200 processing response means the simulated outcome was recorded, **not** that
+funds succeeded. The generated Development OpenAPI includes the route, commands and explicit response
+DTOs; the architecture document distinguishes this executable slice from future network integration.
+
+**Migration / rollback:** `AddChargebacks` adds `Chargebacks`, `ChargebackAuditEvents`, constraints,
+indexes and audit triggers; existing case states, tables, timelines and routes remain compatible.
+Apply via Development startup or the existing explicit migration procedure. Clear the card simulation
+key for immediate operational backout, preserving readers and history. Before chargeback processing,
+the schema can be downgraded to `20261113060653_AddDebitOrderOperationReference`. After processing,
+retain the tables/reader or restore an approved pre-PR disposable-demo backup; downgrade would delete
+chargeback/audit records and must not be used to erase retained financial or unknown-outcome history.
+
+**Demo:** submit `duplicateCharge` for synthetic card transaction ending `000001` in a disposable
+demo database, then `Initiate`, `ForwardToAcquirer`, `MerchantAccept`, `RequestSettlement`,
+`ExecuteSettlement`, `Close`. For representment, instead use `MerchantContest`, `ReceiveRepresentment`
+with the metadata above, `ReviewRepresentment`, then `Approve` or `Reject`. Approval still requires
+the two explicit settlement steps before closure. Refresh the existing confirmation after each action.
+REST Client examples are in `apps/api/ClearCase.Api.http`. Policy windows remain demo-only.
+
+```powershell
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~ChargebackProcessingTests|FullyQualifiedName~DebitOrderProcessingTests|FullyQualifiedName~SqliteDisputeStoreTests"
 Set-Location apps/web
 npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
 ```

@@ -5,6 +5,18 @@ import { TransactionType } from '../transactions/transaction-api';
 export type DisputeCaseStatus = 'Submitted' | 'ManualReview' | 'Closed'
   | 'UnderReview' | 'MandateVerified' | 'ReversalRequested' | 'ReversalConfirmed' | 'Rejected';
 
+export type ChargebackStatus = 'InitiationPending' | 'Initiated' | 'MerchantReview'
+  | 'MerchantAccepted' | 'MerchantContested' | 'RepresentmentReceived'
+  | 'IssuerReview' | 'DecisionIssued' | 'Closed';
+
+export interface Chargeback {
+  reference: string;
+  reasonCode: string;
+  status: ChargebackStatus;
+  lastOperationOutcome: 'Succeeded' | 'Failed' | 'OutcomeUnknown';
+  evidence?: { id: string; kind: 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord'; receivedAt: string };
+}
+
 export interface CreateDisputeRequest {
   transactionId: string;
   reasonCode: string;
@@ -32,6 +44,7 @@ export interface Dispute {
   financialStatus: string;
   createdAt: string;
   timeline: DisputeTimelineEvent[];
+  chargeback?: Chargeback;
 }
 
 @Injectable({ providedIn: 'root' })

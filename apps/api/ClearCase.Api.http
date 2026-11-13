@@ -87,3 +87,49 @@ Content-Type: application/json
 
 ### Read the customer-owned timeline without simulator privileges
 GET {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}
+
+### PR-09: submit a synthetic card case (repeat submission returns 409)
+# @name cardCase
+POST {{baseUrl}}/api/v1/disputes
+Content-Type: application/json
+
+{
+  "transactionId": "00000000-0000-0000-0000-000000000001",
+  "reasonCode": "duplicateCharge",
+  "description": "This card purchase appears twice and needs investigation."
+}
+
+### Initiate, then ForwardToAcquirer, then MerchantAccept OR MerchantContest
+# Configure Simulation__CardNetworkKey privately in the API and REST Client environments.
+# MerchantAccept -> RequestSettlement -> ExecuteSettlement -> Close.
+# MerchantContest -> ReceiveRepresentment (next example) -> ReviewRepresentment -> Approve OR Reject.
+# Approve still requires RequestSettlement and ExecuteSettlement; Reject can Close without settlement.
+POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
+X-Correlation-ID: card-chargeback-demo
+
+{ "command": "Initiate" }
+
+### Synthetic evidence metadata, only after MerchantContest; no file content is accepted
+POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
+
+{
+  "command": "ReceiveRepresentment",
+  "evidence": {
+    "id": "aaaaaaaa-1111-4222-8333-444455556666",
+    "kind": "Receipt"
+  }
+}
+
+### Invalid jump (409 unless settlement was requested); repeating a processed operation also returns 409
+POST {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}/chargeback-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__CardNetworkKey}}
+
+{ "command": "ExecuteSettlement" }
+
+### Read separate chargeback, case, decision and financial statuses without the simulator key
+GET {{baseUrl}}/api/v1/disputes/{{cardCase.response.body.$.id}}

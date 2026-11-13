@@ -1,4 +1,5 @@
 using ClearCase.Domain.Disputes;
+using ClearCase.Domain.Chargebacks;
 using ClearCase.Domain.Transactions;
 
 namespace ClearCase.Application.Disputes;
@@ -15,7 +16,8 @@ public sealed record DisputeView(
     DisputeFinancialStatus FinancialStatus,
     DateTimeOffset CreatedAt,
     IReadOnlyList<DisputeEvent> Timeline,
-    string? ReversalOperationReference = null)
+    string? ReversalOperationReference = null,
+    Chargeback? Chargeback = null)
 {
     public static DisputeView From(Dispute dispute) =>
         new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,

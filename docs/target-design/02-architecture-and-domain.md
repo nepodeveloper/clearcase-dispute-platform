@@ -63,6 +63,41 @@ Value objects: `Money` (ISO currency + minor units), `DisputeId`, `TransactionId
 
 Card scheme timelines and legal rights must be verified against scheme rules and bank agreements; do not embed one generic 120-day scheme rule.
 
+### Implemented local slice: PR-09
+
+The production/network design above remains proposed. The executable PR-09 slice is a SQLite-backed,
+Development/Testing-only card simulator, not a Visa/Mastercard integration:
+
+```text
+Initiated -> MerchantReview -> MerchantAccepted -> explicit settlement -> Closed
+                           -> MerchantContested -> RepresentmentReceived -> IssuerReview
+                                                                         -> Approve -> explicit settlement -> Closed
+                                                                         -> Reject -> Closed
+```
+
+`Chargeback` owns the card transition guards, stable mock reference, original complaint reason and
+synthetic representment metadata. Application orchestration rechecks ownership and card eligibility
+on initiation; Infrastructure implements the pure `ICardNetworkGateway` and SQLite persistence.
+The existing dispute retains independent case, decision and financial statuses. Merchant contest
+is not final rejection; acceptance/issuer approval is not confirmation. `RequestSettlement` records
+intent, while `ExecuteSettlement` consumes an explicit simulated result. Failures and timeout/unknown
+outcomes are durable and block retries/closure; they never imply credit.
+
+Every simulated action commits chargeback state, dispute state, immutable customer timeline and a
+separate immutable audit record in one writer-serialized SQLite transaction. Audit records contain
+the trusted synthetic actor ID, correlation ID, command, outcome, statuses and evidence metadata.
+Unique per-command operation references prevent repeat effects. The mock is safe inside this
+transaction **only because it has no external effects**; network intent/outbox, external idempotency,
+authoritative settlement and recovery must be implemented before replacing it.
+
+The sole processing route is `POST /api/v1/disputes/{id}/chargeback-simulations`; it is absent outside
+Development/Testing and requires authentication plus a separate server-configured card simulation
+key. Customer GET responses expose explicit safe DTOs, never EF entities, audit identities or secrets.
+Evidence is metadata only (nonempty GUID, allow-listed kind, server timestamp), not uploaded or
+verified documents. Real operations authorization, evidence storage, arbitration and Kafka are not
+part of this slice. See [the implemented workflow and rollback guide](../../README.md#pr-09-card-chargeback-and-representment-simulation)
+and the generated Development OpenAPI for current contracts.
+
 ## Workflow B: debit order
 
 1. Identify `EftDebit`, `RegisteredMandate` or `DebiCheck`, amount, original collection date and customer.
