@@ -2,8 +2,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { DisputeReason, TransactionType } from '../transactions/transaction-api';
-import { ChargebackStatus, Dispute, DisputeApi, DisputeCaseStatus } from './dispute-api';
+import { RouterLink } from '@angular/router';
+import { DisputeReason } from '../transactions/transaction-api';
+import { Dispute, DisputeApi } from './dispute-api';
+import { DisputeDetails } from './dispute-details';
 
 type SubmissionState =
   | { kind: 'editing' }
@@ -16,7 +18,7 @@ export const descriptionMaxLength = 2000;
 
 @Component({
   selector: 'app-dispute-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DisputeDetails, RouterLink],
   templateUrl: './dispute-form.html',
   styleUrl: './dispute-form.css',
 })
@@ -71,55 +73,6 @@ export class DisputeForm {
         this.refreshing.set(false);
       },
     });
-  }
-
-  protected statusLabel(status: DisputeCaseStatus): string {
-    switch (status) {
-      case 'Submitted':
-        return 'Submitted - awaiting review';
-      case 'ManualReview':
-        return 'Referred for specialist review';
-      case 'Closed':
-        return 'Closed';
-      case 'UnderReview':
-        return 'Under review';
-      case 'MandateVerified':
-        return 'Mandate verified';
-      case 'ReversalRequested':
-        return 'Reversal requested';
-      case 'ReversalConfirmed':
-        return 'Simulated reversal confirmed';
-      case 'Rejected':
-        return 'Rejected';
-    }
-  }
-
-  protected financialLabel(status: string, category: TransactionType): string {
-    switch (status) {
-      case 'NotInitiated': return 'Not initiated';
-      case 'Requested': return 'Requested - not confirmed';
-      case 'OutcomeUnknown': return 'Outcome unknown - not confirmed';
-      case 'Failed': return 'Failed - no reversal confirmed';
-      case 'Confirmed': return category === 'CardPurchase'
-        ? 'Simulated settlement confirmed - no real money moved'
-        : 'Simulated reversal confirmed - no real money moved';
-      default: return status;
-    }
-  }
-
-  protected chargebackLabel(status: ChargebackStatus): string {
-    const labels: Record<ChargebackStatus, string> = {
-      InitiationPending: 'Initiation pending',
-      Initiated: 'Initiated',
-      MerchantReview: 'Merchant review',
-      MerchantAccepted: 'Merchant accepted',
-      MerchantContested: 'Merchant contested',
-      RepresentmentReceived: 'Representment received',
-      IssuerReview: 'Issuer review',
-      DecisionIssued: 'Decision issued',
-      Closed: 'Closed',
-    };
-    return labels[status];
   }
 
   protected showError(control: 'reasonCode' | 'description'): boolean {

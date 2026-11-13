@@ -17,7 +17,8 @@ public sealed record DisputeView(
     DateTimeOffset CreatedAt,
     IReadOnlyList<DisputeEvent> Timeline,
     string? ReversalOperationReference = null,
-    Chargeback? Chargeback = null)
+    Chargeback? Chargeback = null,
+    string? BankChargeAdjustmentReference = null)
 {
     public static DisputeView From(Dispute dispute) =>
         new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,
@@ -34,6 +35,8 @@ public enum DisputeAddResult
 /// <summary>Persistence port for dispute cases; every read is scoped to the owning customer.</summary>
 public interface IDisputeStore
 {
+    Task<DisputeListPage> ReadPageAsync(Guid customerId, ListDisputesQuery query, CancellationToken cancellationToken);
+
     Task<bool> HasOpenDisputeAsync(Guid customerId, Guid transactionId, CancellationToken cancellationToken);
 
     /// <summary>Atomically stores the case and its timeline; a concurrent open case is reported, not thrown.</summary>

@@ -1,0 +1,34 @@
+@let current = dispute();
+<section aria-label="Case details">
+  <p>Case reference: <strong data-testid="dispute-reference">{{ current.reference }}</strong></p>
+  <p>Category: {{ typeLabel(current.category) }}</p>
+  <p>Status: {{ statusLabel(current.caseStatus) }}</p>
+  <p>Decision: {{ current.decisionStatus }}</p>
+  <p>Financial status: {{ financialLabel(current.financialStatus, current.category) }}</p>
+  <p>{{ current.statusDescription }}</p>
+  <p>Submitted: <time [attr.datetime]="current.createdAt">{{ current.createdAt | date:'medium':'UTC' }} UTC</time></p>
+  <p>{{ current.description }}</p>
+  <a [routerLink]="['/transactions', current.transactionId]">View transaction</a>
+  @if (current.chargeback; as chargeback) {
+    <p>Chargeback reference: {{ chargeback.reference }}</p>
+    <p>Chargeback status: {{ chargebackLabel(chargeback.status) }}</p>
+    @if (chargeback.lastOperationOutcome !== 'Succeeded') {
+      <p>{{ chargeback.lastOperationOutcome === 'OutcomeUnknown'
+        ? 'Network outcome unknown - investigation required.'
+        : 'Network operation failed - investigation required.' }}</p>
+    }
+  }
+  <h3>Timeline</h3>
+  @if (current.timeline.length === 0) {
+    <p>No timeline events yet.</p>
+  } @else {
+    <ol class="timeline" aria-label="Dispute timeline" tabindex="0">
+      @for (event of current.timeline; track event.id) {
+        <li>
+          <time [attr.datetime]="event.occurredAt">{{ event.occurredAt | date:'medium':'UTC' }} UTC</time>
+          <p>{{ statusLabel(event.caseStatus) }}: {{ event.description }}</p>
+        </li>
+      }
+    </ol>
+  }
+</section>

@@ -4,7 +4,7 @@ ClearCase is a starter monorepo for incrementally building a financial dispute m
 
 **Security warning: the transaction listing is a synthetic demo, not real customer authentication.** In Development and Testing, every caller is automatically assigned the same server-configured synthetic customer identity. Do not expose these environments to untrusted users or connect real customer data. Production and other environments reject transaction requests until real authentication is implemented. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order and card-chargeback processing are restricted local simulations only.
+**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
 
 ## Prerequisites
 
@@ -329,6 +329,110 @@ The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, a
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
 Set-Location apps/web
 npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
+```
+
+## Unified dispute tracking (PR-10)
+
+Use **Your disputes** in the navigation, or open Angular `/disputes`, to see the authenticated
+customer's submitted cases across all three categories. Each item links to `/disputes/{id}`;
+the submission confirmation also has a **Track this dispute** link. The dashboard has loading,
+empty, error/retry and load-more states. Case details reuse the existing case/status presentation,
+with a keyboard-focusable ordered timeline and explicit UTC timestamps. The details heading receives
+focus after loading; switching cases cancels the previous request. Refresh status reads the latest
+case and timeline together, without initiating processing or inferring confirmation from approval.
+
+| API route (both prefixes supported) | Result |
+| --- | --- |
+| `GET /api/v1/disputes`, `GET /v1/disputes` | Owned summaries, newest `createdAt` first and reference ascending for timestamp ties |
+| `GET /api/v1/disputes/{id}`, `GET /v1/disputes/{id}` | Owned case, separate statuses, customer-safe `statusDescription`, and complete timeline |
+| `GET /api/v1/disputes/{id}/events`, `GET /v1/disputes/{id}/events` | Array of customer-safe events ordered by ascending `sequenceNumber` |
+
+All queries require authentication and use `Cache-Control: private, no-store`. Another customer's
+case/events are indistinguishable from a missing case (404). Lists never expose complaint text,
+evidence, audit identities or internal operation references. Timelines retain their existing small,
+unpaged simulation-history contract; sequence is the canonical chronological order even when timestamps
+tie or the clock changes. The dashboard uses GET case's state/timeline snapshot; the events subresource
+is available for timeline-only consumers, not an extra request that could race the case status.
+
+List parameters: `pageSize` defaults to 20 and is bounded to 1-100; optional `cursor` must be the opaque
+`pageInfo.nextCursor` from the previous response. Invalid values return 400 `dispute.invalidQuery`
+with `/pageSize` or `/cursor` errors. The next cursor is omitted when there is no next page.
+The cursor is not an authorization credential; customer scoping always applies. It uses the immutable
+creation time/reference boundary, so newly submitted cases appear on refresh rather than shifting
+already traversed pages. This new collection uses cursor pagination; existing transaction-list
+page-number pagination is unchanged.
+
+```json
+{ "items": [], "pageInfo": { "hasNextPage": false } }
+```
+
+### Bank-charge investigation and adjustment
+
+`POST /api/v1/disputes/{id}/bank-charge-simulations` is Development/Testing-only and requires the
+authenticated owner plus `X-Simulation-Key`, checked against `Simulation:BankChargeKey`. With no
+configured key, customers cannot process cases. Other environments have no route or mock registration.
+Card/debit-order cases cannot enter this workflow, and bank-charge cases cannot enter either of theirs.
+
+| Command | Required state | Result |
+| --- | --- | --- |
+| `StartReview` | Submitted or legacy ManualReview bank-charge case | UnderReview, decision Pending, financial NotInitiated |
+| `Approve` | UnderReview/Pending and current valid fee facts/policy | Decision Approved; financial still NotInitiated |
+| `Reject` | UnderReview/Pending | Case and decision Rejected, no adjustment |
+| `RequestAdjustment` | Approved, financial NotInitiated, current valid fee facts/policy | Financial Requested, stable `MOCK-FEE-{caseId}` reference |
+| `ExecuteAdjustment` | Approved, financial Requested, current valid fee facts/policy | Explicit mock result: Confirmed, Failed or OutcomeUnknown |
+| `Close` | Approved/Confirmed or Rejected/NotInitiated | Closed; decision and financial outcome preserved |
+
+Investigation does not automatically approve a fee. Missing transaction information or an unavailable
+policy blocks approval/adjustment; an amount routed for internal review can be explicitly approved
+after investigation. Invalid/repeated commands return 409 `bankCharge.invalidTransition`. The case,
+adjustment reference and append-only `DisputeEvent` commit in one SQLite transaction. Concurrent
+execution and restart replays cannot repeat a committed adjustment. Failed/unknown results remain
+unconfirmed and cannot be retried or closed; recovery remains future work.
+The mock is pure, local and never posts funds. Never replace it with an external call inside the
+SQLite writer transaction.
+
+### Three end-to-end demo journeys
+
+Use a disposable local demo database with the normal API/Angular startup commands. To enable
+privileged simulation, generate private keys in the API shell before startup:
+
+```powershell
+$env:Simulation__DebitOrderKey = [guid]::NewGuid().ToString('N')
+$env:Simulation__CardNetworkKey = [guid]::NewGuid().ToString('N')
+$env:Simulation__BankChargeKey = [guid]::NewGuid().ToString('N')
+```
+
+Keep these values private to the simulator (REST Client examples are in `apps/api/ClearCase.Api.http`);
+they are never given to the customer UI. In the transaction list, open and submit each case below,
+using a description of at least 15 characters. Follow **Track this dispute**, then return to
+**Your disputes** to verify all categories are present. A fresh submission adds one initial event.
+
+| Journey | Seeded transaction / reason | Privileged simulation commands, then refresh the customer details |
+| --- | --- | --- |
+| Card purchase | `00000000-0000-0000-0000-000000000001` / `duplicateCharge` | Initiate, ForwardToAcquirer, MerchantAccept, RequestSettlement, ExecuteSettlement, Close |
+| Debit order | `00000000-0000-0000-0000-000000000002` / `duplicateCollection` | StartReview, VerifyMandate, RequestReversal, ExecuteReversal, Close |
+| Bank charge | `00000000-0000-0000-0000-000000000003` / `incorrectFee` | StartReview, Approve, RequestAdjustment, ExecuteAdjustment, Close |
+
+Before each execution command, refresh to verify requested is **not confirmed**. Only an explicit
+successful mock result shows simulated confirmation; no real money moves. For the bank rejection
+path, use another posted synthetic fee (for example transaction ending `000006`), then StartReview,
+Reject, Close. The detailed card representment and debit investigation examples below remain available.
+Seed dates are fixed, so eligibility changes with time; automated tests inject a deterministic clock.
+
+**Migration / rollback:** `AddBankChargeTracking` adds one nullable adjustment-reference column,
+a unique reference index and a customer/creation/reference listing index. Existing rows/history and
+routes remain compatible. Development auto-migrates; other environments use the documented explicit
+migration procedure. Clear the bank simulation key to disable processing immediately. Before fee
+processing, downgrade to `20261113063056_AddChargebacks` and revert code. Once operations exist,
+retain the column/current reader or restore an approved pre-PR disposable-demo backup; do not drop
+pending/unknown operation references. No new library, external integration or global state store is used.
+
+Focused checks:
+
+```powershell
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter FullyQualifiedName~DisputeTrackingTests
+Set-Location apps/web
+npm run test:ci -- --include=src/app/disputes/dispute-pages.spec.ts --include=src/app/disputes/dispute-form.spec.ts
 ```
 
 ## Current limitations

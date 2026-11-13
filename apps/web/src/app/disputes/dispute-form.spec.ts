@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Dispute } from './dispute-api';
 import { DisputeForm } from './dispute-form';
+import { provideRouter } from '@angular/router';
 
 describe('DisputeForm', () => {
   const transactionId = '00000000-0000-0000-0000-000000000001';
@@ -17,6 +18,7 @@ describe('DisputeForm', () => {
     caseStatus: 'Submitted',
     decisionStatus: 'Pending',
     financialStatus: 'NotInitiated',
+    statusDescription: 'Your dispute was received and is awaiting review.',
     createdAt: '2026-11-12T10:00:00Z',
     timeline: [{
       id: 'f7d8c9b0-1111-4222-8333-444455556666',
@@ -32,7 +34,7 @@ describe('DisputeForm', () => {
   let element: HTMLElement;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(DisputeForm);
     fixture.componentRef.setInput('transactionId', transactionId);

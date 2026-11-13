@@ -31,6 +31,7 @@ else
 builder.Services.AddAuthorization();
 builder.AddDebitOrderSimulation();
 builder.AddChargebackSimulation();
+builder.AddBankChargeSimulation();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
 builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
@@ -39,6 +40,7 @@ builder.Services.AddScoped<IGetDisputeEligibilityHandler, GetDisputeEligibilityH
 builder.Services.AddScoped<DisputeEligibilityEvaluator>();
 builder.Services.AddScoped<ISubmitDisputeHandler, SubmitDisputeHandler>();
 builder.Services.AddScoped<IGetDisputeHandler, GetDisputeHandler>();
+builder.Services.AddScoped<IListDisputesHandler, ListDisputesHandler>();
 builder.Services.AddTransactionPersistence(
     builder.Environment.ContentRootPath, builder.Environment.WebRootPath,
     builder.Environment.IsDevelopment());
@@ -101,6 +103,7 @@ app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
 app.MapDebitOrderSimulation();
 app.MapChargebackSimulation();
+app.MapBankChargeSimulation();
 
 app.Run();
 
