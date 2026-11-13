@@ -4,7 +4,7 @@ ClearCase is a starter monorepo for incrementally building a financial dispute m
 
 **Security warning: the transaction listing is a synthetic demo, not real customer authentication.** In Development and Testing, every caller is automatically assigned the same server-configured synthetic customer identity. Do not expose these environments to untrusted users or connect real customer data. Production and other environments reject transaction requests until real authentication is implemented. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, financial reversals, Kafka, or AWS. SQLite stores local transaction data and submitted dispute cases with their initial timeline events.
+**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order processing is a restricted local simulation only.
 
 ## Prerequisites
 
@@ -252,7 +252,7 @@ Valid, active, authorized, matching DebiCheck collections are excluded from ordi
 
 For example, GET the eligibility route for transaction `00000000-0000-0000-0000-000000000011`, then submit `unauthorisedDebitOrder` with a description via the existing POST disputes endpoint. It creates `ManualReview` / `Pending` / `NotInitiated` and one initial event, not a reversal. Angular displays the server explanation and keeps the existing complaint form available; it implements no mandate policy.
 
-The investigation route is an assessment and manual-review intake path, **not** an implemented investigator queue or bank-core workflow. Existing case storage retains the selected eligibility policy version, overall outcome and complaint reason; this PR adds no mandate snapshot storage or new case states. No migrations, packages, external API, Kafka or financial execution are added. Roll back by reverting this PR and redeploying; the database and existing routes need no rollback migration. Cases already created remain manual-review cases with their recorded policy version.
+PR-07 provides assessment and manual-review intake, **not** an investigator queue or bank-core workflow. Case storage retains the selected eligibility policy version, overall outcome and complaint reason, not a mandate snapshot. PR-08 adds the restricted simulation described below; it does not introduce a production investigation service.
 
 Focused checks:
 
@@ -332,6 +332,79 @@ npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
 ```
 
 ## Current limitations
+
+### PR-08 debit-order processing simulation
+
+`POST /api/v1/disputes/{id}/debit-order-simulations` accepts `{ "command": "StartReview" }`.
+It is mapped **only** in Development/Testing, requires the authenticated case owner **and**
+`X-Simulation-Key` matching server configuration `Simulation:DebitOrderKey`. No configured key,
+a missing key, or an incorrect key returns 403; Production/Staging have no route (404), even
+when a key is configured. The key is never sent to Angular, logged, stored in a case, or checked in.
+Generate a fresh local value in the API shell before starting:
+
+```powershell
+$env:Simulation__DebitOrderKey = [guid]::NewGuid().ToString('N')
+dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
+```
+
+Keep the key private to the local simulator. Do not put real customer data in demo environments.
+Use the REST Client examples in `apps/api/ClearCase.Api.http` with that environment variable.
+Ordinary customer requests cannot process cases. GET details remains customer-owned, without the key.
+The existing submission confirmation can now refresh case, decision, financial status and the full
+timeline; it has no processing controls.
+
+| Command | Required state / checks | Result |
+| --- | --- | --- |
+| `StartReview` | `Submitted` or legacy `ManualReview`, debit order only | `UnderReview` |
+| `VerifyMandate` | `UnderReview`; fresh PR-07 mandate and eligibility evaluation | `MandateVerified` for ordinary eligible collections; otherwise remains `UnderReview` with an investigation event |
+| `CompleteInvestigation` | `UnderReview`; explicit simulated investigation, fresh eligible mandate/policy | `MandateVerified`; never overrides missing/mismatched data, valid DebiCheck exclusion or enhanced-review policy |
+| `RequestReversal` | `MandateVerified`; recheck current eligibility | `ReversalRequested` / decision `Approved` / financial `Requested`, durable `MOCK-DO-{caseId}` operation reference |
+| `ExecuteReversal` | `ReversalRequested` / financial `Requested`; recheck current eligibility | Mock `Confirmed`: `ReversalConfirmed` / financial `Confirmed`; mock `Failed` or `Unknown`: remain `ReversalRequested` / financial `Failed` or `OutcomeUnknown` |
+| `Reject` | `UnderReview`, `MandateVerified`, or a definitively failed simulated reversal | `Rejected` / decision `Rejected`; no financial confirmation |
+| `Close` | `Rejected` or `ReversalConfirmed` only | `Closed`, preserving decision and financial outcome |
+
+Authorization, amount and cancellation complaints require explicit investigation, even when the
+reader reports a matching mandate. Missing information cannot be waived by a command. A specialist
+queue, evidence capture and enhanced-review approval are deferred; affected cases remain under review
+or can be explicitly rejected in this simulation. Submission behavior and legacy aliases are unchanged.
+
+Invalid transitions and repeated processing return 409 `debitOrder.invalidTransition`; bad commands
+return 400 `debitOrder.invalidCommand` with `/command` field errors. Missing/inaccessible cases return
+404 `dispute.notFound`. The generated Development OpenAPI describes the actual route and response.
+
+`IDebitOrderProcessingGateway` is implemented by a deterministic, side-effect-free mock (default:
+confirmed). Tests inject its failed/unknown outcomes. Approval never confirms funds. SQLite acquires
+the writer lock **before** reading processing state, and commits case updates, the unique operation
+reference and each `DisputeEvent` together. Racing requests serialize; a committed gateway outcome
+cannot be executed again, including after restart. Unknown outcomes cannot be retried, rejected or
+closed by this interface; reconciliation is deferred to PR-15.
+
+This transaction boundary is safe **only because the mock has no external side effects**. A database
+rollback can recompute the pure mock using the same reference; it cannot move money twice. Never
+replace it with an external banking call inside this transaction. Outbox delivery, audit actors,
+general optimistic concurrency and recovery remain later roadmap work.
+
+**Migration / rollback:** `AddDebitOrderOperationReference` adds one nullable column and unique index.
+Existing cases/events are preserved. Development applies it on startup; other environments require
+the documented explicit migration process. Disable simulation immediately by clearing the key.
+Before any new states are persisted, the migration can be downgraded to `20261112185347_AddDisputes`
+and code reverted (tested with legacy rows). After processing, old binaries cannot read the new enum
+values: retain this reader and disable commands, or restore a verified pre-PR backup of the disposable
+demo database. Do not downgrade retained processing history or discard unknown operation references.
+
+**Demo:** submit `duplicateCollection` for synthetic EFT transaction ending `000002`, then run
+`StartReview`, `VerifyMandate`, `RequestReversal`, `ExecuteReversal`, `Close`, refreshing the existing
+confirmation after each command. Approval/requested is visibly not confirmation. Transaction `000008`
+demonstrates missing mandate; reason `unauthorisedDebitOrder` on `000002` demonstrates explicit
+investigation. Seed date-based eligibility changes as time passes; tests use a fixed clock.
+
+```powershell
+dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~DebitOrderProcessingTests|FullyQualifiedName~SqliteDisputeStoreTests"
+Set-Location apps/web
+npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
+```
+
+### Other limitations
 
 - The temporary demo identity is not authentication for real customers. Production transaction requests are unauthorized.
 - The Angular pages display synthetic data only. Dispute submission creates a case record but no reversal, refund, chargeback, notification, or evidence upload.

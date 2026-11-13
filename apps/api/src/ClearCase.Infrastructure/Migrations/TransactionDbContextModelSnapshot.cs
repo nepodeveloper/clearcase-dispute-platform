@@ -65,12 +65,18 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReversalOperationReference")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.HasIndex("ReversalOperationReference")
                         .IsUnique();
 
                     b.HasIndex("TransactionId");

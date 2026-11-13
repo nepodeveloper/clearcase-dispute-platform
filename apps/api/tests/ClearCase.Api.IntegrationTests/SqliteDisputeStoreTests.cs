@@ -5,6 +5,8 @@ using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace ClearCase.Api.IntegrationTests;
 
@@ -105,6 +107,45 @@ public sealed class SqliteDisputeStoreTests
         await Assert.ThrowsAnyAsync<Exception>(() =>
             context.Database.ExecuteSqlRawAsync("DELETE FROM \"DisputeEvents\""));
         Assert.Equal(1, await context.DisputeEvents.CountAsync());
+    }
+
+    [Fact]
+    public async Task OperationMigration_UpgradeAndBackoutPreserveLegacyCasesAndImmutableTimeline()
+    {
+        await using var database = new TemporaryDatabase();
+        await using var context = database.CreateContext();
+        var migrator = context.GetService<IMigrator>();
+        const string previousMigration = "20261112185347_AddDisputes";
+        await migrator.MigrateAsync(previousMigration);
+        await SyntheticTransactionSeeder.SeedAsync(context, default);
+        var id = Guid.Parse("aaaaaaaa-1111-4222-8333-444455556666");
+        var eventId = Guid.Parse("bbbbbbbb-1111-4222-8333-444455556666");
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Disputes" ("Id", "Reference", "CustomerId", "TransactionId", "Category",
+                "ReasonCode", "Description", "CaseStatus", "DecisionStatus", "FinancialStatus",
+                "EligibilityOutcome", "EligibilityPolicyVersion", "CreatedAt")
+            VALUES ({id}, 'DSP-LEGACY', {DemoCustomer}, {CardTransaction}, 'CardPurchase',
+                'duplicateCharge', 'This is a legacy dispute case.', 'Submitted', 'Pending', 'NotInitiated',
+                'EligibleToSubmit', 'demo-v1', {SubmittedAt.UtcTicks});
+            """);
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "DisputeEvents" ("Id", "DisputeId", "SequenceNumber", "EventType",
+                "CaseStatus", "PublicDescription", "OccurredAt")
+            VALUES ({eventId}, {id}, 1, 'DisputeSubmitted', 'Submitted', 'Legacy submission.', {SubmittedAt.UtcTicks});
+            """);
+
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync(previousMigration);
+        await migrator.MigrateAsync();
+
+        var stored = await new SqliteDisputeStore(context).ReadAsync(DemoCustomer, id, default);
+        Assert.NotNull(stored);
+        Assert.Equal("DSP-LEGACY", stored.Reference);
+        Assert.Null(stored.ReversalOperationReference);
+        Assert.Equal(eventId, Assert.Single(stored.Timeline).Id);
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>
+            context.Database.ExecuteSqlRawAsync("UPDATE \"DisputeEvents\" SET \"PublicDescription\" = 'Changed'"));
+        Assert.Equal(31, await context.Transactions.CountAsync());
     }
 
     [Fact]

@@ -8,19 +8,30 @@ public enum DisputeCaseStatus
 {
     Submitted,
     ManualReview,
-    Closed
+    Closed,
+    UnderReview,
+    MandateVerified,
+    ReversalRequested,
+    ReversalConfirmed,
+    Rejected
 }
 
-/// <summary>Outcome of the investigation; only <see cref="Pending"/> is reachable until investigation workflows exist.</summary>
+/// <summary>Investigation decision, independent of financial confirmation.</summary>
 public enum DisputeDecisionStatus
 {
-    Pending
+    Pending,
+    Approved,
+    Rejected
 }
 
 /// <summary>Money-movement status; submission never initiates a financial operation.</summary>
 public enum DisputeFinancialStatus
 {
-    NotInitiated
+    NotInitiated,
+    Requested,
+    Confirmed,
+    Failed,
+    OutcomeUnknown
 }
 
 public sealed record DisputeEvent(

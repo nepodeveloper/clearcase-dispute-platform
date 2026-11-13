@@ -22,6 +22,7 @@ public static class SqlitePersistence
         });
         services.AddScoped<ITransactionReader, SqliteTransactionReader>();
         services.AddScoped<IDisputeStore, SqliteDisputeStore>();
+        services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         return services;
     }
 

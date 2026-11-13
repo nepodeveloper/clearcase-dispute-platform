@@ -29,6 +29,7 @@ else
     builder.Services.AddSingleton<IDebitOrderMandateReader, UnavailableDebitOrderMandateReader>();
 }
 builder.Services.AddAuthorization();
+builder.AddDebitOrderSimulation();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICustomerContext, HttpCustomerContext>();
 builder.Services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
@@ -97,6 +98,7 @@ if (app.Environment.IsDevelopment())
 app.MapHealthEndpoints();
 app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
+app.MapDebitOrderSimulation();
 
 app.Run();
 
