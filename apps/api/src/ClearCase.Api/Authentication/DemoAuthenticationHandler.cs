@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using ClearCase.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
@@ -12,13 +13,16 @@ public sealed class CompositeAuthenticationHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     IConfiguration configuration,
-    IHostEnvironment environment) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    IHostEnvironment environment,
+    IOptionsMonitor<CookieAuthenticationOptions> cookieOptions) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var applicationResult = await Context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
         if (applicationResult.Succeeded)
             return applicationResult;
+        if (HasApplicationCookie(cookieOptions))
+            return AuthenticateResult.NoResult();
 
         if (!IsDevelopmentCompatibilityEnabled(configuration, environment))
             return AuthenticateResult.NoResult();
@@ -48,5 +52,18 @@ public sealed class CompositeAuthenticationHandler(
         return bool.TryParse(configuration["Authentication:EnableDevelopmentCompatibilityPath"], out var enabled)
             ? enabled
             : true;
+    }
+
+    private bool HasApplicationCookie(IOptionsMonitor<CookieAuthenticationOptions> optionsMonitor)
+    {
+        var cookieName = optionsMonitor.Get(IdentityConstants.ApplicationScheme).Cookie.Name ?? string.Empty;
+        if (cookieName.Length == 0)
+            return false;
+
+        if (Context.Request.Cookies.ContainsKey(cookieName))
+            return true;
+
+        return Context.Request.Headers.Cookie.Any(header =>
+            header.Contains($"{cookieName}=", StringComparison.Ordinal));
     }
 }

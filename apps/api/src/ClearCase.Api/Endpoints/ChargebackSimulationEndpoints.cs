@@ -30,6 +30,7 @@ public static class ChargebackSimulationEndpoints
         if (!SimulationAuthorization.IsEnabled(app.Environment)) return;
         app.MapPost("/api/v1/disputes/{id}/chargeback-simulations", Process)
             .RequireAuthorization("CardNetworkSimulation")
+            .RequireAuthorization(AuthenticationPolicies.CustomerAccess)
             .RequireCsrfProtection()
             .WithName("SimulateChargebackProcessing")
             .WithSummary("Simulate one card chargeback command (Development/Testing only)")

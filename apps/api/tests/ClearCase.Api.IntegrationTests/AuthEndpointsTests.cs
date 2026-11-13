@@ -69,7 +69,9 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     [Fact]
     public async Task Login_InvalidPasswordAndRateLimitAreEnforced()
     {
-        using var client = CreateClient("Testing");
+        await using var isolatedFactory = new SqliteWebApplicationFactory();
+        await isolatedFactory.InitializeAsync();
+        using var client = CreateClient(isolatedFactory, "Testing");
         HttpStatusCode lastStatus = HttpStatusCode.OK;
 
         for (var attempt = 0; attempt < 6; attempt++)
@@ -83,6 +85,28 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         }
 
         Assert.Equal(HttpStatusCode.TooManyRequests, lastStatus);
+    }
+
+    [Fact]
+    public async Task CompatibilityPath_DoesNotFallbackWhenIdentityCookieIsInvalid()
+    {
+        using var client = CreateClient("Testing");
+        client.DefaultRequestHeaders.Add("Cookie", "clearcase.auth=invalid-cookie-value");
+
+        using var response = await client.GetAsync("/api/v1/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompatibilityPath_DoesNotFallbackWhenIdentityCookieIsPresentButEmpty()
+    {
+        using var client = CreateClient("Testing");
+        client.DefaultRequestHeaders.Add("Cookie", "clearcase.auth=");
+
+        using var response = await client.GetAsync("/api/v1/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -129,9 +153,15 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    private HttpClient CreateClient(string environment, bool compatibilityPath = true)
+    private HttpClient CreateClient(string environment, bool compatibilityPath = true) =>
+        CreateClient(_factory, environment, compatibilityPath);
+
+    private static HttpClient CreateClient(
+        SqliteWebApplicationFactory factory,
+        string environment,
+        bool compatibilityPath = true)
     {
-        var factory = _factory.WithWebHostBuilder(builder =>
+        var host = factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment(environment);
             builder.ConfigureAppConfiguration(configuration =>
@@ -142,7 +172,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
                 });
             });
         });
-        return factory.CreateClient();
+        return host.CreateClient();
     }
 
     private static async Task LoginAsync(HttpClient client, string username, string password)

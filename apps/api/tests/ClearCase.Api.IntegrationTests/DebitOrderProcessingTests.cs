@@ -284,6 +284,21 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
     }
 
+    [Fact]
+    public async Task Simulation_RejectsBankEmployeeIdentityBeforeHandlerExecution()
+    {
+        using var host = _app.WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Authentication:EnableDevelopmentCompatibilityPath"] = "false" })));
+        using var client = host.CreateClient();
+        await LoginAsync(client, "agent.demo", "ClearCase!Agent1");
+        client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+
+        using var response = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("Production")]
     [InlineData("Staging")]
@@ -307,6 +322,17 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
     private static async Task AddCsrfTokenAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var token = body.GetProperty("csrfToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", token);
+    }
+
+    private static async Task LoginAsync(HttpClient client, string username, string password)
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { username, password });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = body.GetProperty("csrfToken").GetString();

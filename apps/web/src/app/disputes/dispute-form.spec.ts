@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Dispute } from './dispute-api';
 import { DisputeForm } from './dispute-form';
 import { provideRouter } from '@angular/router';
+import { CsrfSession } from '../csrf-session';
 
 describe('DisputeForm', () => {
   const transactionId = '00000000-0000-0000-0000-000000000001';
@@ -34,7 +35,17 @@ describe('DisputeForm', () => {
   let element: HTMLElement;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        {
+          provide: CsrfSession,
+          useValue: { csrfToken: () => 'csrf-token-from-me' },
+        },
+      ],
+    });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(DisputeForm);
     fixture.componentRef.setInput('transactionId', transactionId);
@@ -74,6 +85,7 @@ describe('DisputeForm', () => {
 
     const request = http.expectOne('/api/v1/disputes');
     expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('X-CSRF-TOKEN')).toBe('csrf-token-from-me');
     expect(request.request.body).toEqual({ transactionId, reasonCode: 'unrecognisedTransaction', description });
     expect((element.querySelector('[data-testid="submit-dispute"]') as HTMLButtonElement).disabled).toBe(true);
     request.flush(created, { status: 201, statusText: 'Created' });
