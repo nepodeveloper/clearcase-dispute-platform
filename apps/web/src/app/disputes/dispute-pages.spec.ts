@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
+import { AuthService } from '../auth/auth-service';
 
 describe('Dispute tracking pages', () => {
   const cases = ['CardPurchase', 'DebitOrder', 'BankCharge'].map((category, index) => ({
@@ -27,11 +28,16 @@ describe('Dispute tracking pages', () => {
   }));
   let http: HttpTestingController;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter(routes)],
     });
     http = TestBed.inject(HttpTestingController);
+    const restored = TestBed.inject(AuthService).restore();
+    http.expectOne('/api/v1/auth/me').flush({
+      username: 'customer.demo', actorType: 'customer', roles: ['Customer'], csrfToken: 'csrf',
+    });
+    await restored;
   });
 
   afterEach(() => http.verify());

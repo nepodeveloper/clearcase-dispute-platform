@@ -22,34 +22,37 @@ public static class SyntheticIdentitySeeder
         new(
             Guid.Parse("33333333-3333-3333-3333-333333333331"),
             "customer.demo",
-            "ClearCase!Customer1",
+            "Customer",
             CustomerRole,
             ActorTypeCustomer,
             DemoCustomerId),
         new(
             Guid.Parse("33333333-3333-3333-3333-333333333332"),
             "customer.other",
-            "ClearCase!Customer2",
+            "OtherCustomer",
             CustomerRole,
             ActorTypeCustomer,
             OtherCustomerId),
         new(
             Guid.Parse("33333333-3333-3333-3333-333333333333"),
             "agent.demo",
-            "ClearCase!Agent1",
+            "Agent",
             AgentRole,
             ActorTypeBankEmployee,
             null),
         new(
             Guid.Parse("33333333-3333-3333-3333-333333333334"),
             "supervisor.demo",
-            "ClearCase!Supervisor1",
+            "Supervisor",
             SupervisorRole,
             ActorTypeBankEmployee,
             null)
     ];
 
-    public static async Task SeedAsync(TransactionDbContext context, CancellationToken cancellationToken)
+    public static async Task SeedAsync(
+        TransactionDbContext context,
+        IReadOnlyDictionary<string, string?> passwords,
+        CancellationToken cancellationToken)
     {
         var hasher = new PasswordHasher<ApplicationUser>();
         await EnsureRolesAsync(context, cancellationToken);
@@ -59,6 +62,14 @@ public static class SyntheticIdentitySeeder
                 item => item.NormalizedUserName == seeded.NormalizedUserName, cancellationToken);
             if (user is null)
             {
+                if (!passwords.TryGetValue(seeded.PasswordSetting, out var password)
+                    || string.IsNullOrWhiteSpace(password) || password.Length < 12
+                    || !password.Any(char.IsUpper) || !password.Any(char.IsLower)
+                    || !password.Any(char.IsDigit) || password.All(char.IsLetterOrDigit))
+                {
+                    throw new InvalidOperationException(
+                        $"Configure Authentication:SeedPasswords:{seeded.PasswordSetting} with a strong local seed password (12+ characters, upper/lowercase, digit and symbol).");
+                }
                 user = new ApplicationUser
                 {
                     Id = seeded.UserId,
@@ -69,15 +80,8 @@ public static class SyntheticIdentitySeeder
                     SecurityStamp = Guid.NewGuid().ToString("N"),
                     ConcurrencyStamp = Guid.NewGuid().ToString("N")
                 };
-                user.PasswordHash = hasher.HashPassword(user, seeded.Password);
+                user.PasswordHash = hasher.HashPassword(user, password);
                 context.Users.Add(user);
-            }
-            else
-            {
-                user.PasswordHash = hasher.HashPassword(user, seeded.Password);
-                user.EmailConfirmed = true;
-                user.LockoutEnabled = true;
-                user.SecurityStamp = Guid.NewGuid().ToString("N");
             }
         }
 
@@ -153,7 +157,7 @@ public static class SyntheticIdentitySeeder
     private sealed record SeededIdentity(
         Guid UserId,
         string UserName,
-        string Password,
+        string PasswordSetting,
         string Role,
         string ActorType,
         Guid? CustomerId)

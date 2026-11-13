@@ -31,6 +31,7 @@ describe('UI demo navigation', () => {
     expect(document.activeElement).toBe(controls[controls.length - 1]);
     controls[controls.length - 1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(root.querySelector<HTMLElement>('.main-column')?.inert).toBe(false);
     expect(document.activeElement).toBe(toggle);

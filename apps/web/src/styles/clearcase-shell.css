@@ -39,6 +39,8 @@ app-root {
   grid-template-columns: 12.5rem minmax(0, 1fr);
 }
 
+.app-frame.signed-out { grid-template-columns: minmax(0, 1fr); }
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -330,7 +332,7 @@ main {
     height: auto;
     transform: translateX(-105%);
     visibility: hidden;
-    transition: transform var(--cc-transition), visibility var(--cc-transition);
+    transition: transform var(--cc-transition);
   }
 
   .sidebar.is-open {

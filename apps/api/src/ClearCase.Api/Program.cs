@@ -139,7 +139,9 @@ if (app.Environment.IsDevelopment())
     var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
     await database.Database.MigrateAsync();
     await SyntheticTransactionSeeder.SeedAsync(database, CancellationToken.None);
-    await SyntheticIdentitySeeder.SeedAsync(database, CancellationToken.None);
+    await SyntheticIdentitySeeder.SeedAsync(database,
+        builder.Configuration.GetSection("Authentication:SeedPasswords").Get<Dictionary<string, string?>>() ?? [],
+        CancellationToken.None);
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();

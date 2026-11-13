@@ -249,6 +249,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         });
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await TestIdentityPasswords.LoginAsync(client);
         await AddCsrfTokenAsync(client);
         using var denied = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
@@ -291,7 +292,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
             builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
                 new Dictionary<string, string?> { ["Authentication:EnableDevelopmentCompatibilityPath"] = "false" })));
         using var client = host.CreateClient();
-        await LoginAsync(client, "agent.demo", "ClearCase!Agent1");
+        await LoginAsync(client, "agent.demo", TestIdentityPasswords.For("agent.demo"));
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
 
         using var response = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });

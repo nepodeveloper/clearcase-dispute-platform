@@ -371,6 +371,8 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
                 services.AddSingleton<TimeProvider>(new FrozenTimeProvider(FixedInstant));
             });
         }).CreateClient();
+        if (environment == "Development")
+            TestIdentityPasswords.LoginAsync(client).GetAwaiter().GetResult();
         if (includeCsrfToken)
             AddCsrfTokenAsync(client).GetAwaiter().GetResult();
 

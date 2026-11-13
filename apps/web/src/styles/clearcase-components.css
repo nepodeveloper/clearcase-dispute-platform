@@ -19,7 +19,7 @@ a { color: var(--cc-brand-strong); text-underline-offset: .18em; }
 .cc-control { width: 100%; min-height: var(--cc-control-height); border: 1px solid var(--cc-border-strong); background: #fff; border-radius: var(--cc-radius-sm); padding: 10px 12px; color: var(--cc-ink-strong); }
 .cc-control:focus { border-color: var(--cc-brand); }
 .cc-form-error { color: var(--cc-danger); font-size: .84rem; }
-.cc-table-scroll { overflow-x: auto; width: 100%; }
+.cc-table-scroll { position: relative; overflow-x: auto; width: 100%; }
 .cc-table { width: 100%; border-collapse: collapse; text-align: left; background: #fff; }
 .cc-table th { font-size: .76rem; letter-spacing: .025em; color: var(--cc-muted); font-weight: 800; background: #f8fafd; }
 .cc-table th, .cc-table td { padding: 14px 16px; border-bottom: 1px solid var(--cc-border); white-space: nowrap; }

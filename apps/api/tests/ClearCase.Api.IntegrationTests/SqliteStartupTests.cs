@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -18,17 +19,35 @@ public sealed class SqliteStartupTests
     public async Task DevelopmentStartup_CreatesMigratesAndRepeatSeedsDatabase()
     {
         var path = NewPath();
+        string? passwordHash = null;
+        string? securityStamp = null;
         try
         {
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 await using var factory = CreateFactory(path, "Development");
                 using var client = factory.CreateClient();
+                using var anonymous = await client.GetAsync("/v1/transactions");
+                Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+                await TestIdentityPasswords.LoginAsync(client);
                 using var response = await client.GetAsync("/v1/transactions?pageSize=100");
                 using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.Equal(30, body.RootElement.GetProperty("totalCount").GetInt32());
+                await using var scope = factory.Services.CreateAsyncScope();
+                var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+                var user = await database.Users.SingleAsync(item => item.UserName == "customer.demo");
+                if (attempt == 0)
+                {
+                    passwordHash = user.PasswordHash;
+                    securityStamp = user.SecurityStamp;
+                }
+                else
+                {
+                    Assert.Equal(passwordHash, user.PasswordHash);
+                    Assert.Equal(securityStamp, user.SecurityStamp);
+                }
             }
 
             var connectionString = new SqliteConnectionStringBuilder
@@ -46,6 +65,47 @@ public sealed class SqliteStartupTests
         {
             DeleteDatabase(path);
         }
+    }
+
+    [Fact]
+    public async Task IdentityReseed_DoesNotResetChangedCredentialsOrLockout()
+    {
+        await using var factory = new SqliteWebApplicationFactory();
+        await factory.InitializeAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var user = await database.Users.SingleAsync(item => item.UserName == "customer.demo");
+        var changedHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ApplicationUser>()
+            .HashPassword(user, TestIdentityPasswords.NewPassword());
+        var stamp = Guid.NewGuid().ToString();
+        user.PasswordHash = changedHash;
+        user.SecurityStamp = stamp;
+        user.AccessFailedCount = 3;
+        await database.SaveChangesAsync();
+
+        await SyntheticIdentitySeeder.SeedAsync(database, new Dictionary<string, string?>(), CancellationToken.None);
+        await database.Entry(user).ReloadAsync();
+
+        Assert.Equal(changedHash, user.PasswordHash);
+        Assert.Equal(stamp, user.SecurityStamp);
+        Assert.Equal(3, user.AccessFailedCount);
+    }
+
+    [Fact]
+    public async Task IdentitySeed_RequiresExplicitPasswordsForMissingUsers()
+    {
+        await using var factory = new SqliteWebApplicationFactory();
+        await factory.InitializeAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        database.Users.Remove(await database.Users.SingleAsync(item => item.UserName == "customer.demo"));
+        await database.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SyntheticIdentitySeeder.SeedAsync(database, new Dictionary<string, string?>(), CancellationToken.None));
+
+        Assert.Contains("Authentication:SeedPasswords:Customer", error.Message);
+        Assert.False(await database.Users.AnyAsync(item => item.UserName == "customer.demo"));
     }
 
     [Fact]
@@ -184,8 +244,16 @@ public sealed class SqliteStartupTests
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment(environment);
-            builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
-                new Dictionary<string, string?> { ["Persistence:DatabasePath"] = path }));
+            builder.ConfigureAppConfiguration(configuration =>
+            {
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Persistence:DatabasePath"] = path,
+                    ["Authentication:EnableDevelopmentCompatibilityPath"] = (environment == "Testing").ToString()
+                });
+                configuration.AddInMemoryCollection(TestIdentityPasswords.Seed.Select(item =>
+                    new KeyValuePair<string, string?>($"Authentication:SeedPasswords:{item.Key}", item.Value)));
+            });
         });
 
     private static string NewPath() =>

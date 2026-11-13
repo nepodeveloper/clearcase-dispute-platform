@@ -334,6 +334,7 @@ public sealed class ChargebackProcessingTests : IAsyncLifetime
         });
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Simulation-Key", _key);
+        await TestIdentityPasswords.LoginAsync(client);
         await AddCsrfTokenAsync(client);
         using var denied = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "Initiate" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);

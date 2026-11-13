@@ -172,6 +172,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     {
         using var host = _app.WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
         using var client = host.CreateClient();
+        await TestIdentityPasswords.LoginAsync(client);
         await AddCsrfTokenAsync(client);
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
         var paths = document.GetProperty("paths");

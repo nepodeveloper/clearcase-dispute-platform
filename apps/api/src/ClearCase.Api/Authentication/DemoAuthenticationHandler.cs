@@ -46,12 +46,11 @@ public sealed class CompositeAuthenticationHandler(
 
     internal static bool IsDevelopmentCompatibilityEnabled(IConfiguration configuration, IHostEnvironment environment)
     {
-        if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
+        if (!environment.IsEnvironment("Testing"))
             return false;
 
         return bool.TryParse(configuration["Authentication:EnableDevelopmentCompatibilityPath"], out var enabled)
-            ? enabled
-            : true;
+            && enabled;
     }
 
     private bool HasApplicationCookie(IOptionsMonitor<CookieAuthenticationOptions> optionsMonitor)

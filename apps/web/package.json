@@ -10,7 +10,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:ci": "ng test --watch=false",
-    "test:e2e": "playwright test"
+    "test:e2e": "node e2e/run-tests.mjs"
   },
   "private": true,
   "packageManager": "npm@11.16.0",

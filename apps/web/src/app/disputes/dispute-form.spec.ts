@@ -1,10 +1,11 @@
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Dispute } from './dispute-api';
 import { DisputeForm } from './dispute-form';
 import { provideRouter } from '@angular/router';
 import { CsrfSession } from '../csrf-session';
+import { sessionInterceptor } from '../auth/session-interceptor';
 
 describe('DisputeForm', () => {
   const transactionId = '00000000-0000-0000-0000-000000000001';
@@ -37,15 +38,12 @@ describe('DisputeForm', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        provideHttpClient(),
+        provideHttpClient(withInterceptors([sessionInterceptor])),
         provideHttpClientTesting(),
         provideRouter([]),
-        {
-          provide: CsrfSession,
-          useValue: { csrfToken: () => 'csrf-token-from-me' },
-        },
       ],
     });
+    TestBed.inject(CsrfSession).update('csrf-token-from-me');
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(DisputeForm);
     fixture.componentRef.setInput('transactionId', transactionId);

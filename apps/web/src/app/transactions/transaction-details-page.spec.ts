@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 import { TransactionDetailsPage } from './transaction-details-page';
 import { TransactionsPage } from './transactions-page';
+import { AuthService } from '../auth/auth-service';
 
 describe('TransactionDetailsPage', () => {
   const id = '00000000-0000-0000-0000-000000000001';
@@ -35,7 +36,7 @@ describe('TransactionDetailsPage', () => {
   };
   let http: HttpTestingController;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -44,6 +45,11 @@ describe('TransactionDetailsPage', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    const restored = TestBed.inject(AuthService).restore();
+    http.expectOne('/api/v1/auth/me').flush({
+      username: 'customer.demo', actorType: 'customer', roles: ['Customer'], csrfToken: 'csrf',
+    });
+    await restored;
   });
 
   afterEach(() => http.verify());

@@ -52,6 +52,7 @@ export class DemoApp {
       this.section.set(typeof route.data['section'] === 'string' ? route.data['section'] : '');
       this.menuOpen.set(false);
       afterNextRender(() => {
+        if (this.menuOpen()) return;
         const main = this.main()?.nativeElement;
         (main?.querySelector<HTMLElement>('h1') ?? main)?.focus();
         window.scrollTo({ top: 0, behavior: 'instant' });
@@ -77,7 +78,7 @@ export class DemoApp {
 
   protected closeMenu(): void {
     this.menuOpen.set(false);
-    this.menuButton()?.nativeElement.focus();
+    afterNextRender(() => this.menuButton()?.nativeElement.focus(), { injector: this.injector });
   }
 
   protected menuKeydown(event: KeyboardEvent): void {

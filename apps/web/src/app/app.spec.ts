@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
+import { AuthService } from './auth/auth-service';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -10,6 +11,11 @@ describe('App', () => {
       imports: [App],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
+    const restore = TestBed.inject(AuthService).restore();
+    TestBed.inject(HttpTestingController).expectOne('/api/v1/auth/me').flush({
+      username: 'customer.demo', actorType: 'customer', roles: ['Customer'], csrfToken: 'csrf',
+    });
+    await restore;
   });
 
   it('should create the app', () => {
@@ -30,7 +36,7 @@ describe('App', () => {
       .toContain('Your disputes');
     expect(compiled.textContent).toContain('Unofficial demo');
     expect(compiled.querySelector('[data-testid="scope-note"]')?.textContent).toContain(
-      'Real customer authentication is not available',
+      'Synthetic data and local assessment accounts only',
     );
   });
 
@@ -57,5 +63,19 @@ describe('App', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(compiled.querySelector('.sidebar')?.classList.contains('is-open')).toBe(false);
     expect(document.activeElement).toBe(toggle);
+  });
+
+  it('shows only operations navigation for an authenticated employee', async () => {
+    const login = TestBed.inject(AuthService).login('agent.demo', 'temporary-input');
+    TestBed.inject(HttpTestingController).expectOne('/api/v1/auth/login').flush({
+      username: 'agent.demo', actorType: 'bankEmployee', roles: ['Agent'], csrfToken: 'agent-csrf',
+    });
+    await login;
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('nav[aria-label="Customer navigation"]')).toBeNull();
+    expect(element.querySelector('a[href="/disputes"]')).toBeNull();
+    expect(element.querySelector('nav[aria-label="Operations navigation"] a[href="/agent/disputes"]')).not.toBeNull();
   });
 });
