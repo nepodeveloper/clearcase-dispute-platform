@@ -92,6 +92,7 @@ test('customer to agent to supervisor journey keeps private notes out of the pub
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('status')).toContainText('created in memory');
   await page.getByRole('button', { name: 'Preview supervisor review' }).click();
+  await expect(page.locator('main h1')).toHaveText(/^Escalation ESC-/);
   await expect(page.locator('.soft-box')).toContainText('Private agent note');
   await expect(page.getByRole('button', { name: 'Resolve demo escalation' })).toBeDisabled();
   await page.getByRole('button', { name: 'Acknowledge demo escalation' }).click();
@@ -121,7 +122,12 @@ test('navigation and primary text colours meet keyboard and contrast requirement
     await expect(drawer.getByRole('button', { name: 'Close navigation' })).toBeFocused();
     await expect(page.locator('.main-column')).toHaveAttribute('inert', '');
     await page.keyboard.press('Shift+Tab');
-    await expect(drawer.getByRole('link', { name: 'Dispute timeline' })).toBeFocused();
+    const active = await page.evaluate(() => ({
+      tag: document.activeElement?.tagName,
+      label: document.activeElement?.getAttribute('aria-label'),
+      text: document.activeElement?.textContent?.trim().slice(0, 80),
+    }));
+    await expect(drawer.getByRole('link', { name: 'Dispute timeline' }), JSON.stringify(active)).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(toggle).toBeFocused();
     await expect(page.locator('.main-column')).not.toHaveAttribute('inert', '');

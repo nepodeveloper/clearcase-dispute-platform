@@ -2,9 +2,9 @@
 
 ClearCase is a starter monorepo for incrementally building a financial dispute management platform. It includes an ASP.NET Core 10 API, an Angular 21 transaction listing, health endpoints, automated tests, and CI.
 
-**Security warning: the transaction listing is a synthetic demo, not real customer authentication.** In Development and Testing, every caller is automatically assigned the same server-configured synthetic customer identity. Do not expose these environments to untrusted users or connect real customer data. Production and other environments reject transaction requests until real authentication is implemented. No real customer information or money movement is involved.
+**Local assessment only:** sign in with an explicitly configured synthetic ASP.NET Core Identity account. Development no longer signs callers in automatically. Do not expose Development/Testing to untrusted users or connect real customer data. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** It does not include real authentication, banking integrations, real financial reversals, Kafka, or AWS. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+**This is an engineering foundation, not a production dispute platform.** Local cookie authentication is implemented, but bank identity-provider integration, MFA, banking integrations, real financial reversals, Kafka and AWS are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
 
 ## Prerequisites
 
@@ -40,8 +40,15 @@ GitHub Actions runs the same backend restore/build/test and frontend clean-insta
 Start the API from the repository root:
 
 ```powershell
+# PowerShell 7: enter strong local-only passwords without putting values in shell history.
+$env:Authentication__SeedPasswords__Customer = Read-Host 'Customer seed password' -MaskInput
+$env:Authentication__SeedPasswords__OtherCustomer = Read-Host 'Second customer seed password' -MaskInput
+$env:Authentication__SeedPasswords__Agent = Read-Host 'Agent seed password' -MaskInput
+$env:Authentication__SeedPasswords__Supervisor = Read-Host 'Supervisor seed password' -MaskInput
 dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
 ```
+
+Passwords require at least 12 characters with uppercase, lowercase, a digit and a symbol. They are required only when creating missing accounts, are hashed in SQLite, and must never be committed or logged. Stop the API and clear these process environment variables when finished. Do not set these variables in the frontend environment.
 
 The launch profile uses Development. On Development startup the API creates the configured data directory, applies the checked-in SQLite migrations, and inserts missing synthetic records. Failures stop startup; existing databases are not deleted or reset. See [SQLite persistence](#sqlite-persistence) before using any non-disposable data.
 
@@ -56,7 +63,7 @@ Open `http://localhost:4200`. The Angular development server proxies `/api` to `
 
 For a manual API smoke check, open `apps/api/ClearCase.Api.http` in VS Code with the REST Client extension, or request the endpoints directly with `curl`.
 
-## Local authentication foundation (PR-12)
+## Local authentication and UI integration (PR-12 / PR-13)
 
 The backend now uses ASP.NET Core Identity with SQLite-backed tables in the same local database as disputes and transactions. Cookie authentication is the primary path:
 
@@ -64,22 +71,34 @@ The backend now uses ASP.NET Core Identity with SQLite-backed tables in the same
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
 
-Development/Testing seed deterministic synthetic users and roles:
+Development seeds deterministic synthetic identities; integration tests explicitly seed isolated SQLite databases with generated, process-local passwords:
 
-| Username | Password | Role | Actor type | Customer mapping |
-| --- | --- | --- | --- | --- |
-| `customer.demo` | `ClearCase!Customer1` | `Customer` | `customer` | `11111111-1111-1111-1111-111111111111` |
-| `customer.other` | `ClearCase!Customer2` | `Customer` | `customer` | `22222222-2222-2222-2222-222222222222` |
-| `agent.demo` | `ClearCase!Agent1` | `Agent` | `bankEmployee` | none |
-| `supervisor.demo` | `ClearCase!Supervisor1` | `Supervisor` | `bankEmployee` | none |
+| Username | Password configuration key under `Authentication:SeedPasswords` | Role | Workspace |
+| --- | --- | --- | --- |
+| `customer.demo` | `Customer` | `Customer` | `/` |
+| `customer.other` | `OtherCustomer` | `Customer` | `/` (isolated second customer) |
+| `agent.demo` | `Agent` | `Agent` | `/agent/disputes` |
+| `supervisor.demo` | `Supervisor` | `Supervisor` | `/agent/escalations` |
 
-`GET /api/v1/auth/me` returns a `csrfToken`. Send that token in `X-CSRF-TOKEN` for every state-changing request (for example dispute submission and simulation commands). Requests without a valid token are rejected with Problem Details (`code: auth.csrfInvalid`).
+Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. Agent and Supervisor workspaces are authenticated placeholders: queue, assignment, investigation and escalation APIs are not implemented.
 
-To preserve the current demo customer journey while the login UI is not yet integrated, Development/Testing retain a temporary compatibility path (`Authentication:EnableDevelopmentCompatibilityPath=true`) that auto-authenticates as the configured demo customer only when no identity cookie is present. Production and non-demo environments never enable this fallback.
+Login and `/auth/me` return `{ username, actorType, roles, customerId, csrfToken }`; staff `customerId` is currently null. Angular restores `/auth/me` before route decisions, keeps identity/CSRF only in memory, and uses the HTTP-only `clearcase.auth` cookie as authority. It does not use localStorage/sessionStorage. Customer routes include `/`, `/transactions/:id`, `/disputes` and `/disputes/:id`; role mismatch goes to `/unauthorized`. Only known, role-appropriate application-relative return URLs are preserved.
+
+The shared interceptor sends `X-CSRF-TOKEN` on same-origin `/api/v1/` and legacy `/v1/` POST/PUT/PATCH/DELETE operations, except initial login. It preserves/provides `X-Correlation-ID`, updates tokens on login/restoration, and clears state on logout or 401. It never adds CSRF to an external origin. Failed logout remains visible and retryable; it is not shown as successful. The server independently validates authorization, ownership and CSRF (`400`, `code: auth.csrfInvalid`). `/auth/me` is non-cacheable. Cookies use SameSite=Strict, HttpOnly authentication and Secure outside local Development/Testing; use HTTPS in deployed environments.
+
+Development compatibility is disabled even if its old flag is set to true. Testing also defaults to false. Only the legacy integration-test factory explicitly opts in with `Authentication:EnableDevelopmentCompatibilityPath=true`; auth/browser tests exercise real cookies. Invalid, empty or expired identity cookies cannot fall back. **Removal plan:** migrate legacy workflow fixtures to explicit test login, then remove the Testing-only compatibility handler and `Demo:CustomerId` override in a separate hardening change.
+
+Seeding does not reset existing password hashes, security stamps or lockout state. **Upgrade from PR-12:** previously published seed passwords must be considered compromised. Changing seed environment variables does not rotate existing accounts. Before running PR-13, recreate only an explicitly disposable demo database using the reset procedure below and seed new passwords; retained data requires an administrator-controlled Identity credential/security-stamp rotation instead. Do not downgrade to the old hardcoded seeder.
+
+### Browser verification
+
+From `apps/web`, run `npm run test:e2e`. The wrapper generates ephemeral credentials, starts owned API/UI servers on 5101/4301/4302, migrates a unique temporary SQLite database, and deletes that database and sidecars after servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, and customer submission with CSRF. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Reports/screenshots are in `apps/web/playwright-report` and `apps/web/test-results` and uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
+
+The separate `npm run start:ui` build remains a clearly labelled, API-free design preview; its role picker is not included in the real application. PR-13 also fixes the preview's mobile table overflow, drawer focus timing, decorative button name and escalation-dialog focus containment without weakening the browser assertions.
 
 ## Transaction listing API
 
-`GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both require authorization and return `401` outside Development and Testing. No customer ID from a request header or query parameter is trusted.
+`GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.
 
 | Parameter | Meaning |
 | --- | --- |
@@ -122,7 +141,7 @@ curl.exe "http://localhost:5100/api/v1/transactions?transactionType=CardPurchase
 
 Amounts are decimal **strings**, not JSON numbers, to preserve exact decimal values across clients; timestamps are UTC ISO 8601. `isDisputable` remains a provisional synthetic display indicator, not an authoritative eligibility decision. A follow-up contract change should derive it from the shared policy or retire it; the detailed eligibility endpoint is authoritative for this PR.
 
-The Development seed inserts 30 fixed, dated transactions across all three types for the demo identity and one record for a second synthetic identity to exercise isolation. IDs and dates are fixed, not random or derived from the current clock. Repeated seeding inserts missing IDs without overwriting existing records. The configured `Demo:CustomerId` is trusted server configuration, present only in Development and Testing settings. The demo authentication handler is not registered in Production or other environments.
+The Development seed inserts 30 fixed, dated transactions across all three types for the demo identity and one record for a second synthetic identity to exercise isolation. IDs and dates are fixed, not random or derived from the current clock. Repeated seeding inserts missing IDs without overwriting existing records. Identity customer mappings match these fixed IDs. `Demo:CustomerId` is used only by explicitly enabled Testing compatibility; other environments cannot use it to authenticate.
 
 ## Transaction details
 
@@ -254,7 +273,7 @@ The policies use deterministic inputs and never read the system clock directly. 
 
 The existing eligibility evaluator now reads `IDebitOrderMandateReader` after the customer-scoped transaction lookup, for debit orders only. Both the GET eligibility query and POST dispute submission use this evaluator; submission reads the mandate again rather than trusting a previous GET. The domain policy stays pure. The reader accepts the trusted customer ID, transaction ID and cancellation token.
 
-Development and Testing use fixed, customer-scoped synthetic snapshots: EFT, Registered Mandate and DebiCheck, status **at collection** (`Active`, `Cancelled`, `Suspended`), authorization, authorized amount/currency and collection date. Unknown records or unavailable fields require investigation; legacy mandate flags stored on transactions are retained for schema compatibility but are **not** a verification fallback. Outside demo environments no banking adapter is configured: the reader returns missing information, never synthetic verification. Production authentication remains disabled.
+Development and Testing use fixed, customer-scoped synthetic snapshots: EFT, Registered Mandate and DebiCheck, status **at collection** (`Active`, `Cancelled`, `Suspended`), authorization, authorized amount/currency and collection date. Unknown records or unavailable fields require investigation; legacy mandate flags stored on transactions are retained for schema compatibility but are **not** a verification fallback. Outside demo environments no banking adapter is configured: the reader returns missing information, never synthetic verification. Production never seeds accounts or enables synthetic auto-login.
 
 This demo assumes exact amount, currency and collection-date matching, not real mandate tolerances or variable-amount rules. A later cancellation is not evidence that a mandate was cancelled at collection. A real source, lifecycle mapping and scheme-specific matching rules require separate confirmation and implementation. Raw mandate records are not exposed in HTTP responses or logged.
 
@@ -627,10 +646,10 @@ npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
 
 ### Other limitations
 
-- The temporary demo identity is not authentication for real customers. Production transaction requests are unauthorized.
+- Local Identity accounts are not a bank identity-provider integration. Production needs controlled account provisioning, HTTPS and operational hardening; no automatic accounts or demo fallback are available.
 - The Angular pages display synthetic data only. Dispute submission creates a case record but no reversal, refund, chargeback, notification, or evidence upload.
-- Dispute submission has no `Idempotency-Key` replay or CSRF protection yet (planned with PR-11 and cookie authentication).
-- SQLite persistence is local-only; production authentication, PostgreSQL, event broker, external banking adapter, cloud resources, and deployment manifests are not included.
+- Dispute submission has CSRF protection but no `Idempotency-Key` replay contract yet; submission/idempotency behavior is unchanged by PR-13.
+- SQLite persistence is local-only; production identity integration, PostgreSQL, event broker, external banking adapter, cloud resources, and deployment manifests are not included.
 - Development CORS permits only the configured local Angular origin. CORS is not enabled outside Development.
 - On 2026-11-12, `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported 16 moderate findings in development tooling; npm's suggested forced fix upgrades Angular CLI to 22, so that breaking upgrade is deferred for a dedicated dependency review.
 

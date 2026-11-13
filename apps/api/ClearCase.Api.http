@@ -7,7 +7,7 @@ Content-Type: application/json
 
 {
   "username": "customer.demo",
-  "password": "ClearCase!Customer1"
+  "password": "{{$processEnv Authentication__SeedPasswords__Customer}}"
 }
 
 ### Refresh current session identity and CSRF token
@@ -187,3 +187,7 @@ X-CSRF-TOKEN: {{csrfToken}}
 
 ### Refresh case status and timeline; approval is not financial confirmation
 GET {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}
+
+### Logout requires the authenticated cookie and current CSRF token
+POST {{baseUrl}}/api/v1/auth/logout
+X-CSRF-TOKEN: {{csrfToken}}

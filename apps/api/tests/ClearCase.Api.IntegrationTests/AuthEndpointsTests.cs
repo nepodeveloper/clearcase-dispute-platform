@@ -1,9 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Security.Claims;
+using ClearCase.Api.Authentication;
+using ClearCase.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace ClearCase.Api.IntegrationTests;
 
@@ -32,7 +41,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     public async Task Login_CustomerIdentityMapsToOwnedTransactions()
     {
         using var client = CreateClient("Testing");
-        await LoginAsync(client, "customer.other", "ClearCase!Customer2");
+        await LoginAsync(client, "customer.other");
 
         using var me = await ReadJson(await client.GetAsync("/api/v1/auth/me"));
         Assert.Equal("22222222-2222-2222-2222-222222222222", me.RootElement.GetProperty("customerId").GetString());
@@ -44,15 +53,14 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     }
 
     [Theory]
-    [InlineData("agent.demo", "ClearCase!Agent1", "Agent")]
-    [InlineData("supervisor.demo", "ClearCase!Supervisor1", "Supervisor")]
+    [InlineData("agent.demo", "Agent")]
+    [InlineData("supervisor.demo", "Supervisor")]
     public async Task Login_BankEmployeeClaimsAndCustomerResourceSeparation(
         string username,
-        string password,
         string expectedRole)
     {
         using var client = CreateClient("Testing");
-        await LoginAsync(client, username, password);
+        await LoginAsync(client, username);
 
         using var meResponse = await client.GetAsync("/api/v1/auth/me");
         using var me = await ReadJson(meResponse);
@@ -113,7 +121,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     public async Task Logout_EndsCookieSession_WhenCompatibilityPathDisabled()
     {
         using var client = CreateClient("Testing", compatibilityPath: false);
-        await LoginAsync(client, "customer.demo", "ClearCase!Customer1");
+        await LoginAsync(client, "customer.demo");
 
         var csrfToken = await ReadCsrfTokenAsync(client);
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
@@ -129,7 +137,8 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     [Fact]
     public async Task StateChangingRequest_WithoutCsrfToken_IsRejected()
     {
-        using var client = CreateClient("Testing");
+        using var client = CreateClient("Testing", compatibilityPath: false);
+        await LoginAsync(client, "customer.demo");
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
 
         using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
@@ -151,6 +160,94 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         using var response = await client.GetAsync("/api/v1/auth/me");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/auth/me")]
+    [InlineData("/api/v1/transactions")]
+    [InlineData("/api/v1/disputes")]
+    public async Task Development_NeverUsesCompatibilityAuthentication(string path)
+    {
+        using var client = CreateClient("Development", compatibilityPath: true);
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LoginToken_ProtectsSubmissionWithoutAnAdditionalMeRequest()
+    {
+        using var client = CreateClient("Testing", compatibilityPath: false);
+        await LoginAsync(client, "customer.demo");
+        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        {
+            transactionId = "00000000-0000-0000-0000-000000000001",
+            reasonCode = "unrecognisedTransaction",
+            description = "Please investigate this synthetic card purchase."
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExpiredIdentityCookie_CannotFallBackToSyntheticAuthentication()
+    {
+        using var host = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
+        using var client = host.CreateClient();
+        var options = host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme);
+        var expired = new AuthenticationTicket(
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "expired")], "cookie")),
+            new AuthenticationProperties { ExpiresUtc = DateTimeOffset.UnixEpoch },
+            IdentityConstants.ApplicationScheme);
+        client.DefaultRequestHeaders.Add("Cookie", $"clearcase.auth={options.TicketDataFormat.Protect(expired)}");
+
+        using var response = await client.GetAsync("/api/v1/transactions");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("customer.demo", false)]
+    [InlineData("agent.demo", false)]
+    [InlineData("supervisor.demo", true)]
+    public async Task SupervisorPolicy_UsesAuthenticatedIdentityRoles(string username, bool allowed)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var manager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var signIn = scope.ServiceProvider.GetRequiredService<SignInManager<ApplicationUser>>();
+        var user = await manager.FindByNameAsync(username);
+        var principal = await signIn.CreateUserPrincipalAsync(user!);
+
+        var result = await scope.ServiceProvider.GetRequiredService<IAuthorizationService>()
+            .AuthorizeAsync(principal, null, AuthenticationPolicies.SupervisorAccess);
+
+        Assert.Equal(allowed, result.Succeeded);
+    }
+
+    [Fact]
+    public async Task CookieCustomer_CannotReadAnotherCustomersRecords_AndMeIsNotCached()
+    {
+        using var owner = CreateClient("Testing", compatibilityPath: false);
+        await LoginAsync(owner, "customer.demo");
+        using var created = await owner.PostAsJsonAsync("/api/v1/disputes", new
+        {
+            transactionId = "00000000-0000-0000-0000-000000000006",
+            reasonCode = "incorrectFee",
+            description = "Please investigate this synthetic account fee."
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var body = await ReadJson(created);
+        var caseId = body.RootElement.GetProperty("id").GetGuid();
+        using var client = CreateClient("Testing", compatibilityPath: false);
+        await LoginAsync(client, "customer.other");
+        using var forbiddenRecord = await client.GetAsync("/api/v1/transactions/00000000-0000-0000-0000-000000000001");
+        using var me = await client.GetAsync("/api/v1/auth/me");
+        using var forbiddenCase = await client.GetAsync($"/api/v1/disputes/{caseId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, forbiddenRecord.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, forbiddenCase.StatusCode);
+        Assert.True(me.Headers.CacheControl?.NoStore);
     }
 
     private HttpClient CreateClient(string environment, bool compatibilityPath = true) =>
@@ -175,8 +272,9 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         return host.CreateClient();
     }
 
-    private static async Task LoginAsync(HttpClient client, string username, string password)
+    private static async Task LoginAsync(HttpClient client, string username)
     {
+        var password = TestIdentityPasswords.For(username);
         using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { username, password });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var csrfToken = (await ReadJson(response)).RootElement.GetProperty("csrfToken").GetString();

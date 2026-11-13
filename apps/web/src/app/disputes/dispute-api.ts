@@ -1,7 +1,6 @@
-import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { TransactionType } from '../transactions/transaction-api';
-import { CsrfSession } from '../csrf-session';
 
 export type DisputeCaseStatus = 'Submitted' | 'ManualReview' | 'Closed'
   | 'UnderReview' | 'MandateVerified' | 'ReversalRequested' | 'ReversalConfirmed' | 'Rejected';
@@ -73,12 +72,9 @@ export function disputeQueryError(error: unknown, resource: 'dispute' | 'dispute
 @Injectable({ providedIn: 'root' })
 export class DisputeApi {
   private readonly http = inject(HttpClient);
-  private readonly csrfSession = inject(CsrfSession);
 
   submit(request: CreateDisputeRequest) {
-    const csrfToken = this.csrfSession.csrfToken();
-    const headers = csrfToken === null ? undefined : new HttpHeaders({ 'X-CSRF-TOKEN': csrfToken });
-    return this.http.post<Dispute>('/api/v1/disputes', request, { headers });
+    return this.http.post<Dispute>('/api/v1/disputes', request);
   }
 
   get(id: string) {

@@ -14,6 +14,7 @@ public static class AuthEndpoints
         app.MapPost("/api/v1/auth/login", Login)
             .WithName("Login")
             .WithSummary("Sign in with a synthetic local user")
+            .WithDescription("Sets the HTTP-only session cookie and returns identity, backend roles and a CSRF token. No CSRF token is required for this initial request.")
             .Accepts<LoginRequest>("application/json")
             .Produces<AuthSessionResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -24,6 +25,7 @@ public static class AuthEndpoints
         app.MapPost("/api/v1/auth/logout", Logout)
             .WithName("Logout")
             .WithSummary("Sign out and invalidate the current session")
+            .WithDescription("Requires the session cookie and X-CSRF-TOKEN. Clears the browser session cookie; clients must clear their in-memory session and CSRF token.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -33,6 +35,7 @@ public static class AuthEndpoints
         app.MapGet("/api/v1/auth/me", Me)
             .WithName("CurrentPrincipal")
             .WithSummary("Return the authenticated identity and role claims")
+            .WithDescription("Restores the cookie session and returns a fresh CSRF token. Responses must not be cached. Anonymous or expired sessions receive 401.")
             .Produces<AuthSessionResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .RequireAuthorization();
@@ -97,6 +100,7 @@ public static class AuthEndpoints
 
     private static Ok<AuthSessionResponse> Me(HttpContext context, IAntiforgery antiforgery)
     {
+        context.Response.Headers.CacheControl = "private, no-store";
         var csrfToken = antiforgery.GetAndStoreTokens(context).RequestToken
                         ?? throw new InvalidOperationException("Anti-forgery token generation failed.");
         return TypedResults.Ok(AuthSessionResponse.From(context.User, csrfToken));

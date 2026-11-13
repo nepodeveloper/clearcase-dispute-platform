@@ -16,7 +16,7 @@ import { DemoHeading, DemoMoney, DemoStatus, transactionTypeLabel } from './shar
       <cc-demo-heading title="Case investigation" [description]="item.reference + ' \u00b7 ' + item.customerName + ' \u00b7 ' + typeLabel(item.type)">
         <a back class="back" routerLink="/agent/disputes">&larr; Back to agent queue</a>
         <button #escalateButton class="cc-button cc-button--primary" type="button" (click)="openDialog()"
-          [disabled]="item.caseStatus === 'Resolved' || activeEscalation() !== undefined">&nearr; Escalate case</button>
+          [disabled]="item.caseStatus === 'Resolved' || activeEscalation() !== undefined"><span aria-hidden="true">&nearr;</span> Escalate case</button>
       </cc-demo-heading>
       @if (confirmation()) { <p class="notice" role="status">{{ confirmation() }}</p> }
       <div class="split-grid unequal">
@@ -65,7 +65,8 @@ import { DemoHeading, DemoMoney, DemoStatus, transactionTypeLabel } from './shar
           </aside>
         </div>
       </div>
-      <dialog #escalationDialog class="demo-dialog" aria-labelledby="escalation-heading" (close)="dialogClosed()">
+      <dialog #escalationDialog class="demo-dialog" aria-labelledby="escalation-heading"
+        (keydown)="dialogKeydown($event)" (close)="dialogClosed()">
         @if (dialogOpen()) {
           <cc-demo-escalation-form [caseId]="id()" (cancelled)="closeDialog()" (completed)="escalated($event)" />
         }
@@ -107,6 +108,17 @@ export class DemoInvestigationPage {
   }
 
   protected closeDialog(): void { this.dialog()?.nativeElement.close(); }
+
+  protected dialogKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Tab') return;
+    const controls = this.dialog()?.nativeElement.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), select:not(:disabled), textarea:not(:disabled)');
+    if (controls === undefined || controls.length === 0) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
 
   protected dialogClosed(): void {
     this.dialogOpen.set(false);

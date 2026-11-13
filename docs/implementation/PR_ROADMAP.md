@@ -2,6 +2,8 @@
 
 This is the execution plan, **not** a claim that the features already exist. All 21 PRs must remain independently mergeable and green. Current baseline is the `card-dispute-portal-starter` (.NET single API project, Angular frontend, SQLite, unversioned `/api` routes). Target is the v2 design.
 
+> Assignment override (2026-11-13): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, and assigned PR-13 is authentication UI integration. See [PR-13 delivery](PR-13-auth-integration.md). The original financial-reliability sequence below remains proposed, not implemented or authorized by this assignment. PR-14 has not started.
+
 ## Release cut lines
 
 - **Demo A (after PR-05):** current transaction journey maintained, versioned API, local SQLite, CI.

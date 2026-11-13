@@ -24,7 +24,7 @@ import { DEMO_HOME, DemoRole, DemoSession } from './demo-session';
         </div>
         <div class="cc-field">
           <label for="login-password">Password <span class="field-hint">(demo only)</span></label>
-          <input id="login-password" class="cc-control" type="password" value="previewonly" readonly autocomplete="off">
+          <input id="login-password" class="cc-control" type="password" placeholder="Not used in this preview" readonly autocomplete="off">
         </div>
         <div class="form-row">
           <label class="checkbox"><input type="checkbox" disabled> Remember this device</label>

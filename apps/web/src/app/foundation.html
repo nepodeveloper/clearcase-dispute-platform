@@ -1,16 +1,18 @@
 <div class="announcement-bar">Unofficial assessment concept · Synthetic demo data</div>
 <a class="skip-link" href="#main-content">Skip to main content</a>
-<div class="app-frame">
+<div class="app-frame" [class.signed-out]="auth.user() === null">
+  @if (auth.user()) {
   <aside class="sidebar" [class.is-open]="mobileNavigationOpen()">
-    <a class="brand" routerLink="/" aria-label="ClearCase home" (click)="closeMobileNavigation()">
+    <a class="brand" [routerLink]="home()" aria-label="ClearCase home" (click)="closeMobileNavigation()">
       <span class="brand-mark" aria-hidden="true">C</span>
       <span class="brand-name">
         <strong>{{ title() }}</strong>
         <small>Dispute management</small>
       </span>
     </a>
-    <p class="nav-group-label">Customer journeys</p>
-    <nav id="customer-navigation" aria-label="Customer navigation">
+    <p class="nav-group-label">{{ customer() ? 'Customer journeys' : 'Operations workspace' }}</p>
+    <nav id="customer-navigation" [attr.aria-label]="customer() ? 'Customer navigation' : 'Operations navigation'">
+      @if (customer()) {
       <a #firstCustomerLink routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
          ariaCurrentWhenActive="page" (click)="closeMobileNavigation()">
         <span class="nav-icon" aria-hidden="true">▦</span> Transactions
@@ -19,12 +21,17 @@
          (click)="closeMobileNavigation()">
         <span class="nav-icon" aria-hidden="true">▤</span> Your disputes
       </a>
+      } @else {
+        <a #firstCustomerLink [routerLink]="home()" routerLinkActive="active" ariaCurrentWhenActive="page"
+          (click)="closeMobileNavigation()">Your workspace</a>
+      }
     </nav>
     <div class="sidebar-note">
       <strong>Concept only</strong>
       <p>Inspired by public Capitec visual cues. Not an official Capitec interface.</p>
     </div>
   </aside>
+  }
 
   @if (mobileNavigationOpen()) {
     <button class="navigation-backdrop" type="button" aria-label="Close navigation"
@@ -33,6 +40,7 @@
 
   <div class="main-column">
     <header class="utility-header">
+      @if (auth.user()) {
       <button class="mobile-menu-toggle" type="button"
               #mobileMenuToggle
               [attr.aria-label]="mobileNavigationOpen() ? 'Close navigation' : 'Open navigation'"
@@ -40,26 +48,31 @@
               (click)="toggleMobileNavigation()">
         <span class="menu-icon" aria-hidden="true"></span>
       </button>
+      }
       <nav class="breadcrumbs" aria-label="Breadcrumb">
         <ol>
-          <li><a routerLink="/">ClearCase</a></li>
-          <li aria-current="page">Customer portal</li>
+          <li><a [routerLink]="home()">ClearCase</a></li>
+          <li aria-current="page">{{ customer() ? 'Customer portal' : 'Secure access' }}</li>
         </ol>
       </nav>
       <div class="user-tools">
         <span class="environment-label">Unofficial demo</span>
-        <span class="user-avatar" aria-hidden="true">TN</span>
-        <span class="demo-user">Demo user</span>
+        @if (auth.user(); as user) {
+          <span class="demo-user">{{ user.username }}</span>
+          <button class="cc-button cc-button--secondary" type="button" (click)="logout()" [disabled]="auth.loading()">Sign out</button>
+        }
       </div>
     </header>
 
     <main id="main-content">
+      @if (auth.user() === null && auth.loading()) { <p role="status">Checking your session...</p> }
+      @if (auth.user() && auth.error()) { <p class="cc-form-error" role="alert">{{ auth.error() }}</p> }
       <router-outlet />
     </main>
     <footer class="app-footer">
       <div class="scope-note" data-testid="scope-note">
         <span class="scope-indicator" aria-hidden="true"></span>
-        <p>ClearCase · Demo data only. Real customer authentication is not available, and submitted disputes never move money.</p>
+        <p>ClearCase · Synthetic data and local assessment accounts only. Submitted disputes never move money.</p>
       </div>
     </footer>
   </div>
