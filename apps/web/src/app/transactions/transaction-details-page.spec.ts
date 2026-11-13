@@ -99,12 +99,33 @@ describe('TransactionDetailsPage', () => {
       explanation: 'This card transaction is still a pending authorization.',
       availableReasons: [],
     });
+
     harness.detectChanges();
 
     const text = harness.routeNativeElement?.textContent ?? '';
     expect(text).toContain('Currently ineligible.');
     expect(text).toContain('This card transaction is still a pending authorization.');
     expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+  });
+
+  it('keeps the investigation form available when ordinary DebiCheck reversal is ineligible', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);
+    http.expectOne(`/api/v1/transactions/${id}`).flush({ ...transaction, transactionType: 'DebitOrder' });
+    http.expectOne(`/api/v1/transactions/${id}/dispute-eligibility`).flush({
+      ...eligibility,
+      outcome: 'RequiresManualReview',
+      ordinaryReversalOutcome: 'Ineligible',
+      reviewRoute: 'Investigation',
+      explanation: 'Ordinary reversal is unavailable. Disputed authorisation requires investigation.',
+      availableReasons: [{ code: 'unauthorisedDebitOrder', label: 'I did not authorise this debit order' }],
+    });
+    harness.detectChanges();
+
+    const text = harness.routeNativeElement?.textContent ?? '';
+    expect(text).toContain('Disputed authorisation requires investigation.');
+    expect(text).toContain('I did not authorise this debit order');
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).not.toBeNull();
   });
 
   it('shows eligibility loading and error states and retries the check', async () => {

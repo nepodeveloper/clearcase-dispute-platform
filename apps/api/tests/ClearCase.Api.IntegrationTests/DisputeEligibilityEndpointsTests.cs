@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using ClearCase.Application.DisputeEligibility;
+using ClearCase.Domain.Transactions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -44,6 +45,8 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
         Assert.Equal("This transaction can be submitted for review.", result.GetProperty("explanation").GetString());
         Assert.Equal("demo-v1", result.GetProperty("policyVersion").GetString());
         Assert.Equal("2026-11-12T10:00:00+00:00", result.GetProperty("evaluatedAt").GetString());
+        Assert.False(result.TryGetProperty("ordinaryReversalOutcome", out _));
+        Assert.False(result.TryGetProperty("reviewRoute", out _));
         Assert.True(response.Headers.CacheControl?.Private);
         Assert.True(response.Headers.CacheControl?.NoStore);
     }
@@ -53,6 +56,7 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
     [InlineData(BankChargeId, "EligibleToSubmit")]
     [InlineData(PendingCardId, "Ineligible")]
     [InlineData(HighAmountDebitOrderId, "RequiresManualReview")]
+    [InlineData("00000000-0000-0000-0000-000000000014", "EligibleToSubmit")]
     public async Task Get_SelectsCategoryPolicyAndReturnsDecisionAsSuccess(string transactionId, string outcome)
     {
         using var client = CreateClient();
@@ -62,6 +66,45 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(outcome, body.RootElement.GetProperty("outcome").GetString());
+    }
+
+    [Fact]
+    public async Task Get_ValidDebiCheck_BlocksOrdinaryReversalButOffersInvestigation()
+    {
+        using var client = CreateClient();
+        using var response = await client.GetAsync(
+            "/api/v1/transactions/00000000-0000-0000-0000-000000000011/dispute-eligibility");
+        using var body = await ReadJson(response);
+        var result = body.RootElement;
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("RequiresManualReview", result.GetProperty("outcome").GetString());
+        Assert.Equal("Ineligible", result.GetProperty("ordinaryReversalOutcome").GetString());
+        Assert.Equal("Investigation", result.GetProperty("reviewRoute").GetString());
+        Assert.Equal("proposed-debit-order-2026-04-13-v2", result.GetProperty("policyVersion").GetString());
+        Assert.Contains(result.GetProperty("availableReasons").EnumerateArray(),
+            reason => reason.GetProperty("code").GetString() == "unauthorisedDebitOrder");
+        Assert.False(result.TryGetProperty("mandate", out _));
+    }
+
+    [Theory]
+    [InlineData("000000000008", "debitOrder.collectionInformationMissing")]
+    [InlineData("000000000017", "debitOrder.unauthorisedCollection")]
+    [InlineData("000000000020", "debitOrder.mandateNotActive")]
+    [InlineData("000000000023", "debitOrder.mandateMismatch")]
+    public async Task Get_UnverifiedMandate_RequiresInvestigation(string suffix, string reasonCode)
+    {
+        using var client = CreateClient();
+        using var response = await client.GetAsync(
+            $"/v1/transactions/00000000-0000-0000-0000-{suffix}/dispute-eligibility");
+        using var body = await ReadJson(response);
+        var result = body.RootElement;
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("RequiresManualReview", result.GetProperty("outcome").GetString());
+        Assert.Equal("Investigation", result.GetProperty("reviewRoute").GetString());
+        Assert.Contains(result.GetProperty("reasonCodes").EnumerateArray(),
+            reason => reason.GetString() == reasonCode);
     }
 
     [Fact]
@@ -83,7 +126,7 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
     [Fact]
     public async Task Get_OtherCustomerAndUnknownTransaction_ReturnSameNotFoundProblem()
     {
-        using var client = CreateClient();
+        using var client = CreateClient(mandateReader: new RejectingMandateReader());
         using var otherRequest = new HttpRequestMessage(HttpMethod.Get,
             $"/v1/transactions/{OtherCustomerId}/dispute-eligibility");
         otherRequest.Headers.Add("X-Customer-ID", "22222222-2222-2222-2222-222222222222");
@@ -152,9 +195,13 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("404", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("500", out _));
+        var properties = body.RootElement.GetProperty("components").GetProperty("schemas")
+            .GetProperty("TransactionDisputeEligibilityResponse").GetProperty("properties");
+        Assert.True(properties.TryGetProperty("ordinaryReversalOutcome", out _));
+        Assert.True(properties.TryGetProperty("reviewRoute", out _));
     }
 
-    private HttpClient CreateClient(string environment = "Testing") =>
+    private HttpClient CreateClient(string environment = "Testing", IDebitOrderMandateReader? mandateReader = null) =>
         _factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment(environment);
@@ -162,6 +209,11 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
             {
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(new FrozenTimeProvider(FixedInstant));
+                if (mandateReader is not null)
+                {
+                    services.RemoveAll<IDebitOrderMandateReader>();
+                    services.AddSingleton(mandateReader);
+                }
             });
         }).CreateClient();
 
@@ -171,5 +223,12 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
     private sealed class FrozenTimeProvider(DateTimeOffset instant) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => instant;
+    }
+
+    private sealed class RejectingMandateReader : IDebitOrderMandateReader
+    {
+        public Task<DebitOrderMandate?> ReadAsync(
+            Guid customerId, Guid transactionId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Mandates must not be read before transaction ownership is established.");
     }
 }

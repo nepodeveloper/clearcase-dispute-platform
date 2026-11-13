@@ -46,6 +46,8 @@ export interface TransactionDisputeEligibility {
   policyVersion: string;
   evaluatedAt: string;
   availableReasons: DisputeReason[];
+  ordinaryReversalOutcome?: DisputeEligibilityOutcome;
+  reviewRoute?: 'Investigation';
 }
 
 export interface TransactionQuery {

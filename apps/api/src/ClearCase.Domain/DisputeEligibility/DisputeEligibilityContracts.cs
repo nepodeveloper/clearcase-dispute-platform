@@ -9,16 +9,27 @@ public enum DisputeEligibilityOutcome
     Ineligible
 }
 
+public enum DisputeReviewRoute
+{
+    Investigation
+}
+
 public sealed record DisputeEligibilityResult(
     DisputeEligibilityOutcome Outcome,
     IReadOnlyList<string> ReasonCodes,
     string Explanation,
     string PolicyVersion,
-    DateTimeOffset EvaluatedAt);
+    DateTimeOffset EvaluatedAt)
+{
+    public DisputeEligibilityOutcome? OrdinaryReversalOutcome { get; init; }
+
+    public DisputeReviewRoute? ReviewRoute { get; init; }
+}
 
 public sealed record DisputeEligibilityContext(
     DateTimeOffset EvaluatedAt,
-    DisputeEligibilityPolicySettings Settings);
+    DisputeEligibilityPolicySettings Settings,
+    string? PolicyVersion = null);
 
 public interface IDisputeEligibilityPolicy
 {
@@ -51,6 +62,8 @@ public sealed class CardEligibilitySettings
 
 public sealed class DebitOrderEligibilitySettings
 {
+    public string? PolicyVersion { get; init; }
+
     public DateOnly EffectiveFrom { get; init; }
 
     public DateOnly? EffectiveTo { get; init; }
@@ -72,7 +85,8 @@ internal static class EligibilityResult
         DisputeEligibilityContext context,
         string explanation,
         params string[] reasonCodes) =>
-        new(outcome, reasonCodes, explanation, context.Settings.PolicyVersion, context.EvaluatedAt);
+        new(outcome, reasonCodes, explanation,
+            context.PolicyVersion ?? context.Settings.PolicyVersion, context.EvaluatedAt);
 
     public static DisputeEligibilityResult Eligible(DisputeEligibilityContext context) =>
         Create(DisputeEligibilityOutcome.EligibleToSubmit, context,

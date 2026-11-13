@@ -33,4 +33,5 @@ public sealed record DisputeTransaction(
     DateOnly? CollectionDate,
     DebitOrderMandateType? MandateType,
     bool? MandateAuthorised,
-    bool? MandateMatchesCollection);
+    bool? MandateMatchesCollection,
+    DebitOrderMandate? VerifiedMandate = null);
