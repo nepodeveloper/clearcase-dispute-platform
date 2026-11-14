@@ -17,8 +17,26 @@ public static class DebitOrderSimulationEndpoints
     {
         if (!SimulationAuthorization.IsEnabled(builder.Environment)) return;
         builder.Services.AddScoped<IDebitOrderProcessingHandler, DebitOrderProcessingHandler>();
-        builder.Services.AddSingleton<IDebitOrderProcessingGateway>(new MockDebitOrderProcessingGateway());
+        var outcome = ReadOutcome(builder.Configuration, "Simulation:DebitOrderOutcome",
+            DebitOrderGatewayOutcome.Confirmed);
+        var reconciliationOutcome = ReadOutcome(builder.Configuration, "Simulation:DebitOrderStatus",
+            DebitOrderGatewayOutcome.Unknown);
+        builder.Services.AddSingleton<IDebitOrderProcessingGateway>(provider =>
+            new ResilientDebitOrderProcessingGateway(new MockDebitOrderProcessingGateway(outcome, reconciliationOutcome),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<ResilientDebitOrderProcessingGateway>>()));
         SimulationAuthorization.AddPolicy(builder, "DebitOrderSimulation", "Simulation:DebitOrderKey");
+    }
+
+    private static DebitOrderGatewayOutcome ReadOutcome(
+        IConfiguration configuration, string key, DebitOrderGatewayOutcome defaultValue)
+    {
+        var value = configuration[key];
+        if (value is null)
+            return defaultValue;
+        if (Enum.TryParse<DebitOrderGatewayOutcome>(value, out var outcome) && Enum.IsDefined(outcome))
+            return outcome;
+        throw new InvalidOperationException($"{key} must be a supported debit-order gateway outcome.");
     }
 
     public static void MapDebitOrderSimulation(this WebApplication app)
@@ -31,8 +49,9 @@ public static class DebitOrderSimulationEndpoints
             .WithName("SimulateDebitOrderProcessing")
             .WithSummary("Simulate one debit-order processing command (local demo only)")
             .WithDescription("Requires authentication and the server-configured X-Simulation-Key. "
-                + "Commands: StartReview, VerifyMandate, CompleteInvestigation, RequestReversal, ExecuteReversal, Reject, Close. "
-                + "No real money moves. Unknown outcomes cannot be retried. Include the current expectedVersion "
+                + "Commands: StartReview, VerifyMandate, CompleteInvestigation, RequestReversal, ExecuteReversal, "
+                + "ReconcileReversal, Reject, Close. ReconcileReversal queries the original stable operation reference "
+                + "and never submits another reversal. No real money moves. Include the current expectedVersion "
                 + "from the dispute representation to reject stale updates.")
             .Produces<DisputeResponse>()
             .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)

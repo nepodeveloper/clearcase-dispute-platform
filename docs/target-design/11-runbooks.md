@@ -11,9 +11,9 @@
 ## RB-02 — Unknown financial reversal outcome
 
 **Trigger:** External bank call timed out or transport disconnected after command submission.  
-**Actions:** Freeze automatic new-reference retries; set operation `outcomeUnknown`; query bank ledger by original immutable reference; compare amount, customer, currency and transaction; update only on authoritative match. Escalate mismatches, customer impact and deadline.  
+**Actions:** Freeze reversal submission retries; keep operation `outcomeUnknown`; query the original immutable reference (local demo: `ReconcileReversal`; production: authoritative bank ledger); compare amount, customer, currency and transaction; update only on authoritative match. Escalate mismatches, customer impact and deadline.
 **Closure:** `confirmed`, `rejected`, or documented manual exception with audited evidence.  
-**Don't:** mark reversed on HTTP 200 or time elapsed alone.
+**Don't:** issue another reversal with a new reference, mark reversed on HTTP 200 or time elapsed alone.
 
 ## RB-03 — Database outage
 

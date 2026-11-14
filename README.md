@@ -154,6 +154,12 @@ Kafka is opt-in for local development; normal API operation continues to use the
 
 Events are partitioned by dispute ID and carry the same stable event ID across retries. The consumer disables automatic offset commits and commits only after its SQLite inbox/effect transaction completes. `(ConsumerName, EventId)` is unique; a replay after database commit but before offset commit is acknowledged without repeating the local effect. This is at-least-once delivery with deduplicated local processing, not exactly-once external financial execution. The inbox records a local event-acceptance effect only; customer notifications and production broker operations are not implemented. See [the AsyncAPI event contract](docs/target-design/asyncapi.yaml). The broker could not be exercised in this environment because Docker is unavailable; SQLite replay and envelope/partition-key tests run without it.
 
+## Debit reversal recovery (PR-19)
+
+If the simulated debit-order reversal returns `OutcomeUnknown`, keep the case at `ReversalRequested` with financial status `OutcomeUnknown`; do not issue `ExecuteReversal` again. Use the existing Development/Testing-only debit-order simulation route with `ReconcileReversal`. It queries the original `MOCK-DO-{caseId}` operation reference; `Unknown` leaves the financial status pending, while only authoritative `Confirmed` or `Failed` status changes it. Every reconciliation result is versioned and appended to the timeline/outbox.
+
+The gateway wrapper never automatically retries reversal submission. Status reads use at most three retries with exponential backoff and jitter; repeated timeouts open a 15-second, per-process circuit breaker and return `Unknown` without issuing another operation. To demonstrate timeout-after-remote-success locally, set `Simulation__DebitOrderOutcome=Unknown` and `Simulation__DebitOrderStatus=Confirmed` before starting the API; reset both to their defaults after the demo. These are deterministic local simulations, not a production bank integration. No schema migration is required for PR-19.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.
@@ -563,6 +569,7 @@ timeline; it has no processing controls.
 | `CompleteInvestigation` | `UnderReview`; explicit simulated investigation, fresh eligible mandate/policy | `MandateVerified`; never overrides missing/mismatched data, valid DebiCheck exclusion or enhanced-review policy |
 | `RequestReversal` | `MandateVerified`; recheck current eligibility | `ReversalRequested` / decision `Approved` / financial `Requested`, durable `MOCK-DO-{caseId}` operation reference |
 | `ExecuteReversal` | `ReversalRequested` / financial `Requested`; recheck current eligibility | Mock `Confirmed`: `ReversalConfirmed` / financial `Confirmed`; mock `Failed` or `Unknown`: remain `ReversalRequested` / financial `Failed` or `OutcomeUnknown` |
+| `ReconcileReversal` | `ReversalRequested` / financial `OutcomeUnknown` | Query the same `MOCK-DO-{caseId}` reference; remain unknown or record its authoritative confirmed/failed result; never send another reversal |
 | `Reject` | `UnderReview`, `MandateVerified`, or a definitively failed simulated reversal | `Rejected` / decision `Rejected`; no financial confirmation |
 | `Close` | `Rejected` or `ReversalConfirmed` only | `Closed`, preserving decision and financial outcome |
 
@@ -579,14 +586,14 @@ return 400 `debitOrder.invalidCommand` with `/command` field errors. Missing/ina
 confirmed). Tests inject its failed/unknown outcomes. Approval never confirms funds. SQLite acquires
 the writer lock **before** reading processing state, and commits case updates, the unique operation
 reference and each `DisputeEvent` together. Racing requests serialize; a committed gateway outcome
-cannot be executed again, including after restart. Unknown outcomes cannot be retried, rejected or
-closed by this interface; reconciliation is deferred to PR-15.
+cannot be executed again, including after restart. An unknown outcome cannot be executed, rejected
+or closed; `ReconcileReversal` queries the same stable reference until the result is authoritative.
 
 This transaction boundary is safe **only because the mock has no external side effects**. A database
 rollback can recompute the pure mock using the same reference; it cannot move money twice. Never
 replace it with an external banking call inside this transaction. Case events now persist in the
-transactional outbox and are dispatched to the local logging publisher; Kafka delivery and external
-financial recovery remain later roadmap work.
+transactional outbox and are dispatched to the local publisher; Kafka transport is available as an
+opt-in development adapter. No real bank integration or external money movement is implemented.
 
 **Migration / rollback:** `AddDebitOrderOperationReference` adds one nullable column and unique index.
 Existing cases/events are preserved. Development applies it on startup; other environments require

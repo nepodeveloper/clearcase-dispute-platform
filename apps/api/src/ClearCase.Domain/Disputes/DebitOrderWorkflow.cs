@@ -2,7 +2,7 @@ namespace ClearCase.Domain.Disputes;
 
 public enum DebitOrderCommand
 {
-    StartReview, VerifyMandate, CompleteInvestigation, RequestReversal, ExecuteReversal, Reject, Close
+    StartReview, VerifyMandate, CompleteInvestigation, RequestReversal, ExecuteReversal, ReconcileReversal, Reject, Close
 }
 
 public enum DebitOrderGatewayOutcome { Confirmed, Failed, Unknown }
@@ -56,6 +56,23 @@ public sealed record DebitOrderState(
                 "The mock gateway declined the reversal. No reversal is confirmed."),
             DebitOrderGatewayOutcome.Unknown => new(this with { Financial = DisputeFinancialStatus.OutcomeUnknown },
                 "The simulated reversal outcome is unknown. Investigation is required; do not retry."),
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+    }
+
+    public DebitOrderTransition ReconcileReversal(DebitOrderGatewayOutcome outcome)
+    {
+        if (Case != DisputeCaseStatus.ReversalRequested || Financial != DisputeFinancialStatus.OutcomeUnknown)
+            throw new InvalidDebitOrderTransitionException();
+        return outcome switch
+        {
+            DebitOrderGatewayOutcome.Confirmed => new(this with {
+                Case = DisputeCaseStatus.ReversalConfirmed, Financial = DisputeFinancialStatus.Confirmed },
+                "The original reversal reference was authoritatively confirmed. No new reversal was submitted."),
+            DebitOrderGatewayOutcome.Failed => new(this with { Financial = DisputeFinancialStatus.Failed },
+                "The original reversal reference was authoritatively declined. No new reversal was submitted."),
+            DebitOrderGatewayOutcome.Unknown => new(this,
+                "The original reversal outcome remains unknown. No new reversal was submitted."),
             _ => throw new ArgumentOutOfRangeException(nameof(outcome))
         };
     }

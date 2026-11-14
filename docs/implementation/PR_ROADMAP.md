@@ -277,13 +277,13 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Outcome:** Recover from external timeouts without submitting duplicate financial operations.
 
-**Allowed implementation:** Stable operationId, mock adapter query/status endpoint, `OutcomeUnknown`, bounded exponential retry+jitter, circuit breaker and manual recovery; reconcile confirmed result; failure simulation tests.
+**Allowed implementation:** Query the stable mock reversal reference using `ReconcileReversal`; leave status unknown until authoritative; bounded exponential-jitter retry for safe status queries; circuit-break a degraded adapter; never retry the reversal submission. No real bank integration.
 
 **Acceptance:**
-- [ ] Timeout after remote success does not cause second reversal
-- [ ] Status remains pending/unknown until confirmed
-- [ ] Circuit breaker protects degraded dependency
-- [ ] Recovery runbook and failure tests
+- [x] Timeout after remote success does not cause second reversal
+- [x] Status remains pending/unknown until confirmed
+- [x] Circuit breaker protects degraded dependency
+- [x] Recovery runbook and failure tests
 
 **Not in scope:** No real financial movement or infinite retry loops.
 

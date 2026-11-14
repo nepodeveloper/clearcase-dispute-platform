@@ -9,6 +9,9 @@ namespace ClearCase.Application.Disputes;
 public interface IDebitOrderProcessingGateway
 {
     Task<DebitOrderGatewayOutcome> ReverseAsync(string operationReference, CancellationToken cancellationToken);
+
+    Task<DebitOrderGatewayOutcome> GetReversalStatusAsync(
+        string operationReference, CancellationToken cancellationToken);
 }
 
 public interface IDebitOrderProcessingStore
@@ -36,12 +39,20 @@ public sealed class DebitOrderProcessingHandler(
         {
             if (dispute.Category != TransactionCategory.DebitOrder)
                 throw new InvalidDebitOrderTransitionException();
+            var state = new DebitOrderState(dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus);
+            if (command == DebitOrderCommand.ReconcileReversal)
+            {
+                var reference = dispute.ReversalOperationReference
+                    ?? throw new InvalidOperationException("A requested reversal must have an operation reference.");
+                return state.ReconcileReversal(
+                    await gateway.GetReversalStatusAsync(reference, cancellationToken));
+            }
+
             var transaction = await transactions.ReadForEligibilityAsync(
                 customer.CustomerId, dispute.TransactionId, cancellationToken);
             var eligible = transaction is not null
                 && (await evaluator.EvaluateAsync(customer.CustomerId, transaction, cancellationToken)).Outcome
                     == DisputeEligibilityOutcome.EligibleToSubmit;
-            var state = new DebitOrderState(dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus);
             var transition = state.Apply(command, eligible, dispute.ReasonCode != "duplicateCollection");
             if (command == DebitOrderCommand.ExecuteReversal)
             {
