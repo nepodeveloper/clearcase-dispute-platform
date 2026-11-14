@@ -231,7 +231,7 @@ components:
             format: uuid
     Dispute:
       type: object
-      required: [id, transactionId, type, caseStatus, financialStatus, createdAt]
+      required: [id, transactionId, type, caseStatus, financialStatus, createdAt, version]
       additionalProperties: false
       properties:
         id:
@@ -249,6 +249,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        version:
+          type: integer
+          format: int64
+          minimum: 1
     TimelineEvent:
       type: object
       required: [id, sequenceNo, status, occurredAt]

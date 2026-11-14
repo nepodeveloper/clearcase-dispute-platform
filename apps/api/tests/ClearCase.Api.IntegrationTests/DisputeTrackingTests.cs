@@ -79,6 +79,74 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData(1, "duplicateCharge", "chargeback-simulations", "Initiate", "ForwardToAcquirer")]
+    [InlineData(2, "duplicateCollection", "debit-order-simulations", "StartReview", "VerifyMandate")]
+    [InlineData(3, "incorrectFee", "bank-charge-simulations", "StartReview", "Approve")]
+    public async Task Transition_WithStaleExpectedVersion_ReturnsConflictWithoutChangingCaseOrTimeline(
+        int transaction, string reason, string route, string firstCommand, string staleCommand)
+    {
+        using var client = Client();
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", "outbox-correlation");
+        var id = (await Submit(client, transaction, reason)).GetProperty("id").GetGuid();
+        var simulationRoute = $"/api/v1/disputes/{id}/{route}";
+        using var first = await client.PostAsJsonAsync(simulationRoute,
+            new { command = firstCommand, expectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, firstBody.GetProperty("version").GetInt64());
+
+        using var stale = await client.PostAsJsonAsync(simulationRoute,
+            new { command = staleCommand, expectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var problem = await stale.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("dispute.concurrencyConflict", problem.GetProperty("code").GetString());
+
+        var current = await client.GetFromJsonAsync<JsonElement>($"/api/v1/disputes/{id}");
+        Assert.Equal(2, current.GetProperty("version").GetInt64());
+        Assert.Equal("Pending", current.GetProperty("decisionStatus").GetString());
+        Assert.Equal(2, current.GetProperty("timeline").GetArrayLength());
+        using var scope = _app.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var eventVersions = await database.OutboxMessages.AsNoTracking()
+            .Where(item => item.AggregateId == id)
+            .OrderBy(item => item.AggregateVersion)
+            .Select(item => item.AggregateVersion)
+            .ToArrayAsync();
+        Assert.Equal(new long[] { 1, 2 }, eventVersions);
+        var correlations = await database.OutboxMessages.AsNoTracking()
+            .Where(item => item.AggregateId == id)
+            .Select(item => item.CorrelationId)
+            .ToArrayAsync();
+        Assert.All(correlations, correlation => Assert.Equal("outbox-correlation", correlation));
+    }
+
+    [Fact]
+    public async Task BankTransition_ConcurrentCommandsWithSameVersion_OnlyOneCommits()
+    {
+        using var client = Client();
+        var id = (await Submit(client, 3, "incorrectFee")).GetProperty("id").GetGuid();
+        var responses = await Task.WhenAll(
+            client.PostAsJsonAsync(Route(id), new { command = "StartReview", expectedVersion = 1 }),
+            client.PostAsJsonAsync(Route(id), new { command = "StartReview", expectedVersion = 1 }));
+
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+            var conflict = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+            var problem = await conflict.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("dispute.concurrencyConflict", problem.GetProperty("code").GetString());
+
+            var current = await client.GetFromJsonAsync<JsonElement>($"/api/v1/disputes/{id}");
+            Assert.Equal(2, current.GetProperty("version").GetInt64());
+            Assert.Equal(2, current.GetProperty("timeline").GetArrayLength());
+        }
+        finally
+        {
+            foreach (var response in responses) response.Dispose();
+        }
+    }
+
     [Fact]
     public async Task BankRejection_CannotRequestOrConfirmAdjustment()
     {
@@ -135,6 +203,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         await Command(client, id, "Approve", "UnderReview", "Approved", "NotInitiated");
         using var scope = _app.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var outboxCountBeforeFailure = await database.OutboxMessages.CountAsync(item => item.AggregateId == id);
         await database.Database.ExecuteSqlRawAsync("""
             CREATE TRIGGER "TR_Test_FailFeeEvent" BEFORE INSERT ON "DisputeEvents"
             BEGIN SELECT RAISE(ABORT, 'simulated timeline failure'); END;
@@ -145,6 +214,8 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         Assert.Null(stored.BankChargeAdjustmentReference);
         Assert.Equal(DisputeFinancialStatus.NotInitiated, stored.FinancialStatus);
         Assert.Equal(3, await database.DisputeEvents.CountAsync(item => item.DisputeId == id));
+        Assert.Equal(outboxCountBeforeFailure,
+            await database.OutboxMessages.CountAsync(item => item.AggregateId == id));
     }
 
     [Fact]

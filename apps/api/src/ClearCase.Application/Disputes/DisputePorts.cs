@@ -18,7 +18,8 @@ public sealed record DisputeView(
     IReadOnlyList<DisputeEvent> Timeline,
     string? ReversalOperationReference = null,
     Chargeback? Chargeback = null,
-    string? BankChargeAdjustmentReference = null)
+    string? BankChargeAdjustmentReference = null,
+    long Version = 1)
 {
     public static DisputeView From(Dispute dispute) =>
         new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,
@@ -38,6 +39,8 @@ public sealed record DisputeSubmission(string IdempotencyKey, string RequestFing
 
 public sealed record StoredDisputeSubmission(Guid DisputeId, string RequestFingerprint);
 
+public sealed class DisputeConcurrencyConflictException : Exception { }
+
 /// <summary>Persistence port for dispute cases; every read is scoped to the owning customer.</summary>
 public interface IDisputeStore
 {
@@ -46,7 +49,8 @@ public interface IDisputeStore
     Task<bool> HasOpenDisputeAsync(Guid customerId, Guid transactionId, CancellationToken cancellationToken);
 
     /// <summary>Atomically stores the case, its timeline and any submission key; constraint conflicts are reported, not thrown.</summary>
-    Task<DisputeAddResult> AddAsync(Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken);
+    Task<DisputeAddResult> AddAsync(Dispute dispute, DisputeSubmission? submission,
+        CancellationToken cancellationToken, OutboxMetadata? outboxMetadata = null);
 
     Task<StoredDisputeSubmission?> FindSubmissionAsync(
         Guid customerId, string idempotencyKey, CancellationToken cancellationToken);

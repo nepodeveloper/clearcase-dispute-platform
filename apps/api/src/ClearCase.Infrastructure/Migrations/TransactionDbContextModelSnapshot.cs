@@ -239,6 +239,12 @@ namespace ClearCase.Infrastructure.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1L);
+
                     b.HasKey("Id");
 
                     b.HasIndex("BankChargeAdjustmentReference")
@@ -321,6 +327,52 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasIndex("DisputeId");
 
                     b.ToTable("DisputeSubmissions", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("AggregateVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EventVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("PublishedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("AggregateId", "AggregateVersion")
+                        .IsUnique();
+
+                    b.HasIndex("PublishedAt", "OccurredAt");
+
+                    b.ToTable("OutboxMessages", (string)null);
                 });
 
             modelBuilder.Entity("ClearCase.Infrastructure.Transactions.PersistedTransaction", b =>
@@ -560,6 +612,15 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
                         .WithMany()
                         .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
+                        .HasForeignKey("AggregateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

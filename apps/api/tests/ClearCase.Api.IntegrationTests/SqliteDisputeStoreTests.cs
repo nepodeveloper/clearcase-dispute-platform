@@ -34,6 +34,12 @@ public sealed class SqliteDisputeStoreTests
         Assert.Equal(DisputeDecisionStatus.Pending, stored.DecisionStatus);
         Assert.Equal(DisputeFinancialStatus.NotInitiated, stored.FinancialStatus);
         Assert.Equal(SubmittedAt, stored.CreatedAt);
+        Assert.Equal(1, stored.Version);
+        var outbox = await restarted.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(dispute.Id, outbox.AggregateId);
+        Assert.Equal(1, outbox.AggregateVersion);
+        Assert.Equal("dispute.submitted.v1", outbox.EventType);
+        Assert.Null(outbox.PublishedAt);
         var initialEvent = Assert.Single(stored.Timeline);
         Assert.Equal(1, initialEvent.SequenceNumber);
         Assert.Equal(Dispute.SubmittedEventType, initialEvent.EventType);
@@ -59,6 +65,7 @@ public sealed class SqliteDisputeStoreTests
         await using var verify = database.CreateContext();
         Assert.Equal(0, await verify.Disputes.CountAsync());
         Assert.Equal(0, await verify.DisputeEvents.CountAsync());
+        Assert.Equal(0, await verify.OutboxMessages.CountAsync());
     }
 
     [Fact]
@@ -167,12 +174,14 @@ public sealed class SqliteDisputeStoreTests
             """);
 
         await migrator.MigrateAsync();
+        Assert.Equal(1, await context.Disputes.Where(item => item.Id == id).Select(item => item.Version).SingleAsync());
         await migrator.MigrateAsync(previousMigration);
         await migrator.MigrateAsync();
 
         var stored = await new SqliteDisputeStore(context).ReadAsync(DemoCustomer, id, default);
         Assert.NotNull(stored);
         Assert.Equal("DSP-LEGACY", stored.Reference);
+        Assert.Equal(1, stored.Version);
         Assert.Null(stored.ReversalOperationReference);
         Assert.Equal(eventId, Assert.Single(stored.Timeline).Id);
         await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>

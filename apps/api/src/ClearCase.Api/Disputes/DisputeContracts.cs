@@ -20,6 +20,7 @@ public sealed record DisputeResponse(
     string DecisionStatus,
     string FinancialStatus,
     DateTimeOffset CreatedAt,
+    long Version,
     string StatusDescription,
     IReadOnlyList<DisputeTimelineEventResponse> Timeline,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ChargebackResponse? Chargeback = null)
@@ -27,7 +28,7 @@ public sealed record DisputeResponse(
     public static DisputeResponse From(DisputeView view) =>
         new(view.Id, view.Reference, view.TransactionId, view.Category.ToString(), view.ReasonCode,
             view.Description, view.CaseStatus.ToString(), view.DecisionStatus.ToString(),
-            view.FinancialStatus.ToString(), view.CreatedAt,
+            view.FinancialStatus.ToString(), view.CreatedAt, view.Version,
             DescribeStatus(view.CaseStatus, view.DecisionStatus, view.FinancialStatus),
             view.Timeline.Select(DisputeTimelineEventResponse.From).ToArray(),
             view.Chargeback is { } chargeback ? ChargebackResponse.From(chargeback) : null);

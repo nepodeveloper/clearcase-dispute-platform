@@ -26,6 +26,7 @@ internal static class DisputePersistenceModel
         dispute.Property(item => item.FinancialStatus).HasConversion<string>().IsRequired();
         dispute.Property(item => item.EligibilityOutcome).HasConversion<string>().IsRequired();
         dispute.Property(item => item.EligibilityPolicyVersion).IsRequired();
+        dispute.Property(item => item.Version).HasDefaultValue(1L).IsConcurrencyToken();
         dispute.Property(item => item.CreatedAt).HasConversion(
             value => value.UtcTicks,
             value => new DateTimeOffset(value, TimeSpan.Zero));
@@ -84,6 +85,7 @@ public sealed class PersistedDispute
     public DisputeFinancialStatus FinancialStatus { get; set; }
     public DisputeEligibilityOutcome EligibilityOutcome { get; set; }
     public string EligibilityPolicyVersion { get; set; } = string.Empty;
+    public long Version { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public string? ReversalOperationReference { get; set; }
     public string? BankChargeAdjustmentReference { get; set; }

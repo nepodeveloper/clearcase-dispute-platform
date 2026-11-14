@@ -8,7 +8,8 @@ using ClearCase.Domain.Disputes;
 namespace ClearCase.Application.Disputes;
 
 public sealed record SubmitDisputeCommand(
-    Guid TransactionId, string ReasonCode, string Description, string? IdempotencyKey = null)
+    Guid TransactionId, string ReasonCode, string Description, string? IdempotencyKey = null,
+    string? CorrelationId = null)
 {
     /// <summary>SHA-256 of the canonical normalized payload; detects key reuse with a different request.</summary>
     public string Fingerprint() => Convert.ToHexString(SHA256.HashData(
@@ -68,7 +69,8 @@ public sealed class SubmitDisputeHandler(
         var dispute = Dispute.Submit(
             Guid.NewGuid(), NewReference(), customerId, transaction,
             command.ReasonCode, command.Description, eligibility, Guid.NewGuid());
-        return await disputeStore.AddAsync(dispute, submission, cancellationToken) == DisputeAddResult.Added
+        return await disputeStore.AddAsync(dispute, submission, cancellationToken,
+            new OutboxMetadata(command.CorrelationId ?? "local")) == DisputeAddResult.Added
             ? new SubmitDisputeResult.Created(DisputeView.From(dispute))
             : await ConflictAsync(customerId, submission, cancellationToken);
     }

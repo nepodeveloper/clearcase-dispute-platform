@@ -2,7 +2,7 @@ asyncapi: '3.0.0'
 info:
   title: ClearCase domain event catalogue
   version: 1.0.0
-  description: Conceptual Kafka contract draft. Not an implemented broker deployment.
+  description: Versioned dispute event contract. PR-17 implements durable local outbox dispatch; Kafka transport is deferred to PR-18.
 servers:
   localKafka:
     host: localhost:9092
@@ -13,6 +13,8 @@ channels:
     messages:
       caseSubmitted:
         $ref: '#/components/messages/DisputeSubmitted'
+      caseTransitioned:
+        $ref: '#/components/messages/DisputeTransitioned'
   financialOperationEvents:
     address: disputes.operations.v1
     messages:
@@ -25,6 +27,12 @@ operations:
       $ref: '#/channels/disputeCaseEvents'
     messages:
       - $ref: '#/channels/disputeCaseEvents/messages/caseSubmitted'
+  publishDisputeTransitioned:
+    action: send
+    channel:
+      $ref: '#/channels/disputeCaseEvents'
+    messages:
+      - $ref: '#/channels/disputeCaseEvents/messages/caseTransitioned'
   publishReversalRequested:
     action: send
     channel:
@@ -50,6 +58,12 @@ components:
     DisputeSubmitted:
       name: DisputeSubmitted
       title: Dispute Submitted
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EventEnvelope'
+    DisputeTransitioned:
+      name: DisputeTransitioned
+      title: Dispute case state transitioned
       contentType: application/json
       payload:
         $ref: '#/components/schemas/EventEnvelope'

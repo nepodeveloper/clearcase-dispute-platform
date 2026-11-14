@@ -227,15 +227,15 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 ### PR-16 — Optimistic concurrency and immutable history
 
-**Outcome:** Make case transitions race-safe and timeline/audit records append-only.
+**Outcome:** Make case transitions race-safe with a persisted version and retain append-only timeline/audit records.
 
-**Allowed implementation:** Version column/row guard, service-level transition transaction, immutable timeline sequence with actor/time/reason/correlation; integration tests for racing updates.
+**Allowed implementation:** SQLite `Version` concurrency token and `expectedVersion` guard on local simulation commands; map stale writes to 409 `dispute.concurrencyConflict`; keep case, version, timeline and existing audit records atomic. PostgreSQL remains deferred.
 
 **Acceptance:**
-- [ ] Stale update fails safely
-- [ ] History is append-only
-- [ ] No state change without its timeline/audit entry
-- [ ] Authorized user required
+- [x] Stale update fails safely
+- [x] History is append-only
+- [x] No state change without its timeline/audit entry
+- [x] Authorized user required
 
 **Not in scope:** No broker/outbox yet; avoid dual-writing to an external service.
 
@@ -245,13 +245,13 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Outcome:** Persist event intent atomically with dispute status and timeline; publish via testable local dispatcher.
 
-**Allowed implementation:** Outbox table with eventId, aggregateId, version, payload, occurredAt, publishedAt, attempts; background publisher interface; crash/retry tests before Kafka.
+**Allowed implementation:** SQLite outbox with stable event IDs, aggregate/event versions, customer-safe payload and correlation ID; commit with each submission/transition; local background publisher; retry the same event ID until acknowledgement. Kafka is PR-18.
 
 **Acceptance:**
-- [ ] Case+timeline+outbox commit or roll back together
-- [ ] Unpublished events survive process restart
-- [ ] No event claimed published until acknowledgement
-- [ ] Replay test
+- [x] Case+timeline+outbox commit or roll back together
+- [x] Unpublished events survive process restart
+- [x] No event claimed published until acknowledgement
+- [x] Replay test
 
 **Not in scope:** No dependency on production Kafka cluster.
 

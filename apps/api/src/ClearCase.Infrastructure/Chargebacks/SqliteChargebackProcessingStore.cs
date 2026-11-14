@@ -18,6 +18,8 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var current = await disputes.ReadAsync(customerId, command.DisputeId, cancellationToken);
         if (current is null) return null;
+        if (command.ExpectedVersion is { } expected && current.Version != expected)
+            throw new DisputeConcurrencyConflictException();
         var next = await transition(current);
         var item = await context.Disputes.Include(item => item.Chargeback).SingleAsync(
             item => item.Id == command.DisputeId && item.CustomerId == customerId, cancellationToken);
@@ -26,12 +28,16 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
         item.CaseStatus = next.CaseStatus;
         item.DecisionStatus = next.DecisionStatus;
         item.FinancialStatus = next.FinancialStatus;
+        item.Version = checked(item.Version + 1);
         context.DisputeEvents.Add(new PersistedDisputeEvent
         {
             Id = Guid.NewGuid(), DisputeId = item.Id, SequenceNumber = current.Timeline.Max(entry => entry.SequenceNumber) + 1,
             EventType = $"Chargeback{command.Command}", CaseStatus = item.CaseStatus,
             PublicDescription = next.Description, OccurredAt = occurredAt
         });
+        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
+            item, command.Command.ToString(), occurredAt, "dispute.chargeback-transitioned.v1",
+            command.CorrelationId));
         context.ChargebackAuditEvents.Add(new ChargebackAuditEvent
         {
             Id = Guid.NewGuid(), DisputeId = item.Id, OperationReference = next.Chargeback.OperationReference(command.Command),
@@ -40,7 +46,14 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
             Outcome = next.Chargeback.LastOperationOutcome, ActorId = customerId, CorrelationId = command.CorrelationId,
             EvidenceId = next.Chargeback.Evidence?.Id, EvidenceKind = next.Chargeback.Evidence?.Kind, OccurredAt = occurredAt
         });
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DisputeConcurrencyConflictException();
+        }
         var updated = await disputes.ReadAsync(customerId, command.DisputeId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;

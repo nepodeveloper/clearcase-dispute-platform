@@ -1,4 +1,5 @@
 using ClearCase.Api.Endpoints;
+using ClearCase.Api.Disputes;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Api.Authentication;
@@ -99,6 +100,8 @@ builder.Services.AddScoped<IListDisputesHandler, ListDisputesHandler>();
 builder.Services.AddTransactionPersistence(
     builder.Environment.ContentRootPath, builder.Environment.WebRootPath,
     builder.Environment.IsDevelopment());
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<OutboxPublisherBackgroundService>();
 var eligibilitySettings = builder.Configuration.GetSection("DisputeEligibility")
     .Get<DisputeEligibilityPolicySettings>()
     ?? throw new InvalidOperationException("DisputeEligibility configuration is required.");
