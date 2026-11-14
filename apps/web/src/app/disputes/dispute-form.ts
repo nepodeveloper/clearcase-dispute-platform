@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { DisputeReason } from '../transactions/transaction-api';
-import { Dispute, DisputeApi } from './dispute-api';
+import { CreateDisputeRequest, Dispute, DisputeApi } from './dispute-api';
 
 type SubmissionState =
   | { kind: 'editing' }
@@ -31,6 +31,7 @@ export class DisputeForm {
   protected readonly state = signal<SubmissionState>({ kind: 'editing' });
   protected readonly serverErrors = signal<Partial<Record<'reasonCode' | 'description', string>>>({});
   protected readonly maxLength = descriptionMaxLength;
+  private submission: { payload: string; key: string } | null = null;
   protected readonly form = inject(NonNullableFormBuilder).group({
     reasonCode: ['', Validators.required],
     description: ['', [
@@ -54,7 +55,8 @@ export class DisputeForm {
     if (this.form.invalid) return;
 
     this.state.set({ kind: 'submitting' });
-    this.api.submit({ transactionId: this.transactionId(), reasonCode: value.reasonCode, description })
+    const request = { transactionId: this.transactionId(), reasonCode: value.reasonCode, description };
+    this.api.submit(request, this.idempotencyKeyFor(request))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (dispute) => {
@@ -62,6 +64,9 @@ export class DisputeForm {
           void this.router.navigate(['/disputes', dispute.id]);
         },
         error: (error: unknown) => {
+          if (error instanceof HttpErrorResponse && error.error?.code === 'dispute.idempotencyKeyReused') {
+            this.submission = null;
+          }
           this.readFieldErrors(error);
           this.state.set({ kind: 'error', message: this.errorMessage(error) });
         },
@@ -71,6 +76,15 @@ export class DisputeForm {
   protected showError(control: 'reasonCode' | 'description'): boolean {
     const field = this.form.controls[control];
     return (field.invalid && field.touched) || this.serverErrors()[control] !== undefined;
+  }
+
+  // Retrying an unchanged draft reuses its key so the server can replay instead of duplicating.
+  private idempotencyKeyFor(request: CreateDisputeRequest): string {
+    const payload = JSON.stringify(request);
+    if (this.submission === null || this.submission.payload !== payload) {
+      this.submission = { payload, key: crypto.randomUUID() };
+    }
+    return this.submission.key;
   }
 
   private readFieldErrors(error: unknown): void {
@@ -92,7 +106,9 @@ export class DisputeForm {
     const detail: unknown = error.error?.detail;
     switch (error.status) {
       case 409:
-        return 'This transaction already has an open dispute.';
+        return error.error?.code === 'dispute.idempotencyKeyReused'
+          ? 'This submission could not be matched to your earlier request. Please submit again.'
+          : 'This transaction already has an open dispute.';
       case 422:
         return typeof detail === 'string' && detail !== ''
           ? detail

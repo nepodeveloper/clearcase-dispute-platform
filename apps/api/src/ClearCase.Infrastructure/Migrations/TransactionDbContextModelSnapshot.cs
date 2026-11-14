@@ -297,6 +297,32 @@ namespace ClearCase.Infrastructure.Migrations
                     b.ToTable("DisputeEvents", (string)null);
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeSubmission", b =>
+                {
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CustomerId", "IdempotencyKey");
+
+                    b.HasIndex("DisputeId");
+
+                    b.ToTable("DisputeSubmissions", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Transactions.PersistedTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -524,6 +550,15 @@ namespace ClearCase.Infrastructure.Migrations
                 {
                     b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
                         .WithMany("Events")
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeSubmission", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
                         .HasForeignKey("DisputeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

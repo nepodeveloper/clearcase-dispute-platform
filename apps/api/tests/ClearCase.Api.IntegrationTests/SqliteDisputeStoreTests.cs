@@ -62,6 +62,38 @@ public sealed class SqliteDisputeStoreTests
     }
 
     [Fact]
+    public async Task Add_WithSubmissionKey_CommitsOrRollsBackKeyWithTheCase()
+    {
+        await using var database = await SeededDatabase();
+        var submission = new DisputeSubmission("retry-key-1", "fingerprint");
+        await using (var context = database.CreateContext())
+            await context.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER "TR_Test_FailEventInsert" BEFORE INSERT ON "DisputeEvents"
+                BEGIN SELECT RAISE(ABORT, 'simulated timeline failure'); END;
+                """);
+        await using (var context = database.CreateContext())
+            await Assert.ThrowsAsync<DbUpdateException>(() => new SqliteDisputeStore(context)
+                .AddAsync(NewDispute(DisputeEligibilityOutcome.EligibleToSubmit), submission, default));
+        await using (var context = database.CreateContext())
+        {
+            Assert.Equal(0, await context.DisputeSubmissions.CountAsync());
+            await context.Database.ExecuteSqlRawAsync("DROP TRIGGER \"TR_Test_FailEventInsert\"");
+        }
+
+        var dispute = NewDispute(DisputeEligibilityOutcome.EligibleToSubmit);
+        await using (var context = database.CreateContext())
+            Assert.Equal(DisputeAddResult.Added,
+                await new SqliteDisputeStore(context).AddAsync(dispute, submission, default));
+
+        await using var verify = database.CreateContext();
+        var store = new SqliteDisputeStore(verify);
+        Assert.Equal(new StoredDisputeSubmission(dispute.Id, "fingerprint"),
+            await store.FindSubmissionAsync(DemoCustomer, "retry-key-1", default));
+        Assert.Null(await store.FindSubmissionAsync(OtherCustomer, "retry-key-1", default));
+        Assert.Null(await store.FindSubmissionAsync(DemoCustomer, "RETRY-KEY-1", default));
+    }
+
+    [Fact]
     public async Task Add_SecondOpenCaseForSameTransaction_IsRejectedByDatabaseConstraint()
     {
         await using var database = await SeededDatabase();

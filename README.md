@@ -123,6 +123,21 @@ The additional `customer-desktop` and `customer-mobile` Playwright projects use 
 
 No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. Full idempotency-key replay, staff workflows and real financial processing remain deferred, not implied by the UI.
 
+## Submission idempotency (PR-15)
+
+`POST /api/v1/disputes` accepts an optional `Idempotency-Key` header (1-128 visible ASCII characters, scoped to the signed-in customer). See [ADR 0004](docs/adr/0004-submission-idempotency.md).
+
+| Request | Response |
+| --- | --- |
+| New key | `201`, case created; key stored atomically with the case and timeline |
+| Same key, same normalized payload | `201`, original case (current state), `Idempotent-Replayed: true`; no new case |
+| Same key, different payload | `409 dispute.idempotencyKeyReused` |
+| Different key, transaction already has an open case | `409 dispute.activeCaseExists` (unchanged) |
+| No key | Previous behavior (unchanged) |
+| Malformed key | `400 dispute.invalidRequest`, pointer `/headers/Idempotency-Key` |
+
+The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry and making the header mandatory are deferred.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.

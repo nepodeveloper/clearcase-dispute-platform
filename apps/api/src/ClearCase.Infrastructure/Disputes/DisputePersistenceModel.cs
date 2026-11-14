@@ -10,6 +10,7 @@ namespace ClearCase.Infrastructure.Disputes;
 internal static class DisputePersistenceModel
 {
     public const string OpenDisputeIndex = "IX_Disputes_CustomerId_TransactionId_Open";
+    public const int IdempotencyKeyMaxLength = 128;
 
     public static void Configure(ModelBuilder modelBuilder)
     {
@@ -54,6 +55,18 @@ internal static class DisputePersistenceModel
             value => value.UtcTicks,
             value => new DateTimeOffset(value, TimeSpan.Zero));
         disputeEvent.HasIndex(item => new { item.DisputeId, item.SequenceNumber }).IsUnique();
+
+        var submission = modelBuilder.Entity<PersistedDisputeSubmission>();
+        submission.ToTable("DisputeSubmissions");
+        submission.HasKey(item => new { item.CustomerId, item.IdempotencyKey });
+        submission.Property(item => item.IdempotencyKey).HasMaxLength(IdempotencyKeyMaxLength);
+        submission.Property(item => item.RequestFingerprint).IsRequired();
+        submission.Property(item => item.CreatedAt).HasConversion(
+            value => value.UtcTicks,
+            value => new DateTimeOffset(value, TimeSpan.Zero));
+        submission.HasOne<PersistedDispute>().WithMany()
+            .HasForeignKey(item => item.DisputeId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -88,4 +101,13 @@ public sealed class PersistedDisputeEvent
     public DisputeCaseStatus CaseStatus { get; set; }
     public string PublicDescription { get; set; } = string.Empty;
     public DateTimeOffset OccurredAt { get; set; }
+}
+
+public sealed class PersistedDisputeSubmission
+{
+    public Guid CustomerId { get; set; }
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public string RequestFingerprint { get; set; } = string.Empty;
+    public Guid DisputeId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

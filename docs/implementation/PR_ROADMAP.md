@@ -2,15 +2,15 @@
 
 This is the execution plan, **not** a claim that the features already exist. All 21 PRs must remain independently mergeable and green. Current baseline is the `card-dispute-portal-starter` (.NET single API project, Angular frontend, SQLite, unversioned `/api` routes). Target is the v2 design.
 
-> Assignment override (2026-11-14): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, and PR-13 is authentication UI integration. See [PR-13 delivery](PR-13-auth-integration.md). Assigned **PR-14 is Customer Portal Integration**, using existing APIs, SQLite and the shared theme; see [customer journey](../../README.md#connected-customer-journey-pr-14). The original financial-reliability sequence below remains proposed, not implemented or authorized by this assignment. PR-14 does not add Kafka or idempotency-key replay. PR-15 has not started.
+> Assignment override (2026-11-14): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, PR-13 is authentication UI integration ([delivery](PR-13-auth-integration.md)) and PR-14 is Customer Portal Integration ([customer journey](../../README.md#connected-customer-journey-pr-14)). The original PR-11 to PR-21 were therefore **renumbered PR-15 to PR-25**; tables, headings and tickets below use the new numbers. PR-15 (submission idempotency) is implemented; PR-16 onward remain proposed.
 
 ## Release cut lines
 
 - **Demo A (after PR-05):** current transaction journey maintained, versioned API, local SQLite, CI.
 - **Demo B (after PR-10):** all three supported dispute types simulated with truthful case/finance statuses and timelines.
-- **Demo C (after PR-15):** idempotency, crash recovery, outbox/Kafka, reconciliation evidenced by tests.
-- **Demo D (after PR-19):** security, evidence and operational tests.
-- **Submission candidate (after PR-21):** reproducible deployment blueprint and verified walkthrough.
+- **Demo C (after PR-19):** idempotency, crash recovery, outbox/Kafka, reconciliation evidenced by tests.
+- **Demo D (after PR-23):** security, evidence and operational tests.
+- **Submission candidate (after PR-25):** reproducible deployment blueprint and verified walkthrough.
 
 ## PR table
 
@@ -26,26 +26,26 @@ This is the execution plan, **not** a claim that the features already exist. All
 | Batch 02 | PR-08 | Debit order case processing | Eligible EFT dispute reaches requested state |
 | Batch 02 | PR-09 | Card chargeback workflow | Acceptance and representment branches tested |
 | Batch 02 | PR-10 | Bank fee dispute and case timeline | Bank fee cannot enter card network flow |
-| Batch 03 | PR-11 | Concurrency-safe submission idempotency | Same key+payload returns original case |
-| Batch 03 | PR-12 | Optimistic concurrency and immutable history | Stale update fails safely |
-| Batch 03 | PR-13 | Transactional outbox and local publisher | Case+timeline+outbox commit or roll back together |
-| Batch 03 | PR-14 | Kafka transport and consumer inbox | Duplicate event produces one side effect per consumer |
-| Batch 03 | PR-15 | Unknown-outcome reconciliation and recovery | Timeout after remote success does not cause second reversal |
-| Batch 04 | PR-16 | Ownership and security hardening | User A cannot read/change user B case/evidence |
-| Batch 04 | PR-17 | Evidence upload behind private adapter | Only owner/authorized agent can retrieve |
-| Batch 04 | PR-18 | Customer UX and E2E quality | Customers can raise each supported dispute |
-| Batch 04 | PR-19 | Observability and controlled load tests | Can trace dispute from HTTP to event worker |
-| Batch 05 | PR-20 | Container and Kubernetes deployment blueprint | Images build locally |
-| Batch 05 | PR-21 | Release readiness and interview demo | Clean-clone setup is reproducible |
+| Batch 03 | PR-15 | Concurrency-safe submission idempotency | Same key+payload returns original case |
+| Batch 03 | PR-16 | Optimistic concurrency and immutable history | Stale update fails safely |
+| Batch 03 | PR-17 | Transactional outbox and local publisher | Case+timeline+outbox commit or roll back together |
+| Batch 03 | PR-18 | Kafka transport and consumer inbox | Duplicate event produces one side effect per consumer |
+| Batch 03 | PR-19 | Unknown-outcome reconciliation and recovery | Timeout after remote success does not cause second reversal |
+| Batch 04 | PR-20 | Ownership and security hardening | User A cannot read/change user B case/evidence |
+| Batch 04 | PR-21 | Evidence upload behind private adapter | Only owner/authorized agent can retrieve |
+| Batch 04 | PR-22 | Customer UX and E2E quality | Customers can raise each supported dispute |
+| Batch 04 | PR-23 | Observability and controlled load tests | Can trace dispute from HTTP to event worker |
+| Batch 05 | PR-24 | Container and Kubernetes deployment blueprint | Images build locally |
+| Batch 05 | PR-25 | Release readiness and interview demo | Clean-clone setup is reproducible |
 
 ## Dependencies and sequencing
 
 - PR-01 is first. PR-02→03 should avoid runtime behavior changes. PR-04 carries temporary route aliases while Angular switches. PR-05 does not use `EnsureCreated`.
 - PR-06 creates business types; PR-07 policy; PR-08 debit flow; PR-09 card flow; PR-10 bank fee and customer projections. Tests for finance statuses must precede workflows.
-- PR-11 and PR-12 harden concurrency before asynchronous external side effects. PR-13 outbox works without Kafka; PR-14 adds Kafka behind a port; PR-15 hardens external operations.
-- PR-16 security hardening must also be continually enforced in previous PRs; it is a dedicated negative-test sweep, **not** the first time security is implemented.
-- PR-17 storage is optional for the minimum brief but adds credible secure evidence. PR-18 UX/E2E, PR-19 measured operations.
-- PR-20 and PR-21 are deployment/release work; no paid AWS provisioning without explicit authorization.
+- PR-15 and PR-16 harden concurrency before asynchronous external side effects. PR-17 outbox works without Kafka; PR-18 adds Kafka behind a port; PR-19 hardens external operations.
+- PR-20 security hardening must also be continually enforced in previous PRs; it is a dedicated negative-test sweep, **not** the first time security is implemented.
+- PR-21 storage is optional for the minimum brief but adds credible secure evidence. PR-22 UX/E2E, PR-23 measured operations.
+- PR-24 and PR-25 are deployment/release work; no paid AWS provisioning without explicit authorization.
 
 ## Detailed acceptance criteria
 
@@ -209,23 +209,23 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-11 — Concurrency-safe submission idempotency
+### PR-15 — Concurrency-safe submission idempotency
 
 **Outcome:** Guarantee safe replay of POST dispute requests with same idempotency key and body.
 
-**Allowed implementation:** Persist customer-scoped key + canonical payload fingerprint + response reference; PostgreSQL uniqueness; detect conflicting body; handle simultaneous submissions and eligible active-case uniqueness.
+**Allowed implementation:** Persist customer-scoped key + canonical payload fingerprint + response reference; database uniqueness (SQLite now, PostgreSQL deferred); detect conflicting body; handle simultaneous submissions and eligible active-case uniqueness.
 
 **Acceptance:**
-- [ ] Same key+payload returns original case
-- [ ] Same key+different payload 409
-- [ ] Concurrent requests produce one case
-- [ ] No duplicate active case per business rule
+- [x] Same key+payload returns original case
+- [x] Same key+different payload 409
+- [x] Concurrent requests produce one case
+- [x] No duplicate active case per business rule
 
 **Not in scope:** No Kafka integration, generic idempotency framework or cross-bank transfer.
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-12 — Optimistic concurrency and immutable history
+### PR-16 — Optimistic concurrency and immutable history
 
 **Outcome:** Make case transitions race-safe and timeline/audit records append-only.
 
@@ -241,7 +241,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-13 — Transactional outbox and local publisher
+### PR-17 — Transactional outbox and local publisher
 
 **Outcome:** Persist event intent atomically with dispute status and timeline; publish via testable local dispatcher.
 
@@ -257,7 +257,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-14 — Kafka transport and consumer inbox
+### PR-18 — Kafka transport and consumer inbox
 
 **Outcome:** Connect outbox to Kafka transport with schema-versioned events, inbox dedupe and bounded consumer groups.
 
@@ -273,7 +273,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-15 — Unknown-outcome reconciliation and recovery
+### PR-19 — Unknown-outcome reconciliation and recovery
 
 **Outcome:** Recover from external timeouts without submitting duplicate financial operations.
 
@@ -289,7 +289,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-16 — Ownership and security hardening
+### PR-20 — Ownership and security hardening
 
 **Outcome:** Prove customer isolation, agent authorization and safe security boundaries across all endpoints.
 
@@ -305,7 +305,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-17 — Evidence upload behind private adapter
+### PR-21 — Evidence upload behind private adapter
 
 **Outcome:** Store and retrieve evidence securely with metadata and limited file types/sizes.
 
@@ -321,7 +321,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-18 — Customer UX and E2E quality
+### PR-22 — Customer UX and E2E quality
 
 **Outcome:** Polish three end-to-end journeys and truthful status presentation without duplicating policy in Angular.
 
@@ -337,7 +337,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-19 — Observability and controlled load tests
+### PR-23 — Observability and controlled load tests
 
 **Outcome:** Expose actionable telemetry and produce measured test results.
 
@@ -353,7 +353,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-20 — Container and Kubernetes deployment blueprint
+### PR-24 — Container and Kubernetes deployment blueprint
 
 **Outcome:** Make reproducible containers and safe Kubernetes deployment configuration without provisioning production AWS.
 
@@ -369,7 +369,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
 
-### PR-21 — Release readiness and interview demo
+### PR-25 — Release readiness and interview demo
 
 **Outcome:** Document and prove the full assessment story with CI gates and reproducible smoke scenarios.
 

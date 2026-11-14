@@ -74,22 +74,26 @@ paths:
               $ref: '#/components/schemas/CreateDispute'
       responses:
         '201':
-          description: Case durably created
+          description: >-
+            Case durably created, or the original case (current state) returned for an identical
+            Idempotency-Key replay, marked with Idempotent-Replayed: true
           headers:
             Location:
               schema:
                 type: string
+            Idempotent-Replayed:
+              description: Present with value true only when the response replays an earlier submission
+              schema:
+                type: string
+                enum: ['true']
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Dispute'
-        '200':
-          description: Stored case returned for an identical idempotency-key replay
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Dispute'
+        '400':
+          $ref: '#/components/responses/Problem'
         '409':
+          description: dispute.activeCaseExists, or dispute.idempotencyKeyReused for the same key with a different payload
           $ref: '#/components/responses/Problem'
         '422':
           $ref: '#/components/responses/Problem'
@@ -161,10 +165,15 @@ components:
     IdempotencyKey:
       in: header
       name: Idempotency-Key
-      required: true
+      description: >-
+        Customer-scoped key, one per submission draft (the web client sends a UUID). Optional for
+        backward compatibility; requiring it is a planned follow-up.
+      required: false
       schema:
         type: string
-        format: uuid
+        minLength: 1
+        maxLength: 128
+        pattern: '^[\x21-\x7E]+$'
     XsrfToken:
       in: header
       name: X-XSRF-TOKEN
