@@ -138,6 +138,10 @@ No API, database, policy implementation, auth or event contract changed. Roll ba
 
 The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry and making the header mandatory are deferred.
 
+## Optimistic concurrency (PR-16)
+
+Dispute responses include a monotonically increasing `version`, starting at `1`. Local debit-order, chargeback and bank-charge simulation commands may include `expectedVersion` from the last response. If another command has changed the case, the stale request returns `409 dispute.concurrencyConflict` and does not append a timeline entry or perform transition work. Omitting `expectedVersion` remains supported for compatibility; callers should send it to detect stale updates. The database version predicate is checked on every processing write, and each version increment commits with the case and timeline. Migration `AddDisputeOptimisticConcurrency` adds the column with version `1` for existing cases. Back out code and migrate to `AddDisputeSubmissionIdempotency` to roll back this schema change.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.

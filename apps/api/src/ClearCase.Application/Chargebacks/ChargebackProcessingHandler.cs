@@ -18,7 +18,7 @@ public interface ICardNetworkGateway
 
 public sealed record ChargebackProcessingCommand(
     Guid DisputeId, ChargebackCommand Command, Guid? EvidenceId, ChargebackEvidenceKind? EvidenceKind,
-    string CorrelationId);
+    string CorrelationId, long? ExpectedVersion = null);
 
 public interface IChargebackProcessingStore
 {

@@ -239,6 +239,11 @@ namespace ClearCase.Infrastructure.Migrations
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Version")
+                        .HasDefaultValue(1L)
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BankChargeAdjustmentReference")

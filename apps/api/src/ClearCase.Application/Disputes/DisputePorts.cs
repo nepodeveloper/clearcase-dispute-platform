@@ -18,7 +18,8 @@ public sealed record DisputeView(
     IReadOnlyList<DisputeEvent> Timeline,
     string? ReversalOperationReference = null,
     Chargeback? Chargeback = null,
-    string? BankChargeAdjustmentReference = null)
+    string? BankChargeAdjustmentReference = null,
+    long Version = 1)
 {
     public static DisputeView From(Dispute dispute) =>
         new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,
@@ -37,6 +38,8 @@ public enum DisputeAddResult
 public sealed record DisputeSubmission(string IdempotencyKey, string RequestFingerprint);
 
 public sealed record StoredDisputeSubmission(Guid DisputeId, string RequestFingerprint);
+
+public sealed class DisputeConcurrencyConflictException : Exception { }
 
 /// <summary>Persistence port for dispute cases; every read is scoped to the owning customer.</summary>
 public interface IDisputeStore

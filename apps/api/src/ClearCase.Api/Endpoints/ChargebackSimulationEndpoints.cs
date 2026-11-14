@@ -3,6 +3,7 @@ using ClearCase.Api.Disputes;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Application.Chargebacks;
+using ClearCase.Application.Disputes;
 using ClearCase.Domain.Chargebacks;
 using ClearCase.Infrastructure.Chargebacks;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -10,7 +11,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace ClearCase.Api.Endpoints;
 
 /// <summary>A local card workflow command. Evidence contains synthetic metadata, never uploaded content.</summary>
-public sealed record ChargebackSimulationRequest(string? Command, RepresentmentEvidenceRequest? Evidence);
+public sealed record ChargebackSimulationRequest(
+    string? Command, RepresentmentEvidenceRequest? Evidence, long? ExpectedVersion = null);
 
 /// <summary>Identifies a synthetic receipt, delivery confirmation or authorization record.</summary>
 public sealed record RepresentmentEvidenceRequest(string? Id, string? Kind);
@@ -39,7 +41,8 @@ public static class ChargebackSimulationEndpoints
                 + "ReviewRepresentment, Approve, Reject, RequestSettlement, ExecuteSettlement, Close. "
                 + "ReceiveRepresentment requires evidence {id: nonempty GUID, kind: Receipt|DeliveryConfirmation|AuthorizationRecord}. "
                 + "Evidence is forbidden on other commands. Approve favours the customer; only ExecuteSettlement can confirm "
-                + "simulated funds. Failed/unknown operations cannot be repeated; no real money moves.")
+                + "simulated funds. Failed/unknown operations cannot be repeated; no real money moves. Include the current "
+                + "expectedVersion from the dispute representation to reject stale updates.")
             .Produces<DisputeResponse>()
             .ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .ProducesProblem(404).ProducesProblem(409);
@@ -58,6 +61,8 @@ public static class ChargebackSimulationEndpoints
             return DisputeEndpoints.Problem(context, 400, "Invalid chargeback command", "chargeback.invalidRequest",
                 errors: [new("/command", "command.invalid", "Select a supported simulation command.")]);
         var errors = new List<QueryError>();
+        if (request.ExpectedVersion is <= 0)
+            errors.Add(new("/expectedVersion", "expectedVersion.invalid", "Expected version must be a positive integer."));
         Guid? evidenceId = null;
         ChargebackEvidenceKind? evidenceKind = null;
         if (command == ChargebackCommand.ReceiveRepresentment)
@@ -78,7 +83,7 @@ public static class ChargebackSimulationEndpoints
         {
             var dispute = await handler.HandleAsync(new ChargebackProcessingCommand(
                 disputeId, command, evidenceId, evidenceKind,
-                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!), cancellationToken);
+                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!, request.ExpectedVersion), cancellationToken);
             return dispute is null
                 ? DisputeEndpoints.Problem(context, 404, "Dispute not found", "dispute.notFound")
                 : TypedResults.Ok(DisputeResponse.From(dispute));
@@ -87,6 +92,11 @@ public static class ChargebackSimulationEndpoints
         {
             return DisputeEndpoints.Problem(context, 409, "Invalid chargeback transition",
                 "chargeback.invalidTransition", "This action is not allowed or requires further review.");
+        }
+        catch (DisputeConcurrencyConflictException)
+        {
+            return DisputeEndpoints.Problem(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
+                "The dispute changed since it was read. Refresh the case before trying again.");
         }
     }
 }

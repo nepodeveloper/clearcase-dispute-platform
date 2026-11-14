@@ -112,24 +112,28 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             item.Events.OrderBy(entry => entry.SequenceNumber)
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
-                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain(), item.BankChargeAdjustmentReference);
+                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain(),
+            item.BankChargeAdjustmentReference, item.Version);
     }
 
     public async Task<DisputeView?> ApplyAsync(
         Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, long? expectedVersion = null)
     {
         // SQLite's non-deferred transaction takes the writer lock before reading or calling the pure mock.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var current = await ReadAsync(customerId, disputeId, cancellationToken);
         if (current is null) return null;
+        if (expectedVersion is { } expected && current.Version != expected)
+            throw new DisputeConcurrencyConflictException();
         var next = await transition(current);
         var item = await context.Disputes.SingleAsync(
             item => item.Id == disputeId && item.CustomerId == customerId, cancellationToken);
         item.CaseStatus = next.State.Case;
         item.DecisionStatus = next.State.Decision;
         item.FinancialStatus = next.State.Financial;
+        item.Version = checked(item.Version + 1);
         if (command == DebitOrderCommand.RequestReversal)
             item.ReversalOperationReference = $"MOCK-DO-{disputeId:N}";
         context.DisputeEvents.Add(new PersistedDisputeEvent
@@ -139,7 +143,14 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             EventType = $"DebitOrder{command}", CaseStatus = item.CaseStatus,
             PublicDescription = next.Description, OccurredAt = occurredAt
         });
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DisputeConcurrencyConflictException();
+        }
         var updated = await ReadAsync(customerId, disputeId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;
