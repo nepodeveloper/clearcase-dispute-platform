@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Dispute } from './dispute-api';
 import { DisputeForm } from './dispute-form';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { CsrfSession } from '../csrf-session';
 import { sessionInterceptor } from '../auth/session-interceptor';
 
@@ -44,6 +44,7 @@ describe('DisputeForm', () => {
       ],
     });
     TestBed.inject(CsrfSession).update('csrf-token-from-me');
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(DisputeForm);
     fixture.componentRef.setInput('transactionId', transactionId);
@@ -77,7 +78,7 @@ describe('DisputeForm', () => {
     expect(element.querySelector('#dispute-reason')?.getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('submits the dispute and shows the case reference and initial status', () => {
+  it('submits once with CSRF and navigates to the persisted case, retaining a fallback link', () => {
     fill('unrecognisedTransaction', `  ${description}  `);
     submit();
 
@@ -86,22 +87,24 @@ describe('DisputeForm', () => {
     expect(request.request.headers.get('X-CSRF-TOKEN')).toBe('csrf-token-from-me');
     expect(request.request.body).toEqual({ transactionId, reasonCode: 'unrecognisedTransaction', description });
     expect((element.querySelector('[data-testid="submit-dispute"]') as HTMLButtonElement).disabled).toBe(true);
+    element.querySelector('form')!.dispatchEvent(new Event('submit'));
+    http.expectNone('/api/v1/disputes');
     request.flush(created, { status: 201, statusText: 'Created' });
     fixture.detectChanges();
 
     expect(element.querySelector('[data-testid="dispute-reference"]')?.textContent).toBe('DSP-0A1B2C3D4E5F');
-    expect(element.textContent).toContain('Submitted - awaiting review');
-    expect(element.textContent).toContain('Your dispute was received and is awaiting review.');
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledExactlyOnceWith(['/disputes', created.id]);
+    expect(element.querySelector('[data-testid="track-dispute"]')?.getAttribute('href')).toBe(`/disputes/${created.id}`);
     expect(element.querySelector('form')).toBeNull();
   });
 
-  it('shows the specialist-review status for a manually routed case', () => {
+  it('also navigates to a persisted manually routed case', () => {
     fill('duplicateCharge', description);
     submit();
     http.expectOne('/api/v1/disputes').flush({ ...created, caseStatus: 'ManualReview' });
     fixture.detectChanges();
 
-    expect(element.textContent).toContain('Referred for specialist review');
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/disputes', created.id]);
   });
 
   it('explains an existing open dispute and keeps the form available', () => {
@@ -116,75 +119,37 @@ describe('DisputeForm', () => {
     expect((element.querySelector('[data-testid="submit-dispute"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('refreshes processing and timeline without implying approved funds are confirmed', () => {
+  it.each([
+    [400, 'Check the dispute details'],
+    [401, 'Sign in again'],
+    [403, 'You do not have permission'],
+  ])('explains HTTP %s without navigating to a case', (status, message) => {
     fill('duplicateCharge', description);
     submit();
-    http.expectOne('/api/v1/disputes').flush(created);
+    http.expectOne('/api/v1/disputes').flush({}, { status, statusText: 'Rejected' });
     fixture.detectChanges();
 
-    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
-    const request = http.expectOne(`/api/v1/disputes/${created.id}`);
-    expect(request.request.method).toBe('GET');
-    request.flush({
-      ...created, category: 'DebitOrder', caseStatus: 'ReversalRequested',
-      decisionStatus: 'Approved', financialStatus: 'OutcomeUnknown',
-      timeline: [...created.timeline, {
-        ...created.timeline[0], id: 'another-event', sequenceNumber: 2,
-        caseStatus: 'ReversalRequested', description: 'The simulated outcome is unknown.',
-      }],
-    });
-    fixture.detectChanges();
-
-    expect(element.textContent).toContain('Reversal requested');
-    expect(element.textContent).toContain('Decision: Approved');
-    expect(element.textContent).toContain('Outcome unknown - not confirmed');
-    expect(element.querySelectorAll('ol li')).toHaveLength(2);
-    http.expectNone((req) => req.url.includes('simulations'));
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(message);
+    if (status === 401) {
+      expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/' } });
+    } else {
+      expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+    }
   });
 
-  it('keeps the case visible and allows retry when status refresh fails', () => {
+  it.each([400, 422])('associates HTTP %s server field errors with the form', (status) => {
     fill('duplicateCharge', description);
     submit();
-    http.expectOne('/api/v1/disputes').flush(created);
-    fixture.detectChanges();
-    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
-    http.expectOne(`/api/v1/disputes/${created.id}`).flush({}, { status: 503, statusText: 'Unavailable' });
+    http.expectOne('/api/v1/disputes').flush({
+      errors: [{ pointer: '/reasonCode', code: 'reasonCode.invalid', message: 'Select a reason that applies to this transaction.' }],
+    }, { status, statusText: 'Invalid' });
     fixture.detectChanges();
 
-    expect(element.textContent).toContain(created.reference);
-    expect(element.querySelector('[role="alert"]')?.textContent).toContain('Unable to refresh');
-    expect((element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('shows chargeback acceptance separately from an explicit simulated settlement result', () => {
-    fill('duplicateCharge', description);
+    expect(element.querySelector('#dispute-reason-error')?.textContent).toContain('Select a reason that applies');
+    expect(element.querySelector('#dispute-reason')?.getAttribute('aria-invalid')).toBe('true');
+    fill('unrecognisedTransaction', description);
     submit();
     http.expectOne('/api/v1/disputes').flush(created);
-    fixture.detectChanges();
-    const accepted = {
-      ...created, caseStatus: 'UnderReview', decisionStatus: 'Approved',
-      chargeback: {
-        reference: 'MOCK-CB-test', reasonCode: 'duplicateCharge',
-        status: 'MerchantAccepted', lastOperationOutcome: 'Succeeded',
-      },
-    };
-    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
-    http.expectOne(`/api/v1/disputes/${created.id}`).flush(accepted);
-    fixture.detectChanges();
-
-    expect(element.textContent).toContain('MOCK-CB-test');
-    expect(element.textContent).toContain('Merchant accepted');
-    expect(element.textContent).toContain('Decision: Approved');
-    expect(element.textContent).toContain('Financial status: Not initiated');
-    expect(element.textContent).not.toContain('settlement confirmed');
-
-    (element.querySelector('[data-testid="refresh-dispute"]') as HTMLButtonElement).click();
-    http.expectOne(`/api/v1/disputes/${created.id}`).flush({ ...accepted, financialStatus: 'Confirmed' });
-    fixture.detectChanges();
-
-    expect(element.textContent).toContain('Simulated settlement confirmed - no real money moved');
-    expect(element.textContent).not.toContain('reversal confirmed');
-    http.expectNone((request) => request.url.includes('simulations'));
   });
 
   it('shows the server explanation for an ineligible submission', () => {

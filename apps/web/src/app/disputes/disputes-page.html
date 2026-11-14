@@ -2,8 +2,9 @@
 <section class="page-section" aria-labelledby="disputes-heading" [attr.aria-busy]="current.kind === 'loading'">
   <header class="page-heading">
     <p class="eyebrow">Customer portal</p>
-    <h1 class="cc-page-title" id="disputes-heading">My disputes</h1>
+    <h1 class="cc-page-title" id="disputes-heading" tabindex="-1">My disputes</h1>
     <p class="cc-description">Follow every case from submission to final outcome.</p>
+    <a class="cc-button cc-button--primary refresh-button" routerLink="/">Raise a dispute</a>
   </header>
   <div class="panel cc-card">
   @if (current.kind === 'loading') {
@@ -28,6 +29,11 @@
             </div>
             <p class="case-category">{{ typeLabel(dispute.category) }}</p>
             <p>{{ dispute.statusDescription }}</p>
+            <dl class="case-outcomes">
+              <dt>Decision</dt><dd>{{ dispute.decisionStatus }}</dd>
+              <dt>Financial status</dt><dd>{{ financialLabel(dispute.financialStatus, dispute.category) }}</dd>
+            </dl>
+            <p class="submitted-date">Submitted <time [attr.datetime]="dispute.createdAt">{{ dispute.createdAt | date:'mediumDate':'UTC' }}</time></p>
             <a class="case-link" [routerLink]="['/disputes', dispute.id]">View timeline <span aria-hidden="true">→</span></a>
           </li>
         }

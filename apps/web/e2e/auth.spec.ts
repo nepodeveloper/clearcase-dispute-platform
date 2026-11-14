@@ -49,7 +49,7 @@ for (const [role, username, home, heading] of [
       const response = await submitted;
       expect(response.status()).toBe(201);
       expect(response.request().headers()['x-csrf-token']).toBeTruthy();
-      await page.getByRole('link', { name: 'Track this dispute' }).click();
+      await expect(page).toHaveURL(/\/disputes\/[0-9a-f-]{36}$/);
       await expect(page.getByText('Please investigate this synthetic account service fee.')).toBeVisible();
     }
     await page.goto(role === 'customer' ? '/agent/disputes' : '/disputes');

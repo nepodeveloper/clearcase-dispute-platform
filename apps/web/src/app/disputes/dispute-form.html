@@ -2,14 +2,8 @@
 @if (current.kind === 'submitted') {
   <div class="confirmation-card" data-testid="dispute-confirmation">
     <p role="status"><strong>Dispute submitted.</strong></p>
-    <app-dispute-details [dispute]="current.dispute" />
+    <p>Case reference: <strong data-testid="dispute-reference">{{ current.dispute.reference }}</strong></p>
     <p><a [routerLink]="['/disputes', current.dispute.id]" data-testid="track-dispute">Track this dispute</a></p>
-    <button class="cc-button cc-button--secondary" type="button" data-testid="refresh-dispute" (click)="refresh()" [disabled]="refreshing()">
-      {{ refreshing() ? 'Refreshing...' : 'Refresh status' }}
-    </button>
-    @if (refreshError(); as message) {
-      <p role="alert">{{ message }}</p>
-    }
   </div>
 } @else {
   <form class="dispute-form" [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
@@ -27,7 +21,7 @@
     </select>
     </label>
     @if (showError('reasonCode')) {
-      <p id="dispute-reason-error" class="field-error">Select a reason.</p>
+      <p id="dispute-reason-error" class="field-error">{{ serverErrors().reasonCode ?? 'Select a reason.' }}</p>
     }
 
     <label class="cc-field" for="dispute-description">Describe the issue
@@ -35,9 +29,9 @@
               [attr.aria-invalid]="showError('description')"
               [attr.aria-describedby]="showError('description') ? 'dispute-description-hint dispute-description-error' : 'dispute-description-hint'"></textarea>
     </label>
-    <p id="dispute-description-hint" class="hint">Between 15 and {{ maxLength }} characters.</p>
+    <p id="dispute-description-hint" class="hint">Between 15 and {{ maxLength }} characters. Do not include passwords, PINs or personal information.</p>
     @if (showError('description')) {
-      <p id="dispute-description-error" class="field-error">Describe the problem in at least 15 characters.</p>
+      <p id="dispute-description-error" class="field-error">{{ serverErrors().description ?? 'Describe the problem in at least 15 characters.' }}</p>
     }
 
     @if (current.kind === 'error') {

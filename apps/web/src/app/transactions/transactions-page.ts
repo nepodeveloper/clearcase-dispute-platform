@@ -1,4 +1,4 @@
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -7,6 +7,7 @@ import { RouterLink } from '@angular/router';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
 import { TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
 import { transactionTypeLabel } from './transaction-type-label';
+import { DecimalMoney } from './decimal-money';
 
 type ViewState =
   | { kind: 'loading' }
@@ -27,7 +28,7 @@ function validationMessages(error: HttpErrorResponse): string[] {
 
 @Component({
   selector: 'app-transactions-page',
-  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, RouterLink],
+  imports: [ReactiveFormsModule, DecimalMoney, DatePipe, RouterLink],
   templateUrl: './transactions-page.html',
   styleUrl: './transactions-page.css',
 })

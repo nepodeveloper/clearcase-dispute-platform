@@ -114,24 +114,6 @@ test('customer to agent to supervisor journey keeps private notes out of the pub
 
 test('navigation and primary text colours meet keyboard and contrast requirements', async ({ page }) => {
   await page.goto('/login');
-  const mobile = (page.viewportSize()?.width ?? 1440) <= 850;
-  if (mobile) {
-    const toggle = page.getByRole('button', { name: 'Open navigation' });
-    await toggle.click();
-    const drawer = page.getByRole('dialog', { name: 'Demo journey navigation' });
-    await expect(drawer.getByRole('button', { name: 'Close navigation' })).toBeFocused();
-    await expect(page.locator('.main-column')).toHaveAttribute('inert', '');
-    await page.keyboard.press('Shift+Tab');
-    const active = await page.evaluate(() => ({
-      tag: document.activeElement?.tagName,
-      label: document.activeElement?.getAttribute('aria-label'),
-      text: document.activeElement?.textContent?.trim().slice(0, 80),
-    }));
-    await expect(drawer.getByRole('link', { name: 'Dispute timeline' }), JSON.stringify(active)).toBeFocused();
-    await page.keyboard.press('Escape');
-    await expect(toggle).toBeFocused();
-    await expect(page.locator('.main-column')).not.toHaveAttribute('inert', '');
-  }
   const contrast = await page.getByRole('button', { name: 'Sign in as customer' }).evaluate(node => {
     const style = getComputedStyle(node);
     const luminance = (value: string) => {

@@ -96,6 +96,33 @@ From `apps/web`, run `npm run test:e2e`. The wrapper generates ephemeral credent
 
 The separate `npm run start:ui` build remains a clearly labelled, API-free design preview; its role picker is not included in the real application. PR-13 also fixes the preview's mobile table overflow, drawer focus timing, decorative button name and escalation-dialog focus containment without weakening the browser assertions.
 
+## Connected customer journey (PR-14)
+
+Use the normal `npm start` application, not `npm run start:ui`:
+
+1. Sign in at `/login` using a configured customer assessment account. Login opens **Your transactions**.
+2. Filter by transaction type and inclusive dates, then use **Next** / **Previous**. Filtering and pagination run on the server; unsupported demo search/account totals are not fabricated.
+3. Select a transaction to view its persisted GUID-linked details and authoritative eligibility. The shared ClearCase theme is retained; amounts are formatted directly from decimal strings without floating-point conversion.
+4. Select a backend-provided reason, enter a 15-2000 character description, and **Submit dispute**. Pending submission is locked against repeated clicks. Field errors remain associated with the form; forbidden, expired-session, duplicate and ineligible responses are explained.
+5. Successful submission automatically opens `/disputes/{id}` using the backend-issued case ID/reference. **My disputes** uses the API's opaque continuation cursor. Case, decision and financial statuses remain distinct; no approval implies confirmed funds.
+6. Refresh or revisit a case to read its SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Only the customer-safe projection is rendered. A transient refresh failure retains the last loaded case with an explicit error and retry.
+7. Sign out to end the cookie session. Expired sessions return to login; another customer cannot access the transaction, eligibility or case.
+
+There is one active customer route implementation. The isolated `ui-demo` entrypoint is only a design reference; its in-memory workspace, fake account details and role selector are not imported into the connected journey. Database seed records remain explicitly synthetic local assessment data.
+
+### PR-14 verification and backout
+
+Focused frontend checks (from `apps/web`):
+
+```powershell
+npm run test:ci -- --include "src/app/transactions/*.spec.ts" --include "src/app/disputes/*.spec.ts"
+npm run build
+```
+
+The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database, not `DemoWorkspace`. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
+
+No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. Full idempotency-key replay, staff workflows and real financial processing remain deferred, not implied by the UI.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.
@@ -168,7 +195,7 @@ curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-0000
 }
 ```
 
-Amounts are stored as integer ZAR cents, converted exactly to decimals, and exposed as decimal strings, consistent with the listing contract. Merchant names and references are synthetic demo data. The Angular transaction list links to `/transactions/{id}`; the details page includes a back link and loading, not-found, and retryable-error states. It does not submit disputes.
+Amounts are stored as integer ZAR cents, converted exactly to decimals, and exposed as decimal strings, consistent with the listing contract. Merchant names and references are synthetic demo data. The Angular transaction list links to `/transactions/{id}`; the details page includes a back link and loading, not-found, and retryable-error states, plus the eligibility-driven submission form.
 
 ## SQLite persistence
 
@@ -315,7 +342,7 @@ The checked-in target-design OpenAPI document describes a future cursor-based co
 
 ## Dispute submission
 
-The eligibility response now includes `availableReasons` (`[{ "code", "label" }]`, empty when `Ineligible`). The transaction details page shows a minimal form for eligible and manual-review outcomes, then displays the case reference and initial status.
+The eligibility response includes `availableReasons` (`[{ "code", "label" }]`, empty when `Ineligible`). The transaction details page shows a form for eligible and manual-review outcomes, then navigates to the persisted case timeline. A confirmation link remains available if navigation does not complete.
 
 | Route | Purpose |
 | --- | --- |
@@ -358,12 +385,13 @@ Rules:
 | --- | --- | --- |
 | 400 | `dispute.invalidRequest` | Malformed JSON or invalid fields (`errors[]` with `/transactionId`, `/reasonCode`, `/description` pointers) |
 | 400 | `dispute.invalidId` | Non-GUID dispute ID on `GET` |
-| 401 | — | Unauthenticated (all non-Development/Testing environments today) |
+| 401 | — | Unauthenticated, including Development |
+| 403 | — | Authenticated identity lacks Customer access |
 | 404 | `dispute.notFound` | Unknown or another customer's dispute |
 | 409 | `dispute.activeCaseExists` | An open dispute already exists for the transaction |
 | 422 | `dispute.transactionNotFound`, `dispute.invalidReason`, `dispute.transactionIneligible` | Unknown/inaccessible transaction, reason not valid for the category, or ineligible transaction (`detail` holds the customer-safe explanation) |
 
-The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Full request idempotency (`Idempotency-Key` replay) is deferred to PR-11; until then a retried submission returns 409 once the first succeeds.
+The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Full request idempotency (`Idempotency-Key` replay) remains deferred under the revised roadmap; a retried submission returns 409 once the first succeeds. A network timeout is not proof that submission failed: check **My disputes** before retrying.
 
 ```powershell
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
@@ -375,7 +403,7 @@ npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
 
 Use **Your disputes** in the navigation, or open Angular `/disputes`, to see the authenticated
 customer's submitted cases across all three categories. Each item links to `/disputes/{id}`;
-the submission confirmation also has a **Track this dispute** link. The dashboard has loading,
+successful submission opens the timeline automatically. The dashboard has loading,
 empty, error/retry and load-more states. Case details reuse the existing case/status presentation,
 with a keyboard-focusable ordered timeline and explicit UTC timestamps. The details heading receives
 focus after loading; switching cases cancels the previous request. Refresh status reads the latest
@@ -444,7 +472,7 @@ $env:Simulation__BankChargeKey = [guid]::NewGuid().ToString('N')
 
 Keep these values private to the simulator (REST Client examples are in `apps/api/ClearCase.Api.http`);
 they are never given to the customer UI. In the transaction list, open and submit each case below,
-using a description of at least 15 characters. Follow **Track this dispute**, then return to
+using a description of at least 15 characters. Submission opens the timeline; then return to
 **Your disputes** to verify all categories are present. A fresh submission adds one initial event.
 
 | Journey | Seeded transaction / reason | Privileged simulation commands, then refresh the customer details |

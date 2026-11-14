@@ -1,5 +1,6 @@
 @let current = state();
-<section class="page-section" aria-labelledby="dispute-heading" [attr.aria-busy]="current.kind === 'loading'">
+<section class="page-section" aria-labelledby="dispute-heading"
+         [attr.aria-busy]="current.kind === 'loading' || (current.kind === 'loaded' && current.refreshing)">
   <a class="back-link" routerLink="/disputes" data-testid="back-to-disputes">← Back to my disputes</a>
   <header class="page-heading">
     <p class="eyebrow">Customer portal</p>
@@ -16,6 +17,10 @@
     @if (current.retryable) { <button class="cc-button cc-button--secondary" type="button" data-testid="retry" (click)="refresh()">Retry</button> }
   } @else {
     <app-dispute-details [dispute]="current.dispute" />
-    <button class="cc-button cc-button--secondary refresh-button" type="button" data-testid="refresh-dispute" (click)="refresh()">Refresh status</button>
+    @if (current.error; as error) {
+      <p role="alert">{{ error.message }} Showing the last loaded case.</p>
+    }
+    <button class="cc-button cc-button--secondary refresh-button" type="button" data-testid="refresh-dispute"
+            [disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>
   }
 </section>

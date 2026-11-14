@@ -61,6 +61,8 @@ describe('Dispute tracking pages', () => {
     const text = harness.routeNativeElement?.textContent ?? '';
     for (const category of ['Card purchase', 'Debit order', 'Bank charge']) expect(text).toContain(category);
     expect(text).toContain('funds are not confirmed');
+    expect(harness.routeNativeElement?.querySelector('.case-outcomes')?.textContent).toContain('Approved');
+    expect(harness.routeNativeElement?.querySelector('.case-outcomes')?.textContent).toContain('Requested - not confirmed');
     (harness.routeNativeElement?.querySelector(`a[href="/disputes/${cases[2].id}"]`) as HTMLAnchorElement).click();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe(`/disputes/${cases[2].id}`);
@@ -113,6 +115,80 @@ describe('Dispute tracking pages', () => {
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain(cases[1].reference);
     expect(harness.routeNativeElement?.textContent).not.toContain(cases[0].reference);
+  });
+
+  it('orders the public timeline by sequence even with tied or reversed timestamps', async () => {
+    const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush({
+      ...cases[0],
+      internalNotes: 'Never show investigation notes',
+      timeline: [
+        { ...cases[0].timeline[1], occurredAt: '2026-11-11T10:00:00Z', internalNotes: 'Staff only' },
+        cases[0].timeline[0],
+        { ...cases[0].timeline[1], id: 'event-3', sequenceNumber: 3, description: 'Latest event.',
+          occurredAt: cases[0].timeline[0].occurredAt },
+      ],
+    });
+    harness.detectChanges();
+
+    expect(Array.from(harness.routeNativeElement!.querySelectorAll('ol li p'), item => item.textContent?.trim()))
+      .toEqual(['Your dispute was received.', 'Your dispute is under review.', 'Latest event.']);
+    expect(harness.routeNativeElement?.textContent).not.toContain('Never show investigation notes');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Staff only');
+  });
+
+  it('refreshes processing and timeline without implying approved funds are confirmed', async () => {
+    const harness = await RouterTestingHarness.create(`/disputes/${cases[1].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[1].id}`).flush({ ...cases[1], caseStatus: 'ManualReview' });
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Referred for specialist review');
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
+    const request = http.expectOne(`/api/v1/disputes/${cases[1].id}`);
+    expect(request.request.method).toBe('GET');
+    request.flush({ ...cases[1], caseStatus: 'ReversalRequested', financialStatus: 'OutcomeUnknown' });
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('Reversal requested');
+    expect(harness.routeNativeElement?.textContent).toContain('Decision: Approved');
+    expect(harness.routeNativeElement?.textContent).toContain('Outcome unknown - not confirmed');
+    expect(harness.routeNativeElement?.querySelectorAll('ol li')).toHaveLength(2);
+    http.expectNone(req => req.url.includes('simulations'));
+  });
+
+  it('keeps the case visible and allows retry when status refresh fails', async () => {
+    const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush(cases[0]);
+    harness.detectChanges();
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush({}, { status: 503, statusText: 'Unavailable' });
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain(cases[0].reference);
+    expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain('Unable to load');
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush(cases[0]);
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('shows chargeback acceptance separately from explicit simulated settlement', async () => {
+    const accepted = { ...cases[0], financialStatus: 'NotInitiated',
+      chargeback: { reference: 'MOCK-CB-test', reasonCode: 'duplicateCharge',
+        status: 'MerchantAccepted', lastOperationOutcome: 'Succeeded' } };
+    const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush(accepted);
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('MOCK-CB-test');
+    expect(harness.routeNativeElement?.textContent).toContain('Merchant accepted');
+    expect(harness.routeNativeElement?.textContent).toContain('Decision: Approved');
+    expect(harness.routeNativeElement?.textContent).toContain('Financial status: Not initiated');
+    expect(harness.routeNativeElement?.textContent).not.toContain('settlement confirmed');
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush({ ...accepted, financialStatus: 'Confirmed' });
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Simulated settlement confirmed - no real money moved');
+    expect(harness.routeNativeElement?.textContent).not.toContain('reversal confirmed');
+    http.expectNone(req => req.url.includes('simulations'));
   });
 
   it('handles missing cases and retries transient detail errors', async () => {

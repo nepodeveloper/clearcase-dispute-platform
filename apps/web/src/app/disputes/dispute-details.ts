@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, input } from '@angular/core';
+import { Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TransactionType } from '../transactions/transaction-api';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
@@ -19,6 +19,21 @@ export function disputeStatusLabel(status: DisputeCaseStatus): string {
   return labels[status];
 }
 
+export function disputeFinancialLabel(status: string, category: TransactionType): string {
+  switch (status) {
+    case 'NotInitiated': return 'Not initiated';
+    case 'Requested': return 'Requested - not confirmed';
+    case 'OutcomeUnknown': return 'Outcome unknown - not confirmed';
+    case 'Failed': return 'Failed - no financial adjustment confirmed';
+    case 'Confirmed': return category === 'CardPurchase'
+      ? 'Simulated settlement confirmed - no real money moved'
+      : category === 'BankCharge'
+        ? 'Simulated fee adjustment confirmed - no real money moved'
+        : 'Simulated reversal confirmed - no real money moved';
+    default: return status;
+  }
+}
+
 @Component({
   selector: 'app-dispute-details',
   imports: [DatePipe, RouterLink],
@@ -27,23 +42,11 @@ export function disputeStatusLabel(status: DisputeCaseStatus): string {
 })
 export class DisputeDetails {
   readonly dispute = input.required<Dispute>();
+  protected readonly timeline = computed(() =>
+    [...this.dispute().timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber));
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
-
-  protected financialLabel(status: string, category: TransactionType): string {
-    switch (status) {
-      case 'NotInitiated': return 'Not initiated';
-      case 'Requested': return 'Requested - not confirmed';
-      case 'OutcomeUnknown': return 'Outcome unknown - not confirmed';
-      case 'Failed': return 'Failed - no financial adjustment confirmed';
-      case 'Confirmed': return category === 'CardPurchase'
-        ? 'Simulated settlement confirmed - no real money moved'
-        : category === 'BankCharge'
-          ? 'Simulated fee adjustment confirmed - no real money moved'
-          : 'Simulated reversal confirmed - no real money moved';
-      default: return status;
-    }
-  }
+  protected readonly financialLabel = disputeFinancialLabel;
 
   protected chargebackLabel(status: ChargebackStatus): string {
     const labels: Record<ChargebackStatus, string> = {
