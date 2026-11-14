@@ -146,7 +146,13 @@ Dispute responses include a monotonically increasing `version`, starting at `1`.
 
 Dispute submission and each debit-order, chargeback or bank-charge transition write an event-intent row in `OutboxMessages` in the same transaction as the case, version and timeline. The versioned envelope includes a stable event ID, aggregate ID/version, event type/version, UTC occurrence time, correlation ID and a customer-safe status payload. Descriptions and other customer-provided text are not included.
 
-In Development/Production, a background dispatcher sends pending records to the local logging publisher. It marks an event published only after the publisher acknowledges it. Failures leave the event pending and increment its attempt count; retries use the same event ID. The publisher is a local adapter, not Kafka or a durable external notification service. Migration `AddTransactionalOutbox` adds the table; back out code and migrate to `AddDisputeOptimisticConcurrency` to remove it. Kafka transport and consumer inbox deduplication are deferred to PR-18.
+In Development/Production, a background dispatcher sends pending records to the local logging publisher. It marks an event published only after the publisher acknowledges it. Failures leave the event pending and increment its attempt count; retries use the same event ID. Migration `AddTransactionalOutbox` adds the table; back out code and migrate to `AddDisputeOptimisticConcurrency` to remove it.
+
+## Kafka transport and inbox (PR-18)
+
+Kafka is opt-in for local development; normal API operation continues to use the local publisher. With Docker Compose installed, start the single-node development broker with `docker compose -f compose.kafka.yml up -d`, then configure `Messaging__Kafka__Enabled=true` and `Messaging__Kafka__BootstrapServers=localhost:9092` before starting the API. Topic defaults to `disputes.case-events.v1`; consumer group defaults to `clearcase-local-v1`. Stop the broker with `docker compose -f compose.kafka.yml down`.
+
+Events are partitioned by dispute ID and carry the same stable event ID across retries. The consumer disables automatic offset commits and commits only after its SQLite inbox/effect transaction completes. `(ConsumerName, EventId)` is unique; a replay after database commit but before offset commit is acknowledged without repeating the local effect. This is at-least-once delivery with deduplicated local processing, not exactly-once external financial execution. The inbox records a local event-acceptance effect only; customer notifications and production broker operations are not implemented. See [the AsyncAPI event contract](docs/target-design/asyncapi.yaml). The broker could not be exercised in this environment because Docker is unavailable; SQLite replay and envelope/partition-key tests run without it.
 
 ## Transaction listing API
 

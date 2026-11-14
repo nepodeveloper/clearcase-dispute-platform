@@ -1,5 +1,7 @@
 namespace ClearCase.Application.Disputes;
 
+using System.Text.Json;
+
 public sealed record OutboxEvent(
     Guid EventId,
     Guid AggregateId,
@@ -10,6 +12,20 @@ public sealed record OutboxEvent(
     string Payload,
     DateTimeOffset OccurredAt,
     int Attempts);
+
+public sealed record DisputeEventEnvelope(
+    Guid EventId,
+    string EventType,
+    int EventVersion,
+    Guid AggregateId,
+    long AggregateVersion,
+    DateTimeOffset OccurredAt,
+    string CorrelationId,
+    JsonElement Payload)
+{
+    public OutboxEvent ToOutboxEvent() => new(EventId, AggregateId, AggregateVersion, EventType,
+        EventVersion, CorrelationId, Payload.GetRawText(), OccurredAt, 0);
+}
 
 public interface IOutboxStore
 {

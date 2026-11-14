@@ -17,6 +17,8 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedDisputeEvent> DisputeEvents => Set<PersistedDisputeEvent>();
     public DbSet<PersistedDisputeSubmission> DisputeSubmissions => Set<PersistedDisputeSubmission>();
     public DbSet<PersistedOutboxMessage> OutboxMessages => Set<PersistedOutboxMessage>();
+    public DbSet<PersistedConsumerInboxMessage> ConsumerInbox => Set<PersistedConsumerInboxMessage>();
+    public DbSet<PersistedConsumerEffect> ConsumerEffects => Set<PersistedConsumerEffect>();
     public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
     public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
 
@@ -41,6 +43,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
 
         DisputePersistenceModel.Configure(modelBuilder);
         OutboxPersistenceModel.Configure(modelBuilder);
+        KafkaInboxPersistenceModel.Configure(modelBuilder);
         ChargebackPersistenceModel.Configure(modelBuilder);
     }
 }
