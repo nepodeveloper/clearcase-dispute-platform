@@ -29,8 +29,14 @@ public sealed record DisputeView(
 public enum DisputeAddResult
 {
     Added,
-    ActiveDisputeExists
+    ActiveDisputeExists,
+    SubmissionKeyExists
 }
+
+/// <summary>Customer-scoped idempotency record stored atomically with the case it created.</summary>
+public sealed record DisputeSubmission(string IdempotencyKey, string RequestFingerprint);
+
+public sealed record StoredDisputeSubmission(Guid DisputeId, string RequestFingerprint);
 
 /// <summary>Persistence port for dispute cases; every read is scoped to the owning customer.</summary>
 public interface IDisputeStore
@@ -39,8 +45,11 @@ public interface IDisputeStore
 
     Task<bool> HasOpenDisputeAsync(Guid customerId, Guid transactionId, CancellationToken cancellationToken);
 
-    /// <summary>Atomically stores the case and its timeline; a concurrent open case is reported, not thrown.</summary>
-    Task<DisputeAddResult> AddAsync(Dispute dispute, CancellationToken cancellationToken);
+    /// <summary>Atomically stores the case, its timeline and any submission key; constraint conflicts are reported, not thrown.</summary>
+    Task<DisputeAddResult> AddAsync(Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken);
+
+    Task<StoredDisputeSubmission?> FindSubmissionAsync(
+        Guid customerId, string idempotencyKey, CancellationToken cancellationToken);
 
     Task<DisputeView?> ReadAsync(Guid customerId, Guid disputeId, CancellationToken cancellationToken);
 }

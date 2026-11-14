@@ -54,10 +54,11 @@ describe('CSRF session interceptor', () => {
 
   it('protects existing dispute submission without altering its payload', () => {
     const payload = { transactionId: 'transaction-id', reasonCode: 'duplicateCharge', description: 'Please investigate this charge.' };
-    TestBed.inject(DisputeApi).submit(payload).subscribe();
+    TestBed.inject(DisputeApi).submit(payload, 'draft-key').subscribe();
     const request = http.expectOne('/api/v1/disputes');
     expect(request.request.body).toEqual(payload);
     expect(request.request.headers.get('X-CSRF-TOKEN')).toBe('session-token');
+    expect(request.request.headers.get('Idempotency-Key')).toBe('draft-key');
     request.flush({});
   });
 

@@ -66,6 +66,19 @@ X-CSRF-TOKEN: {{csrfToken}}
   "description": "I dispute the authorization recorded for this mandate."
 }
 
+### PR-15: send twice; the repeat returns the same case with Idempotent-Replayed: true.
+# Change the description and resend with the same key to see 409 dispute.idempotencyKeyReused.
+POST {{baseUrl}}/api/v1/disputes
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
+Idempotency-Key: 6f1c2b7e-5d3a-4e8f-9a01-demo-retry-0001
+
+{
+  "transactionId": "00000000-0000-0000-0000-000000000019",
+  "reasonCode": "duplicateCharge",
+  "description": "I was charged twice for the same purchase."
+}
+
 ### Malformed eligibility transaction ID returns Problem Details
 GET {{baseUrl}}/v1/transactions/not-a-guid/dispute-eligibility
 

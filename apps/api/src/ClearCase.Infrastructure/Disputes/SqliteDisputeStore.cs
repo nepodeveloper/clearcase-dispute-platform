@@ -31,7 +31,11 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             && item.TransactionId == transactionId
             && item.CaseStatus != DisputeCaseStatus.Closed, cancellationToken);
 
-    public async Task<DisputeAddResult> AddAsync(Dispute dispute, CancellationToken cancellationToken)
+    public Task<DisputeAddResult> AddAsync(Dispute dispute, CancellationToken cancellationToken) =>
+        AddAsync(dispute, null, cancellationToken);
+
+    public async Task<DisputeAddResult> AddAsync(
+        Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken)
     {
         var entity = new PersistedDispute
         {
@@ -60,9 +64,18 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             }).ToList()
         };
         context.Disputes.Add(entity);
+        if (submission is not null)
+            context.DisputeSubmissions.Add(new PersistedDisputeSubmission
+            {
+                CustomerId = dispute.CustomerId,
+                IdempotencyKey = submission.IdempotencyKey,
+                RequestFingerprint = submission.RequestFingerprint,
+                DisputeId = dispute.Id,
+                CreatedAt = dispute.CreatedAt
+            });
         try
         {
-            // A single SaveChanges runs in one database transaction: case and timeline commit together.
+            // A single SaveChanges runs in one database transaction: case, timeline and key commit together.
             await context.SaveChangesAsync(cancellationToken);
             return DisputeAddResult.Added;
         }
@@ -71,7 +84,19 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             context.ChangeTracker.Clear();
             return DisputeAddResult.ActiveDisputeExists;
         }
+        catch (DbUpdateException exception) when (IsSubmissionKeyConflict(exception))
+        {
+            context.ChangeTracker.Clear();
+            return DisputeAddResult.SubmissionKeyExists;
+        }
     }
+
+    public Task<StoredDisputeSubmission?> FindSubmissionAsync(
+        Guid customerId, string idempotencyKey, CancellationToken cancellationToken) =>
+        context.DisputeSubmissions.AsNoTracking()
+            .Where(item => item.CustomerId == customerId && item.IdempotencyKey == idempotencyKey)
+            .Select(item => new StoredDisputeSubmission(item.DisputeId, item.RequestFingerprint))
+            .SingleOrDefaultAsync(cancellationToken);
 
     public async Task<DisputeView?> ReadAsync(
         Guid customerId, Guid disputeId, CancellationToken cancellationToken)
@@ -123,4 +148,9 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
     private static bool IsOpenDisputeConflict(DbUpdateException exception) =>
         exception.InnerException is SqliteException { SqliteErrorCode: SqliteConstraintError } sqlite
         && sqlite.Message.Contains("Disputes.CustomerId, Disputes.TransactionId", StringComparison.Ordinal);
+
+    private static bool IsSubmissionKeyConflict(DbUpdateException exception) =>
+        exception.InnerException is SqliteException { SqliteErrorCode: SqliteConstraintError } sqlite
+        && sqlite.Message.Contains(
+            "DisputeSubmissions.CustomerId, DisputeSubmissions.IdempotencyKey", StringComparison.Ordinal);
 }

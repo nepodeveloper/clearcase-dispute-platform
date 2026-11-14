@@ -152,6 +152,44 @@ describe('DisputeForm', () => {
     http.expectOne('/api/v1/disputes').flush(created);
   });
 
+  it('reuses the idempotency key when retrying an unchanged draft and rotates it when the draft changes', () => {
+    fill('duplicateCharge', description);
+    submit();
+    const first = http.expectOne('/api/v1/disputes');
+    const firstKey = first.request.headers.get('Idempotency-Key');
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/);
+    first.flush({}, { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
+
+    submit();
+    const retry = http.expectOne('/api/v1/disputes');
+    expect(retry.request.headers.get('Idempotency-Key')).toBe(firstKey);
+    retry.flush({}, { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
+
+    fill('duplicateCharge', `${description} It happened twice.`);
+    submit();
+    const changed = http.expectOne('/api/v1/disputes');
+    expect(changed.request.headers.get('Idempotency-Key')).not.toBe(firstKey);
+    changed.flush(created);
+  });
+
+  it('rotates the key and explains when the server reports a reused idempotency key', () => {
+    fill('duplicateCharge', description);
+    submit();
+    const first = http.expectOne('/api/v1/disputes');
+    const firstKey = first.request.headers.get('Idempotency-Key');
+    first.flush({ code: 'dispute.idempotencyKeyReused' }, { status: 409, statusText: 'Conflict' });
+    fixture.detectChanges();
+
+    expect(element.querySelector('[data-testid="dispute-error"]')?.textContent)
+      .toContain('Please submit again');
+    submit();
+    const retry = http.expectOne('/api/v1/disputes');
+    expect(retry.request.headers.get('Idempotency-Key')).not.toBe(firstKey);
+    retry.flush(created);
+  });
+
   it('shows the server explanation for an ineligible submission', () => {
     fill('duplicateCharge', description);
     submit();

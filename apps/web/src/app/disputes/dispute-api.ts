@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { TransactionType } from '../transactions/transaction-api';
 
@@ -73,8 +73,10 @@ export function disputeQueryError(error: unknown, resource: 'dispute' | 'dispute
 export class DisputeApi {
   private readonly http = inject(HttpClient);
 
-  submit(request: CreateDisputeRequest) {
-    return this.http.post<Dispute>('/api/v1/disputes', request);
+  submit(request: CreateDisputeRequest, idempotencyKey: string) {
+    return this.http.post<Dispute>('/api/v1/disputes', request, {
+      headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }),
+    });
   }
 
   get(id: string) {
