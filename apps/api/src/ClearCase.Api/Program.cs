@@ -10,6 +10,7 @@ using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.Transactions;
+using ClearCase.Infrastructure.Disputes;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -102,6 +103,12 @@ builder.Services.AddTransactionPersistence(
     builder.Environment.IsDevelopment());
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<OutboxPublisherBackgroundService>();
+if (builder.Configuration.GetValue<bool>("Messaging:Kafka:Enabled"))
+{
+    builder.Services.AddKafkaOutbox(builder.Configuration);
+    if (!builder.Environment.IsEnvironment("Testing"))
+        builder.Services.AddHostedService<KafkaConsumerBackgroundService>();
+}
 var eligibilitySettings = builder.Configuration.GetSection("DisputeEligibility")
     .Get<DisputeEligibilityPolicySettings>()
     ?? throw new InvalidOperationException("DisputeEligibility configuration is required.");

@@ -182,6 +182,57 @@ namespace ClearCase.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedConsumerEffect", b =>
+                {
+                    b.Property<string>("ConsumerName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ProcessedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConsumerName", "EventId");
+
+                    b.ToTable("ConsumerEffects", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedConsumerInboxMessage", b =>
+                {
+                    b.Property<string>("ConsumerName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("AggregateVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ProcessedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConsumerName", "EventId");
+
+                    b.ToTable("ConsumerInbox", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDispute", b =>
                 {
                     b.Property<Guid>("Id")

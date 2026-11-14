@@ -10,6 +10,7 @@ servers:
 channels:
   disputeCaseEvents:
     address: disputes.case-events.v1
+    description: Ordered per dispute ID using aggregateId as the Kafka message key.
     messages:
       caseSubmitted:
         $ref: '#/components/messages/DisputeSubmitted'
@@ -47,9 +48,9 @@ components:
       properties:
         eventId: { type: string, format: uuid }
         eventType: { type: string }
-        eventVersion: { type: integer }
+        eventVersion: { type: integer, minimum: 1, description: Event schema version; currently 1. }
         aggregateId: { type: string, format: uuid }
-        aggregateVersion: { type: integer }
+        aggregateVersion: { type: integer, format: int64, minimum: 1 }
         occurredAt: { type: string, format: date-time }
         correlationId: { type: string }
         causationId: { type: string }

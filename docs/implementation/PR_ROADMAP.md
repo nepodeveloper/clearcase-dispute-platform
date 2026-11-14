@@ -261,13 +261,13 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Outcome:** Connect outbox to Kafka transport with schema-versioned events, inbox dedupe and bounded consumer groups.
 
-**Allowed implementation:** Add Kafka behind adapter; developer opt-in Compose broker; inbox `(consumerName, eventId)` unique key; explicit partitioning by case id and offset/transaction rules; async contract tests.
+**Allowed implementation:** Optional Confluent.Kafka producer/consumer, development Compose broker, aggregate-ID partition key, `(consumerName,eventId)` inbox/effect transaction, commit offsets after DB commit, and versioned AsyncAPI envelope. No exactly-once claim for external money.
 
 **Acceptance:**
-- [ ] Duplicate event produces one side effect per consumer
-- [ ] Restart-before-ack replay is safe
-- [ ] Broker-down leaves outbox pending
-- [ ] Event version documented
+- [x] Duplicate event produces one local effect per consumer
+- [x] Restart-before-ack replay is safe
+- [x] Broker-down leaves outbox pending
+- [x] Event version documented
 
 **Not in scope:** No unreviewed schema changes to established events; no exactly-once claim for external money.
 
