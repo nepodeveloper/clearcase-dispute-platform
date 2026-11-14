@@ -13,7 +13,9 @@ async function login(page: Page, username = 'customer.demo') {
   await page.getByLabel('Username', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(process.env['CLEARCASE_E2E_PASSWORD']!);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Your transactions', exact: true })).toBeVisible();
+  const heading = page.getByRole('heading', { name: 'Your transactions', exact: true });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
 }
 
 async function capture(page: Page, info: TestInfo, name: string) {
@@ -39,7 +41,7 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(page.locator('main h1')).toBeFocused();
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
-  await page.getByLabel('Transaction type', { exact: true }).selectOption('BankCharge');
+  await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
   await page.getByLabel('From date', { exact: true }).fill('2026-11-01');
   await page.getByLabel('To date', { exact: true }).fill('2026-11-10');
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
@@ -159,7 +161,7 @@ test('My disputes consumes the opaque API cursor and recovers from an offline re
 test('customer navigation, session expiry and ownership remain enforced', async ({ page, context }, info) => {
   await login(page);
   if (info.project.name === 'customer-mobile') {
-    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('button', { name: 'Open navigation' }).tap();
     const navigation = page.getByRole('navigation', { name: 'Customer navigation', exact: true });
     await expect(navigation.getByRole('link', { name: 'Transactions', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');

@@ -16,12 +16,13 @@ public interface IDebitOrderProcessingStore
     /// <summary>Serializes the local simulation, committing case, operation reference and timeline together.</summary>
     Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, long? expectedVersion = null);
 }
 
 public interface IDebitOrderProcessingHandler
 {
-    Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken);
+    Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,
+        long? expectedVersion = null);
 }
 
 public sealed class DebitOrderProcessingHandler(
@@ -29,7 +30,8 @@ public sealed class DebitOrderProcessingHandler(
     DisputeEligibilityEvaluator evaluator, IDebitOrderProcessingGateway gateway, TimeProvider clock)
     : IDebitOrderProcessingHandler
 {
-    public Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken) =>
+    public Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,
+        long? expectedVersion = null) =>
         store.ApplyAsync(customer.CustomerId, disputeId, command, async dispute =>
         {
             if (dispute.Category != TransactionCategory.DebitOrder)
@@ -48,5 +50,5 @@ public sealed class DebitOrderProcessingHandler(
                 transition = state.CompleteReversal(await gateway.ReverseAsync(reference, cancellationToken));
             }
             return transition;
-        }, clock.GetUtcNow(), cancellationToken);
+        }, clock.GetUtcNow(), cancellationToken, expectedVersion);
 }

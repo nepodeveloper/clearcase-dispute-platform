@@ -92,7 +92,7 @@ Seeding does not reset existing password hashes, security stamps or lockout stat
 
 ### Browser verification
 
-From `apps/web`, run `npm run test:e2e`. The wrapper generates ephemeral credentials, starts owned API/UI servers on 5101/4301/4302, migrates a unique temporary SQLite database, and deletes that database and sidecars after servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, and customer submission with CSRF. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Reports/screenshots are in `apps/web/playwright-report` and `apps/web/test-results` and uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
+From `apps/web`, run `npm run test:e2e`. The wrapper runs the demo/authentication, customer-desktop and customer-mobile project groups in separate Playwright processes with ephemeral credentials and unique temporary SQLite databases. This keeps login rate-limit state and customer test data isolated; each database and its sidecars are deleted after its servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, and customer submission with CSRF. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Reports/screenshots are in `apps/web/playwright-report` and `apps/web/test-results` and uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
 
 The separate `npm run start:ui` build remains a clearly labelled, API-free design preview; its role picker is not included in the real application. PR-13 also fixes the preview's mobile table overflow, drawer focus timing, decorative button name and escalation-dialog focus containment without weakening the browser assertions.
 
@@ -137,6 +137,10 @@ No API, database, policy implementation, auth or event contract changed. Roll ba
 | Malformed key | `400 dispute.invalidRequest`, pointer `/headers/Idempotency-Key` |
 
 The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry and making the header mandatory are deferred.
+
+## Optimistic concurrency (PR-16)
+
+Dispute responses include a monotonically increasing `version`, starting at `1`. Local debit-order, chargeback and bank-charge simulation commands may include `expectedVersion` from the last response. If another command has changed the case, the stale request returns `409 dispute.concurrencyConflict` and does not append a timeline entry or perform transition work. Omitting `expectedVersion` remains supported for compatibility; callers should send it to detect stale updates. The database version predicate is checked on every processing write, and each version increment commits with the case and timeline. Migration `AddDisputeOptimisticConcurrency` adds the column with version `1` for existing cases. Back out code and migrate to `AddDisputeSubmissionIdempotency` to roll back this schema change.
 
 ## Transaction listing API
 

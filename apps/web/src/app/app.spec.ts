@@ -54,6 +54,7 @@ describe('App', () => {
     toggle.click();
     fixture.detectChanges();
     await fixture.whenStable();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(compiled.querySelector('.sidebar')?.classList.contains('is-open')).toBe(true);
     expect(document.activeElement).toBe(firstLink);
