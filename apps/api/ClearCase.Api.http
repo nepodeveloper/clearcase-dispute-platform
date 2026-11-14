@@ -100,7 +100,7 @@ X-CSRF-TOKEN: {{csrfToken}}
   "description": "This collection needs investigation for a duplicate debit."
 }
 
-### Run sequentially, changing command to VerifyMandate, RequestReversal, ExecuteReversal, Close
+### Run sequentially, changing command to VerifyMandate, RequestReversal, ExecuteReversal, ReconcileReversal, Close
 # Configure Simulation__DebitOrderKey in the API shell; REST Client must receive the same local value.
 # Never commit the value or pass it to the customer frontend.
 POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations
@@ -110,6 +110,15 @@ X-Correlation-ID: debit-order-demo
 X-CSRF-TOKEN: {{csrfToken}}
 
 { "command": "StartReview" }
+
+### Use only after ExecuteReversal returns OutcomeUnknown; this queries MOCK-DO-{caseId} and never resubmits it.
+POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations
+Content-Type: application/json
+X-Simulation-Key: {{$processEnv Simulation__DebitOrderKey}}
+X-Correlation-ID: debit-order-reconcile
+X-CSRF-TOKEN: {{csrfToken}}
+
+{ "command": "ReconcileReversal" }
 
 ### Ordinary customer processing is forbidden, even in Development
 POST {{baseUrl}}/api/v1/disputes/{{debitOrderCase.response.body.$.id}}/debit-order-simulations

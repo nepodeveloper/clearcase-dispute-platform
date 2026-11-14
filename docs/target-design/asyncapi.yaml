@@ -2,7 +2,7 @@ asyncapi: '3.0.0'
 info:
   title: ClearCase domain event catalogue
   version: 1.0.0
-  description: Versioned dispute event contract. PR-17 implements durable local outbox dispatch; Kafka transport is deferred to PR-18.
+  description: Versioned dispute event contract. PR-17 implements durable local outbox dispatch; PR-18 adds opt-in Kafka transport and inbox deduplication.
 servers:
   localKafka:
     host: localhost:9092

@@ -155,6 +155,36 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reconcile_QueriesOriginalReferenceAfterTimeoutWithoutSendingAnotherReversal()
+    {
+        _gateway.Outcome = DebitOrderGatewayOutcome.Unknown;
+        _gateway.ReconciledOutcome = DebitOrderGatewayOutcome.Unknown;
+        using var client = Client();
+        var id = await ReadyForReversal(client);
+
+        using var timeout = await client.PostAsJsonAsync(Route(id), new { command = "ExecuteReversal" });
+        Assert.Equal(HttpStatusCode.OK, timeout.StatusCode);
+        var unknown = await timeout.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("OutcomeUnknown", unknown.GetProperty("financialStatus").GetString());
+
+        using var pending = await client.PostAsJsonAsync(Route(id), new { command = "ReconcileReversal" });
+        Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        Assert.Equal("OutcomeUnknown",
+            (await pending.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("financialStatus").GetString());
+        _gateway.ReconciledOutcome = DebitOrderGatewayOutcome.Confirmed;
+
+        using var reconciliation = await client.PostAsJsonAsync(Route(id), new { command = "ReconcileReversal" });
+        Assert.Equal(HttpStatusCode.OK, reconciliation.StatusCode);
+        var confirmed = await reconciliation.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Confirmed", confirmed.GetProperty("financialStatus").GetString());
+        Assert.Equal("ReversalConfirmed", confirmed.GetProperty("caseStatus").GetString());
+        Assert.Single(_gateway.References);
+        Assert.Equal(2, _gateway.StatusReferences.Count);
+        Assert.All(_gateway.StatusReferences, reference => Assert.Equal(_gateway.References.Single(), reference));
+        Assert.Equal(7, confirmed.GetProperty("timeline").GetArrayLength());
+    }
+
+    [Fact]
     public async Task ConcurrentExecution_CommitsOneGatewayOutcomeAndOneTimelineEvent()
     {
         using var client = Client();
@@ -397,12 +427,21 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
     private sealed class RecordingGateway : IDebitOrderProcessingGateway
     {
         public DebitOrderGatewayOutcome Outcome { get; set; } = DebitOrderGatewayOutcome.Confirmed;
+        public DebitOrderGatewayOutcome ReconciledOutcome { get; set; } = DebitOrderGatewayOutcome.Unknown;
         public ConcurrentQueue<string> References { get; } = new();
+        public ConcurrentQueue<string> StatusReferences { get; } = new();
 
         public Task<DebitOrderGatewayOutcome> ReverseAsync(string operationReference, CancellationToken cancellationToken)
         {
             References.Enqueue(operationReference);
             return new MockDebitOrderProcessingGateway(Outcome).ReverseAsync(operationReference, cancellationToken);
+        }
+
+        public Task<DebitOrderGatewayOutcome> GetReversalStatusAsync(
+            string operationReference, CancellationToken cancellationToken)
+        {
+            StatusReferences.Enqueue(operationReference);
+            return Task.FromResult(ReconciledOutcome);
         }
     }
 }
