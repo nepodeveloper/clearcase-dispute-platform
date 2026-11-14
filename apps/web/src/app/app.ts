@@ -41,7 +41,14 @@ export class App {
     const shouldOpen = !this.mobileNavigationOpen();
     this.mobileNavigationOpen.set(shouldOpen);
     if (shouldOpen) {
-      afterNextRender(() => this.firstCustomerLink()?.nativeElement.focus(), { injector: this.injector });
+      afterNextRender(() => {
+        const focusFirstLink = () => {
+          if (this.mobileNavigationOpen()) this.firstCustomerLink()?.nativeElement.focus();
+        };
+        if (typeof requestAnimationFrame === 'function')
+          requestAnimationFrame(() => requestAnimationFrame(focusFirstLink));
+        else focusFirstLink();
+      }, { injector: this.injector });
     } else {
       this.mobileMenuToggle()?.nativeElement.focus();
     }
