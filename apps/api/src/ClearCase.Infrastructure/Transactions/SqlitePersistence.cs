@@ -24,6 +24,9 @@ public static class SqlitePersistence
         });
         services.AddScoped<ITransactionReader, SqliteTransactionReader>();
         services.AddScoped<IDisputeStore, SqliteDisputeStore>();
+        services.AddScoped<IOutboxStore, SqliteOutboxStore>();
+        services.AddScoped<IOutboxPublisher, LocalOutboxPublisher>();
+        services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();
         services.AddScoped<IBankChargeProcessingStore, SqliteBankChargeProcessingStore>();

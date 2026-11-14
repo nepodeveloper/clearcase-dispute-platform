@@ -122,7 +122,8 @@ public static class DisputeEndpoints
                 "dispute.invalidRequest", errors: errors);
 
         var result = await handler.HandleAsync(
-            new SubmitDisputeCommand(transactionId, reasonCode, description, idempotencyKey), cancellationToken);
+            new SubmitDisputeCommand(transactionId, reasonCode, description, idempotencyKey,
+                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!), cancellationToken);
         if (result is SubmitDisputeResult.Replayed)
             context.Response.Headers[IdempotentReplayedHeader] = "true";
         return result switch

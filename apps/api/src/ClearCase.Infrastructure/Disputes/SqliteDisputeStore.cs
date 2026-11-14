@@ -35,7 +35,8 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
         AddAsync(dispute, null, cancellationToken);
 
     public async Task<DisputeAddResult> AddAsync(
-        Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken)
+        Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken,
+        OutboxMetadata? outboxMetadata = null)
     {
         var entity = new PersistedDispute
         {
@@ -73,9 +74,11 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
                 DisputeId = dispute.Id,
                 CreatedAt = dispute.CreatedAt
             });
+        context.OutboxMessages.Add(PersistedOutboxMessage.Submitted(entity,
+            outboxMetadata?.CorrelationId ?? "local"));
         try
         {
-            // A single SaveChanges runs in one database transaction: case, timeline and key commit together.
+            // A single SaveChanges commits the case, timeline, key and event intent together.
             await context.SaveChangesAsync(cancellationToken);
             return DisputeAddResult.Added;
         }
@@ -119,7 +122,7 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
     public async Task<DisputeView?> ApplyAsync(
         Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
-        CancellationToken cancellationToken, long? expectedVersion = null)
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null)
     {
         // SQLite's non-deferred transaction takes the writer lock before reading or calling the pure mock.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -143,6 +146,9 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             EventType = $"DebitOrder{command}", CaseStatus = item.CaseStatus,
             PublicDescription = next.Description, OccurredAt = occurredAt
         });
+        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
+            item, command.ToString(), occurredAt, "dispute.debit-order-transitioned.v1",
+            correlationId ?? "local"));
         try
         {
             await context.SaveChangesAsync(cancellationToken);

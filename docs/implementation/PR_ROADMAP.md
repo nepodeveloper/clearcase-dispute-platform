@@ -245,13 +245,13 @@ This is the execution plan, **not** a claim that the features already exist. All
 
 **Outcome:** Persist event intent atomically with dispute status and timeline; publish via testable local dispatcher.
 
-**Allowed implementation:** Outbox table with eventId, aggregateId, version, payload, occurredAt, publishedAt, attempts; background publisher interface; crash/retry tests before Kafka.
+**Allowed implementation:** SQLite outbox with stable event IDs, aggregate/event versions, customer-safe payload and correlation ID; commit with each submission/transition; local background publisher; retry the same event ID until acknowledgement. Kafka is PR-18.
 
 **Acceptance:**
-- [ ] Case+timeline+outbox commit or roll back together
-- [ ] Unpublished events survive process restart
-- [ ] No event claimed published until acknowledgement
-- [ ] Replay test
+- [x] Case+timeline+outbox commit or roll back together
+- [x] Unpublished events survive process restart
+- [x] No event claimed published until acknowledgement
+- [x] Replay test
 
 **Not in scope:** No dependency on production Kafka cluster.
 

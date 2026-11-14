@@ -35,6 +35,11 @@ public sealed class SqliteDisputeStoreTests
         Assert.Equal(DisputeFinancialStatus.NotInitiated, stored.FinancialStatus);
         Assert.Equal(SubmittedAt, stored.CreatedAt);
         Assert.Equal(1, stored.Version);
+        var outbox = await restarted.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(dispute.Id, outbox.AggregateId);
+        Assert.Equal(1, outbox.AggregateVersion);
+        Assert.Equal("dispute.submitted.v1", outbox.EventType);
+        Assert.Null(outbox.PublishedAt);
         var initialEvent = Assert.Single(stored.Timeline);
         Assert.Equal(1, initialEvent.SequenceNumber);
         Assert.Equal(Dispute.SubmittedEventType, initialEvent.EventType);
@@ -60,6 +65,7 @@ public sealed class SqliteDisputeStoreTests
         await using var verify = database.CreateContext();
         Assert.Equal(0, await verify.Disputes.CountAsync());
         Assert.Equal(0, await verify.DisputeEvents.CountAsync());
+        Assert.Equal(0, await verify.OutboxMessages.CountAsync());
     }
 
     [Fact]

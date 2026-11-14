@@ -87,6 +87,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         int transaction, string reason, string route, string firstCommand, string staleCommand)
     {
         using var client = Client();
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", "outbox-correlation");
         var id = (await Submit(client, transaction, reason)).GetProperty("id").GetGuid();
         var simulationRoute = $"/api/v1/disputes/{id}/{route}";
         using var first = await client.PostAsJsonAsync(simulationRoute,
@@ -105,6 +106,19 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         Assert.Equal(2, current.GetProperty("version").GetInt64());
         Assert.Equal("Pending", current.GetProperty("decisionStatus").GetString());
         Assert.Equal(2, current.GetProperty("timeline").GetArrayLength());
+        using var scope = _app.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var eventVersions = await database.OutboxMessages.AsNoTracking()
+            .Where(item => item.AggregateId == id)
+            .OrderBy(item => item.AggregateVersion)
+            .Select(item => item.AggregateVersion)
+            .ToArrayAsync();
+        Assert.Equal(new long[] { 1, 2 }, eventVersions);
+        var correlations = await database.OutboxMessages.AsNoTracking()
+            .Where(item => item.AggregateId == id)
+            .Select(item => item.CorrelationId)
+            .ToArrayAsync();
+        Assert.All(correlations, correlation => Assert.Equal("outbox-correlation", correlation));
     }
 
     [Fact]
@@ -189,6 +203,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         await Command(client, id, "Approve", "UnderReview", "Approved", "NotInitiated");
         using var scope = _app.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var outboxCountBeforeFailure = await database.OutboxMessages.CountAsync(item => item.AggregateId == id);
         await database.Database.ExecuteSqlRawAsync("""
             CREATE TRIGGER "TR_Test_FailFeeEvent" BEFORE INSERT ON "DisputeEvents"
             BEGIN SELECT RAISE(ABORT, 'simulated timeline failure'); END;
@@ -199,6 +214,8 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
         Assert.Null(stored.BankChargeAdjustmentReference);
         Assert.Equal(DisputeFinancialStatus.NotInitiated, stored.FinancialStatus);
         Assert.Equal(3, await database.DisputeEvents.CountAsync(item => item.DisputeId == id));
+        Assert.Equal(outboxCountBeforeFailure,
+            await database.OutboxMessages.CountAsync(item => item.AggregateId == id));
     }
 
     [Fact]

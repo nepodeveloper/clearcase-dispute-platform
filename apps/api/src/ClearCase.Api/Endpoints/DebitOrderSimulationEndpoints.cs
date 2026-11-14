@@ -1,5 +1,6 @@
 using ClearCase.Api.Authentication;
 using ClearCase.Api.Disputes;
+using ClearCase.Api.Middleware;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.Disputes;
@@ -55,7 +56,8 @@ public static class DebitOrderSimulationEndpoints
                 errors: [new("/expectedVersion", "expectedVersion.invalid", "Expected version must be a positive integer.")]);
         try
         {
-            var dispute = await handler.HandleAsync(disputeId, command, cancellationToken, request.ExpectedVersion);
+            var dispute = await handler.HandleAsync(disputeId, command, cancellationToken, request.ExpectedVersion,
+                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!);
             return dispute is null
                 ? DisputeEndpoints.Problem(context, 404, "Dispute not found", "dispute.notFound")
                 : TypedResults.Ok(DisputeResponse.From(dispute));

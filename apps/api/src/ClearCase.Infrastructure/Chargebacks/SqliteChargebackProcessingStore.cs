@@ -35,6 +35,9 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
             EventType = $"Chargeback{command.Command}", CaseStatus = item.CaseStatus,
             PublicDescription = next.Description, OccurredAt = occurredAt
         });
+        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
+            item, command.Command.ToString(), occurredAt, "dispute.chargeback-transitioned.v1",
+            command.CorrelationId));
         context.ChargebackAuditEvents.Add(new ChargebackAuditEvent
         {
             Id = Guid.NewGuid(), DisputeId = item.Id, OperationReference = next.Chargeback.OperationReference(command.Command),

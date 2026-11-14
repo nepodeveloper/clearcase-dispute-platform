@@ -142,6 +142,12 @@ The Angular form sends a UUID per draft and reuses it when retrying an unchanged
 
 Dispute responses include a monotonically increasing `version`, starting at `1`. Local debit-order, chargeback and bank-charge simulation commands may include `expectedVersion` from the last response. If another command has changed the case, the stale request returns `409 dispute.concurrencyConflict` and does not append a timeline entry or perform transition work. Omitting `expectedVersion` remains supported for compatibility; callers should send it to detect stale updates. The database version predicate is checked on every processing write, and each version increment commits with the case and timeline. Migration `AddDisputeOptimisticConcurrency` adds the column with version `1` for existing cases. Back out code and migrate to `AddDisputeSubmissionIdempotency` to roll back this schema change.
 
+## Transactional outbox (PR-17)
+
+Dispute submission and each debit-order, chargeback or bank-charge transition write an event-intent row in `OutboxMessages` in the same transaction as the case, version and timeline. The versioned envelope includes a stable event ID, aggregate ID/version, event type/version, UTC occurrence time, correlation ID and a customer-safe status payload. Descriptions and other customer-provided text are not included.
+
+In Development/Production, a background dispatcher sends pending records to the local logging publisher. It marks an event published only after the publisher acknowledges it. Failures leave the event pending and increment its attempt count; retries use the same event ID. The publisher is a local adapter, not Kafka or a durable external notification service. Migration `AddTransactionalOutbox` adds the table; back out code and migrate to `AddDisputeOptimisticConcurrency` to remove it. Kafka transport and consumer inbox deduplication are deferred to PR-18.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.
@@ -572,8 +578,9 @@ closed by this interface; reconciliation is deferred to PR-15.
 
 This transaction boundary is safe **only because the mock has no external side effects**. A database
 rollback can recompute the pure mock using the same reference; it cannot move money twice. Never
-replace it with an external banking call inside this transaction. Outbox delivery, audit actors,
-general optimistic concurrency and recovery remain later roadmap work.
+replace it with an external banking call inside this transaction. Case events now persist in the
+transactional outbox and are dispatched to the local logging publisher; Kafka delivery and external
+financial recovery remain later roadmap work.
 
 **Migration / rollback:** `AddDebitOrderOperationReference` adds one nullable column and unique index.
 Existing cases/events are preserved. Development applies it on startup; other environments require
@@ -661,8 +668,8 @@ resulting statuses, evidence metadata and timestamp. A unique `MOCK-CARD-{caseId
 reference, one chargeback per dispute, and SQLite's writer lock prevent duplicate committed operations,
 including across races/restarts. Audit UPDATE/DELETE is rejected by SQLite triggers.
 The gateway is pure and runs inside that local transaction; rollback may recompute it without external
-effects. Do not substitute a real network call here. External intent/outbox/reconciliation need a
-separate design before integration.
+effects. Do not substitute a real network call here. Kafka transport and financial reconciliation
+remain separate follow-up work.
 
 Invalid fields return 400 `chargeback.invalidRequest` with JSON Pointer errors; invalid transitions
 or repeated commands return 409 `chargeback.invalidTransition`; inaccessible cases return 404

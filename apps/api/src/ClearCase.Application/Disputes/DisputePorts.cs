@@ -49,7 +49,8 @@ public interface IDisputeStore
     Task<bool> HasOpenDisputeAsync(Guid customerId, Guid transactionId, CancellationToken cancellationToken);
 
     /// <summary>Atomically stores the case, its timeline and any submission key; constraint conflicts are reported, not thrown.</summary>
-    Task<DisputeAddResult> AddAsync(Dispute dispute, DisputeSubmission? submission, CancellationToken cancellationToken);
+    Task<DisputeAddResult> AddAsync(Dispute dispute, DisputeSubmission? submission,
+        CancellationToken cancellationToken, OutboxMetadata? outboxMetadata = null);
 
     Task<StoredDisputeSubmission?> FindSubmissionAsync(
         Guid customerId, string idempotencyKey, CancellationToken cancellationToken);

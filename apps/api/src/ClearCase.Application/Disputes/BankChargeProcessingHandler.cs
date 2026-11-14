@@ -15,13 +15,13 @@ public interface IBankChargeProcessingStore
 {
     Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, BankChargeCommand command,
         DateTimeOffset occurredAt, Func<DisputeView, Task<BankChargeTransition>> transition,
-        CancellationToken cancellationToken, long? expectedVersion = null);
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null);
 }
 
 public interface IBankChargeProcessingHandler
 {
     Task<DisputeView?> HandleAsync(Guid disputeId, BankChargeCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null);
+        long? expectedVersion = null, string? correlationId = null);
 }
 
 public sealed class BankChargeProcessingHandler(
@@ -30,7 +30,7 @@ public sealed class BankChargeProcessingHandler(
     : IBankChargeProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, BankChargeCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null) =>
+        long? expectedVersion = null, string? correlationId = null) =>
         store.ApplyAsync(customer.CustomerId, disputeId, command, clock.GetUtcNow(), async dispute =>
         {
             if (dispute.Category != TransactionCategory.BankCharge)
@@ -49,5 +49,5 @@ public sealed class BankChargeProcessingHandler(
                 change = state.CompleteAdjustment(await gateway.AdjustAsync(reference, cancellationToken));
             }
             return change;
-        }, cancellationToken, expectedVersion);
+        }, cancellationToken, expectedVersion, correlationId);
 }

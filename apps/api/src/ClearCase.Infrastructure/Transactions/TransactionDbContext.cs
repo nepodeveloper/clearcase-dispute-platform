@@ -16,6 +16,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedDispute> Disputes => Set<PersistedDispute>();
     public DbSet<PersistedDisputeEvent> DisputeEvents => Set<PersistedDisputeEvent>();
     public DbSet<PersistedDisputeSubmission> DisputeSubmissions => Set<PersistedDisputeSubmission>();
+    public DbSet<PersistedOutboxMessage> OutboxMessages => Set<PersistedOutboxMessage>();
     public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
     public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
 
@@ -39,6 +40,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         transaction.HasIndex(item => new { item.CustomerId, item.Type, item.TransactionDate, item.Id });
 
         DisputePersistenceModel.Configure(modelBuilder);
+        OutboxPersistenceModel.Configure(modelBuilder);
         ChargebackPersistenceModel.Configure(modelBuilder);
     }
 }
