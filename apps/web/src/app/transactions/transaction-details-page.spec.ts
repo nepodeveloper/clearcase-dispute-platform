@@ -95,6 +95,15 @@ describe('TransactionDetailsPage', () => {
     expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).not.toBeNull();
   });
 
+  it('keeps the persisted decimal amount exact in the summary and facts', async () => {
+    const harness = await RouterTestingHarness.create(`/transactions/${id}`);
+    http.expectOne(`/api/v1/transactions/${id}`).flush({ ...transaction, amount: '90071992547409.91' });
+    expectEligibility();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent?.match(/ZAR 90,071,992,547,409\.91/g)).toHaveLength(2);
+  });
+
   it('renders ineligible outcome and its customer-safe explanation', async () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/transactions/${id}`, TransactionDetailsPage);

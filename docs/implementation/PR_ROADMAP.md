@@ -2,7 +2,7 @@
 
 This is the execution plan, **not** a claim that the features already exist. All 21 PRs must remain independently mergeable and green. Current baseline is the `card-dispute-portal-starter` (.NET single API project, Angular frontend, SQLite, unversioned `/api` routes). Target is the v2 design.
 
-> Assignment override (2026-11-13): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, and assigned PR-13 is authentication UI integration. See [PR-13 delivery](PR-13-auth-integration.md). The original financial-reliability sequence below remains proposed, not implemented or authorized by this assignment. PR-14 has not started.
+> Assignment override (2026-11-14): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, and PR-13 is authentication UI integration. See [PR-13 delivery](PR-13-auth-integration.md). Assigned **PR-14 is Customer Portal Integration**, using existing APIs, SQLite and the shared theme; see [customer journey](../../README.md#connected-customer-journey-pr-14). The original financial-reliability sequence below remains proposed, not implemented or authorized by this assignment. PR-14 does not add Kafka or idempotency-key replay. PR-15 has not started.
 
 ## Release cut lines
 

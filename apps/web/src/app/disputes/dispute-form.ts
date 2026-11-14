@@ -2,10 +2,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { DisputeReason } from '../transactions/transaction-api';
 import { Dispute, DisputeApi } from './dispute-api';
-import { DisputeDetails } from './dispute-details';
 
 type SubmissionState =
   | { kind: 'editing' }
@@ -18,7 +17,7 @@ export const descriptionMaxLength = 2000;
 
 @Component({
   selector: 'app-dispute-form',
-  imports: [ReactiveFormsModule, DisputeDetails, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './dispute-form.html',
   styleUrl: './dispute-form.css',
 })
@@ -27,10 +26,10 @@ export class DisputeForm {
   readonly reasons = input.required<DisputeReason[]>();
 
   private readonly api = inject(DisputeApi);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly state = signal<SubmissionState>({ kind: 'editing' });
-  protected readonly refreshing = signal(false);
-  protected readonly refreshError = signal<string | null>(null);
+  protected readonly serverErrors = signal<Partial<Record<'reasonCode' | 'description', string>>>({});
   protected readonly maxLength = descriptionMaxLength;
   protected readonly form = inject(NonNullableFormBuilder).group({
     reasonCode: ['', Validators.required],
@@ -41,8 +40,13 @@ export class DisputeForm {
     ]],
   });
 
+  constructor() {
+    this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.serverErrors.set({}));
+  }
+
   protected submit(): void {
-    if (this.state().kind === 'submitting') return;
+    if (this.state().kind === 'submitting' || this.state().kind === 'submitted') return;
     const value = this.form.getRawValue();
     const description = value.description.trim();
     this.form.controls.description.setValue(description);
@@ -53,31 +57,34 @@ export class DisputeForm {
     this.api.submit({ transactionId: this.transactionId(), reasonCode: value.reasonCode, description })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (dispute) => this.state.set({ kind: 'submitted', dispute }),
-        error: (error: unknown) => this.state.set({ kind: 'error', message: this.errorMessage(error) }),
+        next: (dispute) => {
+          this.state.set({ kind: 'submitted', dispute });
+          void this.router.navigate(['/disputes', dispute.id]);
+        },
+        error: (error: unknown) => {
+          this.readFieldErrors(error);
+          this.state.set({ kind: 'error', message: this.errorMessage(error) });
+        },
       });
-  }
-
-  protected refresh(): void {
-    const current = this.state();
-    if (current.kind !== 'submitted' || this.refreshing()) return;
-    this.refreshing.set(true);
-    this.refreshError.set(null);
-    this.api.get(current.dispute.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (dispute) => {
-        this.state.set({ kind: 'submitted', dispute });
-        this.refreshing.set(false);
-      },
-      error: () => {
-        this.refreshError.set('Unable to refresh the case status. Please try again.');
-        this.refreshing.set(false);
-      },
-    });
   }
 
   protected showError(control: 'reasonCode' | 'description'): boolean {
     const field = this.form.controls[control];
-    return field.invalid && field.touched;
+    return (field.invalid && field.touched) || this.serverErrors()[control] !== undefined;
+  }
+
+  private readFieldErrors(error: unknown): void {
+    const body: unknown = error instanceof HttpErrorResponse ? error.error : null;
+    if (typeof body !== 'object' || body === null || !('errors' in body) || !Array.isArray(body.errors)) return;
+    const fields: Partial<Record<'reasonCode' | 'description', string>> = {};
+    const entries: unknown[] = body.errors;
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null || !('pointer' in entry)
+        || !('message' in entry) || typeof entry.message !== 'string') continue;
+      if (entry.pointer === '/reasonCode') fields.reasonCode = entry.message;
+      if (entry.pointer === '/description') fields.description = entry.message;
+    }
+    this.serverErrors.set(fields);
   }
 
   private errorMessage(error: unknown): string {
@@ -94,6 +101,8 @@ export class DisputeForm {
         return 'Check the dispute details and try again.';
       case 401:
         return 'Sign in again to submit a dispute.';
+      case 403:
+        return 'You do not have permission to submit this dispute.';
       default:
         return 'Unable to submit your dispute. Please try again later.';
     }

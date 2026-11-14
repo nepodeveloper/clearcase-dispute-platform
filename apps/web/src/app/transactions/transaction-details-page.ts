@@ -1,4 +1,4 @@
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -12,6 +12,7 @@ import {
   TransactionDisputeEligibility,
 } from './transaction-api';
 import { transactionTypeLabel } from './transaction-type-label';
+import { DecimalMoney } from './decimal-money';
 
 type EligibilityState =
   | { kind: 'loading' }
@@ -26,7 +27,7 @@ type ViewState =
 
 @Component({
   selector: 'app-transaction-details-page',
-  imports: [CurrencyPipe, DatePipe, DisputeForm, RouterLink],
+  imports: [DecimalMoney, DatePipe, DisputeForm, RouterLink],
   templateUrl: './transaction-details-page.html',
   styleUrl: './transaction-details-page.css',
 })

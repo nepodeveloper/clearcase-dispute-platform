@@ -7,7 +7,8 @@ import { Dispute, DisputeApi, DisputeQueryError, disputeQueryError } from './dis
 import { DisputeDetails } from './dispute-details';
 
 type ViewState = { kind: 'loading' } | { kind: 'not-found' }
-  | ({ kind: 'error' } & DisputeQueryError) | { kind: 'loaded'; dispute: Dispute };
+  | ({ kind: 'error' } & DisputeQueryError)
+  | { kind: 'loaded'; dispute: Dispute; refreshing: boolean; error?: DisputeQueryError };
 
 @Component({
   selector: 'app-dispute-details-page',
@@ -28,17 +29,28 @@ export class DisputeDetailsPage implements OnInit {
       switchMap((params) => {
         const id = params.get('id');
         if (id === null) return of<ViewState>({ kind: 'not-found' });
-        return this.refreshes.pipe(startWith(undefined), switchMap(() => this.api.get(id).pipe(
-          map((dispute): ViewState => ({ kind: 'loaded', dispute })),
-          catchError((error: unknown) => of<ViewState>(error instanceof HttpErrorResponse && error.status === 404
-            ? { kind: 'not-found' } : { kind: 'error', ...disputeQueryError(error, 'dispute') })),
-          startWith<ViewState>({ kind: 'loading' }),
-        )));
+        return this.refreshes.pipe(startWith(undefined), switchMap(() => {
+          const current = this.state();
+          const previous = current.kind === 'loaded' && current.dispute.id === id ? current : null;
+          return this.api.get(id).pipe(
+            map((dispute): ViewState => ({ kind: 'loaded', dispute, refreshing: false })),
+            catchError((error: unknown) => {
+              const failure = disputeQueryError(error, 'dispute');
+              return of<ViewState>(previous !== null && failure.retryable
+                ? { ...previous, refreshing: false, error: failure }
+                : error instanceof HttpErrorResponse && error.status === 404
+                  ? { kind: 'not-found' } : { kind: 'error', ...failure });
+            }),
+            startWith<ViewState>(previous === null ? { kind: 'loading' }
+              : { ...previous, refreshing: true, error: undefined }),
+          );
+        }));
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((state) => {
       this.state.set(state);
-      if (state.kind !== 'loading') this.heading()?.nativeElement.focus();
+      if (state.kind !== 'loading' && !(state.kind === 'loaded' && state.refreshing))
+        this.heading()?.nativeElement.focus();
     });
   }
 

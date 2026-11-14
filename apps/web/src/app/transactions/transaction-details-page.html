@@ -2,7 +2,7 @@
   <a class="back-link" routerLink="/" data-testid="back-to-transactions">← Back to transactions</a>
   <header class="page-heading">
     <p class="eyebrow">Customer portal</p>
-    <h1 class="cc-page-title" id="transaction-details-heading">Transaction details</h1>
+    <h1 class="cc-page-title" id="transaction-details-heading" tabindex="-1">Transaction details</h1>
     <p class="cc-description">Review the details and tell us what happened.</p>
   </header>
 
@@ -26,13 +26,13 @@
             <h2>{{ view.transaction.description }}</h2>
             <p>{{ typeLabel(view.transaction.transactionType) }} · {{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</p>
           </div>
-          <strong>{{ view.transaction.amount | currency:view.transaction.currency:'code':'1.2-2' }}</strong>
+          <strong>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</strong>
         </div>
         <dl class="detail-list">
           <div><dt>Reference</dt><dd>{{ view.transaction.reference ?? 'Not available' }}</dd></div>
           <div><dt>Merchant</dt><dd>{{ view.transaction.merchantName ?? 'Not available' }}</dd></div>
           <div><dt>Transaction type</dt><dd>{{ typeLabel(view.transaction.transactionType) }}</dd></div>
-          <div><dt>Amount</dt><dd>{{ view.transaction.amount | currency:view.transaction.currency:'code':'1.2-2' }}</dd></div>
+          <div><dt>Amount</dt><dd>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</dd></div>
           <div><dt>Date</dt><dd>{{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</dd></div>
           <div><dt>Status</dt><dd><span class="cc-status cc-status--success">{{ view.transaction.status }}</span></dd></div>
         </dl>

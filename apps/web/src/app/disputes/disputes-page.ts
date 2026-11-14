@@ -1,16 +1,17 @@
+import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { DisputeApi, DisputePage, DisputeQueryError, disputeQueryError } from './dispute-api';
-import { disputeStatusLabel } from './dispute-details';
+import { disputeFinancialLabel, disputeStatusLabel } from './dispute-details';
 
 type ViewState = { kind: 'loading' } | ({ kind: 'error' } & DisputeQueryError)
   | { kind: 'loaded'; page: DisputePage; loadingMore: boolean; error?: DisputeQueryError };
 
 @Component({
   selector: 'app-disputes-page',
-  imports: [RouterLink],
+  imports: [DatePipe, RouterLink],
   templateUrl: './disputes-page.html',
   styleUrl: './dispute-tracking.css',
 })
@@ -20,6 +21,7 @@ export class DisputesPage implements OnInit {
   protected readonly state = signal<ViewState>({ kind: 'loading' });
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
+  protected readonly financialLabel = disputeFinancialLabel;
 
   ngOnInit(): void { this.load(); }
 

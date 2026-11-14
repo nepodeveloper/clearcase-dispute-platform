@@ -52,11 +52,3 @@ textarea.cc-control {
 .confirmation-card > p > a {
   font-weight: 800;
 }
-
-.confirmation-card .case-details-card {
-  box-shadow: none;
-}
-
-.confirmation-card > button {
-  margin-top: var(--cc-space-3);
-}

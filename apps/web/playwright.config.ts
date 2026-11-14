@@ -23,6 +23,10 @@ export default defineConfig({
     { name: 'mobile', testMatch: 'ui-demo.spec.ts', use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
     { name: 'authentication', testMatch: 'auth.spec.ts',
       use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 1440, height: 1000 }, trace: 'off' } },
+    { name: 'customer-desktop', testMatch: 'customer.spec.ts',
+      use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 1440, height: 1000 }, trace: 'off' } },
+    { name: 'customer-mobile', testMatch: 'customer.spec.ts',
+      use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, trace: 'off' } },
   ],
   // Concurrent entrypoints must not share Vite's optimized Angular dependency cache.
   webServer: [{
@@ -41,6 +45,8 @@ export default defineConfig({
       Authentication__SeedPasswords__OtherCustomer: password,
       Authentication__SeedPasswords__Agent: password,
       Authentication__SeedPasswords__Supervisor: password,
+      // Fixed seed dates must not make browser journeys expire; policy boundaries have clocked API tests.
+      DisputeEligibility__Card__DemoWindowEnabled: 'false',
     },
     reuseExistingServer: false,
     timeout: 120000,

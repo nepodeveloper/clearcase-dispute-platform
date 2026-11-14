@@ -1,4 +1,4 @@
-<section class="page-section" aria-labelledby="transactions-heading">
+<section class="page-section" aria-labelledby="transactions-heading" [attr.aria-busy]="state().kind === 'loading'">
   <header class="page-heading">
     <p class="eyebrow">Customer portal</p>
     <h1 class="cc-page-title" id="transactions-heading" #transactionsHeading tabindex="-1">Your transactions</h1>
@@ -60,7 +60,7 @@
       <button class="cc-button cc-button--secondary" type="button" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
     }
   } @else {
-    <div class="cc-table-scroll">
+    <div class="cc-table-scroll" role="region" aria-label="Recent transactions, scroll horizontally on small screens" tabindex="0">
       <table class="cc-table">
         <caption class="visually-hidden">Transactions, newest first</caption>
         <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Type</th><th scope="col">Amount</th><th scope="col">Status</th></tr></thead>
@@ -70,7 +70,7 @@
               <td>{{ transaction.transactionDate | date:'mediumDate':'UTC' }}</td>
               <td><a data-testid="transaction-link" [routerLink]="['/transactions', transaction.id]">{{ transaction.description }}</a></td>
               <td>{{ typeLabel(transaction.transactionType) }}</td>
-              <td>{{ transaction.amount | currency:transaction.currency:'code':'1.2-2' }}</td>
+              <td>{{ transaction.amount | decimalMoney:transaction.currency }}</td>
               <td><span class="cc-status cc-status--success">{{ transaction.status }}</span></td>
             </tr>
           }

@@ -7,7 +7,7 @@
       <p class="cc-empty">No timeline events yet.</p>
     } @else {
       <ol class="timeline" aria-label="Dispute timeline" tabindex="0">
-        @for (event of current.timeline; track event.id) {
+        @for (event of timeline(); track event.id) {
           <li>
             <span class="timeline-marker" aria-hidden="true"></span>
             <div>

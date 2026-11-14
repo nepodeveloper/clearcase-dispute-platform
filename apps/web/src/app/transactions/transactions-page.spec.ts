@@ -57,6 +57,17 @@ describe('TransactionsPage', () => {
     expect(fixture.nativeElement.textContent).toContain('No transactions found');
   });
 
+  it('preserves decimal cents beyond JavaScript number precision and makes the table keyboard scrollable', () => {
+    const fixture = render();
+    respond([{ ...item, amount: '90071992547409.91' }]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('ZAR 90,071,992,547,409.91');
+    const region = fixture.nativeElement.querySelector('.cc-table-scroll');
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.getAttribute('aria-label')).toContain('transactions');
+  });
+
   it('retries the failed request', () => {
     const fixture = render();
     http.expectOne((request) => request.url === '/api/v1/transactions').flush('error', { status: 500, statusText: 'Error' });
