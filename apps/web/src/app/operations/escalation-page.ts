@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { AgentActiveEscalation } from '../agent/agent-disputes-api';
 import { DemoEscalation } from './demo-data';
 import { DemoEscalationForm } from './escalation-form';
 import { DemoSession } from './demo-session';
@@ -26,7 +27,7 @@ import { DemoHeading } from './shared';
           <p>This case is resolved or already has an active escalation.</p><a [routerLink]="['/agent/disputes', id()]">Back to investigation</a></div>
       } @else {
         <div class="modal-stage"><section class="modal-card" aria-labelledby="escalation-heading">
-          <cc-demo-escalation-form [caseId]="id()" (cancelled)="back()" (completed)="created.set($event)" />
+          <cc-demo-escalation-form [caseId]="id()" (cancelled)="back()" (completed)="setCreated($event)" />
         </section></div>
       }
     } @else {
@@ -45,6 +46,9 @@ export class DemoEscalationPage {
     effect(() => { this.id(); this.created.set(null); });
   }
   protected back(): void { void this.router.navigate(['/agent/disputes', this.id()]); }
+  protected setCreated(result: DemoEscalation | AgentActiveEscalation): void {
+    if ('caseId' in result) this.created.set(result);
+  }
   protected previewSupervisor(id: string): void {
     this.session.enter('supervisor');
     void this.router.navigate(['/agent/escalations', id]);

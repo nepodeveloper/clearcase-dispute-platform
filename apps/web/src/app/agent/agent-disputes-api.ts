@@ -54,6 +54,14 @@ export interface AgentTimelineEvent {
   occurredAt: string;
 }
 
+export interface AgentActiveEscalation {
+  id: string;
+  reference: string;
+  reason: string;
+  status: 'Open' | 'Acknowledged';
+  createdAt: string;
+}
+
 export interface AgentDisputeDetails {
   id: string;
   reference: string;
@@ -86,6 +94,7 @@ export interface AgentDisputeDetails {
     status: string;
     lastOperationOutcome: string;
   };
+  activeEscalation?: AgentActiveEscalation;
   timeline: AgentTimelineEvent[];
   notes: AgentInvestigationNote[];
 }
@@ -125,6 +134,14 @@ export class AgentDisputesApi {
     return this.http.post<AgentInvestigationNote>(
       `/api/v1/agent/disputes/${encodeURIComponent(id)}/notes`,
       { text },
+      { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) },
+    );
+  }
+
+  createEscalation(id: string, reason: string, note: string, idempotencyKey: string) {
+    return this.http.post<AgentActiveEscalation>(
+      `/api/v1/agent/disputes/${encodeURIComponent(id)}/escalations`,
+      { reason, note },
       { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) },
     );
   }

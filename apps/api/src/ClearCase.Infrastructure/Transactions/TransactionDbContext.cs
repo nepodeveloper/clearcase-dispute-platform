@@ -4,6 +4,7 @@ using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Chargebacks;
 using ClearCase.Infrastructure.AgentDisputes;
+using ClearCase.Infrastructure.SupervisorEscalations;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,9 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
     public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
     public DbSet<PersistedInvestigationNote> InvestigationNotes => Set<PersistedInvestigationNote>();
+    public DbSet<PersistedDisputeEscalation> DisputeEscalations => Set<PersistedDisputeEscalation>();
+    public DbSet<PersistedDisputeEscalationAuditEvent> DisputeEscalationAuditEvents =>
+        Set<PersistedDisputeEscalationAuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +52,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         KafkaInboxPersistenceModel.Configure(modelBuilder);
         ChargebackPersistenceModel.Configure(modelBuilder);
         AgentDisputePersistenceModel.Configure(modelBuilder);
+        SupervisorEscalationPersistenceModel.Configure(modelBuilder);
     }
 }
 

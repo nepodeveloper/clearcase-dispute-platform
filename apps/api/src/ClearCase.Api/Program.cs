@@ -13,6 +13,8 @@ using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.AgentDisputes;
 using ClearCase.Infrastructure.Transactions;
 using ClearCase.Infrastructure.Disputes;
+using ClearCase.Application.SupervisorEscalations;
+using ClearCase.Infrastructure.SupervisorEscalations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -106,6 +108,13 @@ builder.Services.AddScoped<IListAgentDisputesHandler, ListAgentDisputesHandler>(
 builder.Services.AddScoped<IGetAgentDisputeHandler, GetAgentDisputeHandler>();
 builder.Services.AddScoped<IGetInvestigationNotesHandler, GetInvestigationNotesHandler>();
 builder.Services.AddScoped<ICreateInvestigationNoteHandler, CreateInvestigationNoteHandler>();
+builder.Services.AddScoped<ISupervisorEscalationStore, SqliteSupervisorEscalationStore>();
+builder.Services.AddScoped<ListSupervisorEscalationsHandler>();
+builder.Services.AddScoped<GetSupervisorEscalationHandler>();
+builder.Services.AddScoped<GetActiveDisputeEscalationHandler>();
+builder.Services.AddScoped<CreateDisputeEscalationHandler>();
+builder.Services.AddScoped<AcknowledgeEscalationHandler>();
+builder.Services.AddScoped<ResolveEscalationHandler>();
 builder.Services.AddTransactionPersistence(
     builder.Environment.ContentRootPath, builder.Environment.WebRootPath,
     builder.Environment.IsDevelopment());
@@ -180,6 +189,7 @@ app.MapAuthEndpoints();
 app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
 app.MapAgentDisputeEndpoints();
+app.MapSupervisorEscalationEndpoints();
 app.MapDebitOrderSimulation();
 app.MapChargebackSimulation();
 app.MapBankChargeSimulation();

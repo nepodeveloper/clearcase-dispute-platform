@@ -80,9 +80,9 @@ Development seeds deterministic synthetic identities; integration tests explicit
 | `agent.demo` | `Agent` | `Agent` | `/agent/disputes` |
 | `supervisor.demo` | `Supervisor` | `Supervisor` | `/agent/escalations` |
 
-Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. The Agent queue and investigation are connected to persisted API data. Supervisor escalation remains a placeholder pending a separately approved follow-up.
+Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. Agent queue, investigation, escalation, Supervisor queue and review all use the shared screens under `apps/web/src/app/operations`; the normal app supplies authenticated API clients, while the separate UI demo supplies in-memory fixtures.
 
-Login and `/auth/me` return `{ username, actorType, roles, customerId, csrfToken }`; staff `customerId` is currently null. Angular restores `/auth/me` before route decisions, keeps identity/CSRF only in memory, and uses the HTTP-only `clearcase.auth` cookie as authority. It does not use localStorage/sessionStorage. Customer routes include `/`, `/transactions/:id`, `/disputes` and `/disputes/:id`; Agent routes include `/agent/disputes` and `/agent/disputes/:id`. Role mismatch goes to `/unauthorized`. Only known, role-appropriate application-relative return URLs are preserved.
+Login and `/auth/me` return `{ username, actorType, roles, customerId, csrfToken }`; staff `customerId` is currently null. Angular restores `/auth/me` before route decisions, keeps identity/CSRF only in memory, and uses the HTTP-only `clearcase.auth` cookie as authority. It does not use localStorage/sessionStorage. Customer routes include `/`, `/transactions/:id`, `/disputes` and `/disputes/:id`; Agent routes include `/agent/disputes` and `/agent/disputes/:id`; Supervisor routes include `/agent/escalations` and `/agent/escalations/:id`. Role mismatch goes to `/unauthorized`. Only known, role-appropriate application-relative return URLs are preserved.
 
 The shared interceptor sends `X-CSRF-TOKEN` on same-origin `/api/v1/` and legacy `/v1/` POST/PUT/PATCH/DELETE operations, except initial login. It preserves/provides `X-Correlation-ID`, updates tokens on login/restoration, and clears state on logout or 401. It never adds CSRF to an external origin. Failed logout remains visible and retryable; it is not shown as successful. The server independently validates authorization, ownership and CSRF (`400`, `code: auth.csrfInvalid`). `/auth/me` is non-cacheable. Cookies use SameSite=Strict, HttpOnly authentication and Secure outside local Development/Testing; use HTTPS in deployed environments.
 
@@ -94,7 +94,7 @@ Seeding does not reset existing password hashes, security stamps or lockout stat
 
 From `apps/web`, run `npm run test:e2e`. The wrapper runs the demo/authentication, customer-desktop, customer-mobile, agent-desktop and agent-mobile project groups in separate Playwright processes with ephemeral credentials and unique temporary SQLite databases. This keeps login rate-limit state and customer test data isolated; each database and its sidecars are deleted after its servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, customer submission with CSRF, and the Agent investigation/private-note journey. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Each project's test output is isolated under `apps/web/test-results` so later groups don't overwrite earlier screenshots; reports/screenshots are uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
 
-The separate `npm run start:ui` build remains a clearly labelled, API-free design preview; its role picker is not included in the real application. PR-13 also fixes the preview's mobile table overflow, drawer focus timing, decorative button name and escalation-dialog focus containment without weakening the browser assertions.
+The separate `npm run start:ui` build remains an API-free design preview with an in-memory role picker; that picker is not included in the real application. Customer screens remain isolated from this demo. Agent and Supervisor screens are shared from `apps/web/src/app/operations` and switch to persisted APIs only when the normal application's `OPERATIONS_API` provider is present.
 
 ## Connected customer journey (PR-14)
 
@@ -108,7 +108,7 @@ Use the normal `npm start` application, not `npm run start:ui`:
 6. Refresh or revisit a case to read its SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Only the customer-safe projection is rendered. A transient refresh failure retains the last loaded case with an explicit error and retry.
 7. Sign out to end the cookie session. Expired sessions return to login; another customer cannot access the transaction, eligibility or case.
 
-There is one active customer route implementation. The isolated `ui-demo` entrypoint is only a design reference; its in-memory workspace, fake account details and role selector are not imported into the connected journey. Database seed records remain explicitly synthetic local assessment data.
+There is one active customer route implementation. The standalone UI demo retains its synthetic in-memory customer workspace, fake account details and role selector; those customer flows are not imported into the connected journey. The Agent and Supervisor routes reuse the shared `operations` screens, which use demo fixtures under `npm run start:ui` and authenticated APIs under `npm start`. Database seed records remain explicitly synthetic local assessment data.
 
 ### PR-14 verification and backout
 
@@ -172,13 +172,23 @@ Agents can read notes with `GET /api/v1/agent/disputes/{id}/notes` and append th
 
 Migration `AddInvestigationNotes` adds only the append-only notes table. Before rolling back, stop API instances and retain a backup; the explicit down target is `AddKafkaInbox`, which preserves all pre-PR-26 tables and data. For Development, startup applies the migration automatically. For retained databases, use the explicit migration procedure above with target `AddInvestigationNotes`. Reverting the application and migrating down removes investigation notes; it does not change dispute statuses or transaction data.
 
-To demonstrate the flow, sign in as `customer.demo`, submit a synthetic dispute, sign out, sign in as `agent.demo`, find its reference at `/agent/disputes`, add a private note, and reload the case. Sign back in as the customer and open the case timeline; the note remains private. The investigation screen does not offer a simulated escalation action. Run the real-API browser journey (including desktop/mobile screenshots and isolated SQLite data; also part of the default `npm run test:e2e` and CI run) from `apps/web` with:
+To demonstrate the flow, sign in as `customer.demo`, submit a synthetic dispute, sign out, sign in as `agent.demo`, find its reference at `/agent/disputes`, add a private note, and reload the case. Sign back in as the customer and open the case timeline; the note remains private. See PR-27 below for escalation and Supervisor review. Run the real-API browser journey (including desktop/mobile screenshots and isolated SQLite data; also part of the default `npm run test:e2e` and CI run) from `apps/web` with:
 
 ```powershell
 npm run test:e2e -- --project agent-desktop --project agent-mobile
 ```
 
-Escalation and Supervisor review, assignment scopes, staff MFA/IdP integration and real banking operations remain out of scope. Financial state is unchanged by notes or investigation reads.
+Assignment scopes, staff MFA/IdP integration and real banking operations remain out of scope. Financial state is unchanged by notes or investigation reads.
+
+## Supervisor escalation and review (PR-27)
+
+The connected Agent can create one active escalation per eligible dispute with a private note and an `Idempotency-Key`. A different authenticated Supervisor must acknowledge it before recording a private resolution. Requests use the existing cookie session, CSRF protection and employee identity; no role is selected or simulated in the normal app. Queue/detail reads are private and non-cacheable.
+
+`GET /api/v1/supervisor/escalations` supports bounded `pageSize`, `cursor`, `search` and `status` filters. Supervisors can read `/api/v1/supervisor/escalations/{id}`, acknowledge with `POST .../{id}/acknowledgements`, and resolve with `POST .../{id}/resolutions`. Agent referrals use `POST /api/v1/agent/disputes/{id}/escalations`. All side-effecting operations require an idempotency key and CSRF token. Escalation and resolution notes remain in bank-employee-only projections and append-only audit storage; customer timeline and outbox payloads include only safe progress events.
+
+Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview`. Neither operation changes `decisionStatus` or `financialStatus`, and neither initiates or confirms money movement. Migration `AddSupervisorEscalations` is additive. To roll back, stop API instances, retain a database backup, revert the application, then migrate down to `AddInvestigationNotes`; this removes escalation/audit storage but preserves the case timeline and does not touch transaction data or financial operations.
+
+For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. `npm run start:ui` continues to use the same operations screens with mock data and does not call APIs. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
 
 ## Transaction listing API
 

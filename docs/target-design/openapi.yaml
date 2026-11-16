@@ -254,6 +254,161 @@ paths:
         '409':
           description: Idempotency key was already used with different normalized text
           $ref: '#/components/responses/Problem'
+  /agent/disputes/{id}/escalations:
+    post:
+      operationId: createDisputeEscalation
+      summary: Escalate an eligible dispute for independent Supervisor review
+      description: >-
+        Requires AgentAccess, CSRF protection and an Idempotency-Key. The private Agent note is
+        returned only to authorized bank employees; customer timeline and outbox events contain
+        only safe progress text. An active escalation prevents duplicate referrals.
+      parameters:
+        - $ref: '#/components/parameters/AgentDisputeId'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisputeEscalation'
+      responses:
+        '201':
+          description: Escalation created or the original escalation replayed
+          headers:
+            Location:
+              schema: { type: string }
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupervisorEscalation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          description: Active escalation exists, dispute is ineligible, or idempotency key conflicts
+          $ref: '#/components/responses/Problem'
+  /supervisor/escalations:
+    get:
+      operationId: listSupervisorEscalations
+      summary: Search the authenticated Supervisor escalation queue
+      description: Requires SupervisorAccess. Search and status filters use stable, bounded cursor pagination.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - in: query
+          name: search
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/EscalationStatus' }
+      responses:
+        '200':
+          description: Safe escalation rows without private notes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupervisorEscalationPage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /supervisor/escalations/{id}:
+    get:
+      operationId: getSupervisorEscalation
+      summary: Read Supervisor-only escalation details and audit history
+      parameters:
+        - $ref: '#/components/parameters/SupervisorEscalationId'
+      responses:
+        '200':
+          description: Private review details, current dispute statuses, and append-only history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupervisorEscalation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /supervisor/escalations/{id}/acknowledgements:
+    post:
+      operationId: acknowledgeSupervisorEscalation
+      summary: Acknowledge an escalation before resolving it
+      description: The reviewing employee must differ from the employee who created the escalation.
+      parameters:
+        - $ref: '#/components/parameters/SupervisorEscalationId'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Acknowledged escalation or the original action replayed
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupervisorEscalation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /supervisor/escalations/{id}/resolutions:
+    post:
+      operationId: resolveSupervisorEscalation
+      summary: Resolve an acknowledged escalation
+      description: >-
+        Requires a private resolution note and an independent reviewer. Resolution changes
+        caseStatus only; decisionStatus and financialStatus are not changed and no funds are moved.
+      parameters:
+        - $ref: '#/components/parameters/SupervisorEscalationId'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDisputeEscalation'
+      responses:
+        '200':
+          description: Resolved escalation or the original action replayed
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupervisorEscalation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     cookieAuth:
@@ -275,6 +430,13 @@ components:
       schema:
         type: string
     AgentDisputeId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SupervisorEscalationId:
       name: id
       in: path
       required: true
@@ -505,6 +667,8 @@ components:
             reasonCode: { type: string }
             status: { type: string }
             lastOperationOutcome: { type: string }
+        activeEscalation:
+          $ref: '#/components/schemas/AgentActiveEscalation'
         timeline:
           type: array
           items:
@@ -543,6 +707,97 @@ components:
         employeeId: { type: string, format: uuid }
         text: { type: string }
         createdAt: { type: string, format: date-time }
+        correlationId: { type: string }
+    EscalationStatus:
+      type: string
+      enum: [Open, Acknowledged, Resolved]
+    CreateDisputeEscalation:
+      type: object
+      required: [reason, note]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          enum: [Additional investigation required, Customer authorization dispute, Mandate mismatch, Policy exception review]
+        note:
+          type: string
+          minLength: 15
+          maxLength: 2000
+          description: Private Agent note, trimmed and Unicode-normalized before validation.
+    ResolveDisputeEscalation:
+      type: object
+      required: [note]
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+          minLength: 15
+          maxLength: 2000
+          description: Private Supervisor note, trimmed and Unicode-normalized before validation.
+    AgentActiveEscalation:
+      type: object
+      required: [id, reference, reason, status, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [Open, Acknowledged] }
+        createdAt: { type: string, format: date-time }
+    SupervisorEscalationPage:
+      type: object
+      required: [items, pageInfo]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SupervisorEscalationListItem' }
+        pageInfo: { $ref: '#/components/schemas/AgentPageInfo' }
+    SupervisorEscalationListItem:
+      type: object
+      required: [id, reference, disputeId, disputeReference, customerReference, reason, status, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        disputeId: { type: string, format: uuid }
+        disputeReference: { type: string }
+        customerReference: { type: string }
+        reason: { type: string }
+        status: { $ref: '#/components/schemas/EscalationStatus' }
+        createdAt: { type: string, format: date-time }
+    SupervisorEscalation:
+      type: object
+      required: [id, reference, disputeId, disputeReference, customerReference, category, caseStatus, decisionStatus, financialStatus, reason, status, createdByEmployeeId, createdAt, history]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        disputeId: { type: string, format: uuid }
+        disputeReference: { type: string }
+        customerReference: { type: string }
+        category: { $ref: '#/components/schemas/TransactionKindPascal' }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string }
+        financialStatus: { type: string }
+        reason: { type: string }
+        note:
+          type: string
+          description: Private Agent note; returned only to an authorized Supervisor.
+        status: { $ref: '#/components/schemas/EscalationStatus' }
+        createdByEmployeeId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        history:
+          type: array
+          items: { $ref: '#/components/schemas/SupervisorEscalationAudit' }
+    SupervisorEscalationAudit:
+      type: object
+      required: [id, action, employeeId, occurredAt, correlationId]
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string, enum: [Created, Acknowledged, Resolved] }
+        employeeId: { type: string, format: uuid }
+        privateNote: { type: string, description: Private note visible only to authorized Supervisors. }
+        occurredAt: { type: string, format: date-time }
         correlationId: { type: string }
     Problem:
       type: object

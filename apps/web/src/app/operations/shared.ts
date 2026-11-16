@@ -5,10 +5,17 @@ export { transactionTypeLabel } from '../transactions/transaction-type-label';
 
 @Pipe({ name: 'demoMoney' })
 export class DemoMoney implements PipeTransform {
-  transform(amountMinor: number): string {
-    return `R ${(amountMinor / 100).toLocaleString('en-GB', {
-      minimumFractionDigits: 2, maximumFractionDigits: 2,
-    })}`;
+  transform(amountMinor: number | string): string {
+    if (typeof amountMinor === 'number' && !Number.isSafeInteger(amountMinor))
+      throw new Error('Expected safe minor units.');
+    if (typeof amountMinor === 'string' && !/^-?\d+$/.test(amountMinor))
+      throw new Error('Expected integer minor units.');
+    const minor = BigInt(amountMinor);
+    const negative = minor < 0n;
+    const absolute = negative ? -minor : minor;
+    const whole = (absolute / 100n).toLocaleString('en-GB');
+    const fraction = (absolute % 100n).toString().padStart(2, '0');
+    return `R ${negative ? '-' : ''}${whole}.${fraction}`;
   }
 }
 

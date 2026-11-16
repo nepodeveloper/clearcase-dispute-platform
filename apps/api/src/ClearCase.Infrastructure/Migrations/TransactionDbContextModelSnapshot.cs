@@ -470,6 +470,115 @@ namespace ClearCase.Infrastructure.Migrations
                     b.ToTable("OutboxMessages", (string)null);
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("CreatedByEmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt", "Reference")
+                        .IsUnique();
+
+                    b.HasIndex("DisputeId", "Status")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DisputeEscalations_DisputeId_Active")
+                        .HasFilter("\"Status\" <> 'Resolved'");
+
+                    b.HasIndex("DisputeId", "CreatedByEmployeeId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DisputeEscalations_DisputeId_EmployeeId_IdempotencyKey");
+
+                    b.ToTable("DisputeEscalations", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalationAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EscalationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrivateNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscalationId", "SequenceNumber")
+                        .IsUnique();
+
+                    b.HasIndex("EscalationId", "EmployeeId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DisputeEscalationAuditEvents_EscalationId_EmployeeId_IdempotencyKey");
+
+                    b.ToTable("DisputeEscalationAuditEvents", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Transactions.PersistedTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -729,6 +838,24 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalation", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalationAuditEvent", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalation", null)
+                        .WithMany("History")
+                        .HasForeignKey("EscalationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -785,6 +912,11 @@ namespace ClearCase.Infrastructure.Migrations
                     b.Navigation("Chargeback");
 
                     b.Navigation("Events");
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.SupervisorEscalations.PersistedDisputeEscalation", b =>
+                {
+                    b.Navigation("History");
                 });
 #pragma warning restore 612, 618
         }

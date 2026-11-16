@@ -411,4 +411,22 @@ This is the execution plan, **not** a claim that the features already exist. The
 
 **Migration/backout:** Add a new notes-table migration only; do not edit historical migrations. Roll back application code and migrate the database down to the immediately preceding `AddKafkaInbox` migration after backing up and stopping API instances.
 
-**Merge and rollback rule:** Additive API and schema only; keep customer flows and existing dispute statuses unchanged. PR-27 remains blocked until this PR is reviewed, merged and CI is green.
+**Merge and rollback rule:** Additive API and schema only; keep customer flows and existing dispute statuses unchanged. PR-27 is sequenced after PR-26 is reviewed, merged and CI is green; do not include it in PR-26.
+
+### PR-27 — Supervisor escalation and review
+
+**Outcome:** Persist an Agent-to-Supervisor escalation workflow with private notes and independent acknowledgement/resolution, without changing decision or financial outcomes.
+
+**Allowed implementation:** Add authenticated Agent create-escalation and Supervisor queue/detail/acknowledgement/resolution endpoints; use durable idempotency, append-only audit history and an additive migration; publish only customer-safe timeline/outbox progress. Reuse the Agent and Supervisor components in `apps/web/src/app/operations` for both the mock UI entrypoint and the authenticated application, with the appropriate data provider for each. Update OpenAPI, AsyncAPI, README and focused tests.
+
+**Acceptance:**
+- [ ] An authorized Agent can create one active escalation per eligible case; replay and conflicting-key behavior are deterministic.
+- [ ] A different authorized Supervisor must acknowledge before resolution; audit history is append-only.
+- [ ] Private escalation and resolution notes never appear in customer projections, public timeline descriptions or outbox payloads.
+- [ ] Escalation maps `caseStatus` to `ManualReview`; resolution maps it to `UnderReview`; neither changes `decisionStatus` or `financialStatus`, and neither initiates settlement.
+- [ ] The standalone demo retains mock behavior, while authenticated Agent/Supervisor routes use the same shared operations screens and API clients.
+- [ ] API, component and connected browser tests verify authorization, idempotency, privacy and truthful financial state.
+
+**Migration/backout:** Add only escalation and audit tables/indexes/triggers. Roll back after stopping API instances and retaining a database backup by reverting the application and migrating down to `AddInvestigationNotes`. Existing case timeline/outbox history and transaction/financial data remain intact.
+
+**Merge and rollback rule:** Preserve existing customer routes and the standalone mock preview. No assignment management, real bank operations, decision-making or financial status changes are in scope.

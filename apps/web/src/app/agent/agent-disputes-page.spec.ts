@@ -1,11 +1,14 @@
+import { inject } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentDisputesPage } from './agent-disputes-page';
-import { AgentDisputeListItem, AgentDisputePage } from './agent-disputes-api';
+import { AgentDisputesApi, AgentDisputeListItem, AgentDisputePage } from './agent-disputes-api';
+import { OPERATIONS_API } from '../operations/operations-api';
+import { DemoAgentQueuePage } from '../operations/agent-queue-page';
+import { SupervisorEscalationsApi } from '../supervisor/supervisor-escalations-api';
 
-describe('AgentDisputesPage', () => {
+describe('shared Agent queue API mode', () => {
   const item: AgentDisputeListItem = {
     id: '00000000-0000-0000-0000-000000000001',
     reference: 'DSP-AGENT000001',
@@ -26,8 +29,17 @@ describe('AgentDisputesPage', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [AgentDisputesPage],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [DemoAgentQueuePage],
+      providers: [
+        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
+        {
+          provide: OPERATIONS_API,
+          useFactory: () => ({
+            agent: inject(AgentDisputesApi),
+            supervisor: inject(SupervisorEscalationsApi),
+          }),
+        },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -35,7 +47,7 @@ describe('AgentDisputesPage', () => {
   afterEach(() => http.verify());
 
   function render() {
-    const fixture = TestBed.createComponent(AgentDisputesPage);
+    const fixture = TestBed.createComponent(DemoAgentQueuePage);
     fixture.detectChanges();
     return fixture;
   }
@@ -46,12 +58,12 @@ describe('AgentDisputesPage', () => {
     request.flush(page);
   }
 
-  it('loads persisted cases and formats minor units without floating-point rounding', () => {
+  it('loads persisted cases and formats integer minor units without floating-point rounding', () => {
     const fixture = render();
     respond();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('DSP-AGENT000001');
-    expect(fixture.nativeElement.textContent).toContain('ZAR 90,071,992,547,409.91');
+    expect(fixture.nativeElement.textContent).toContain('R 90,071,992,547,409.91');
     expect(fixture.nativeElement.textContent).toContain('CUS-7B2A31D940E2');
   });
 
@@ -60,12 +72,14 @@ describe('AgentDisputesPage', () => {
     respond({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'opaque-cursor' } });
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    root.querySelector<HTMLInputElement>('[name="search"]')!.value = ' DSP-AGENT ';
-    root.querySelector<HTMLInputElement>('[name="search"]')!.dispatchEvent(new Event('input'));
-    const category = root.querySelector<HTMLSelectElement>('[name="category"]')!;
+    const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
+    search.value = ' DSP-AGENT ';
+    search.dispatchEvent(new Event('input'));
+    const category = root.querySelectorAll<HTMLSelectElement>('.operations-filters select')[1];
     category.value = 'CardPurchase';
     category.dispatchEvent(new Event('change'));
-    root.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit'));
+    root.querySelector<HTMLButtonElement>('.operations-filters button')!.click();
+
     const filtered = http.expectOne(request => request.url === '/api/v1/agent/disputes');
     expect(filtered.request.params.get('search')).toBe('DSP-AGENT');
     expect(filtered.request.params.get('category')).toBe('CardPurchase');
@@ -78,7 +92,7 @@ describe('AgentDisputesPage', () => {
     expect(next.request.params.get('cursor')).toBe('opaque-cursor');
     next.flush({ items: [], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('No matching disputes found');
+    expect(fixture.nativeElement.textContent).toContain('No matching cases');
   });
 
   it('shows a retry after a transient queue failure', () => {
@@ -87,8 +101,8 @@ describe('AgentDisputesPage', () => {
     http.expectOne(request => request.url === '/api/v1/agent/disputes')
       .flush({}, { status: 500, statusText: 'Server Error' });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Unable to load the Agent queue');
-    root.querySelector<HTMLButtonElement>('[data-testid="retry"]')!.click();
+    expect(fixture.nativeElement.textContent).toContain('Unable to load persisted cases');
+    [...root.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Retry'))!.click();
     respond();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('DSP-AGENT000001');
