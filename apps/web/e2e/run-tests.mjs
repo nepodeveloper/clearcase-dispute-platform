@@ -32,9 +32,11 @@ const projectGroups = [
 
 for (const projects of projectGroups) {
   const database = join(tmpdir(), `clearcase-e2e-${randomUUID()}.db`);
+  const output = resolve('test-results', projects.join('-'));
   try {
     const result = spawnSync(process.execPath, [
       resolve('node_modules', '@playwright', 'test', 'cli.js'), 'test',
+      '--output', output,
       ...projects.flatMap(project => ['--project', project]), ...otherArgs,
     ], {
       stdio: 'inherit',
