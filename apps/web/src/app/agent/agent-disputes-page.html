@@ -1,0 +1,106 @@
+<section class="page-section" aria-labelledby="agent-queue-heading"
+  [attr.aria-busy]="state().kind === 'loading'">
+  <header class="page-heading">
+    <p class="eyebrow">Operations workspace</p>
+    <h1 class="cc-page-title" id="agent-queue-heading" #queueHeading tabindex="-1">Dispute work queue</h1>
+    <p class="cc-description">Search persisted disputes available to the synthetic bank-wide Agent scope.</p>
+  </header>
+
+  <section class="content-panel cc-card" aria-labelledby="queue-list-heading">
+    <div class="section-heading">
+      <h2 id="queue-list-heading">All operational cases</h2>
+      <span class="results-count">Page {{ pageNumber() }}</span>
+    </div>
+    <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filters">
+      <label class="cc-field search-field">
+        <span>Search cases</span>
+        <input class="cc-control" name="search" type="search" formControlName="search"
+          maxlength="100" placeholder="Reference, transaction or reason">
+      </label>
+      <label class="cc-field">
+        <span>Category</span>
+        <select class="cc-control" name="category" formControlName="category">
+          <option value="">All categories</option>
+          <option value="CardPurchase">Card purchases</option>
+          <option value="DebitOrder">Debit orders</option>
+          <option value="BankCharge">Bank charges</option>
+        </select>
+      </label>
+      <label class="cc-field">
+        <span>Case status</span>
+        <select class="cc-control" name="caseStatus" formControlName="caseStatus">
+          <option value="">All statuses</option>
+          <option value="Submitted">Submitted</option>
+          <option value="ManualReview">Manual review</option>
+          <option value="UnderReview">Under review</option>
+          <option value="MandateVerified">Mandate verified</option>
+          <option value="ReversalRequested">Reversal requested</option>
+          <option value="ReversalConfirmed">Reversal confirmed</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </label>
+      <button class="cc-button cc-button--primary" type="submit">Apply filters</button>
+    </form>
+
+    @let current = state();
+    @if (current.kind === 'loading') {
+      <p class="state-message" role="status">Loading disputes...</p>
+    } @else if (current.kind === 'error') {
+      <div class="state-message" role="alert">
+        <p>{{ current.message }}</p>
+        @if (current.retryable) {
+          <button class="cc-button cc-button--secondary" type="button" data-testid="retry"
+            (click)="load()">Retry</button>
+        }
+      </div>
+    } @else if (current.page.items.length === 0) {
+      <p class="cc-empty" role="status">No matching disputes found.</p>
+    } @else {
+      <div class="cc-table-scroll" role="region"
+        aria-label="Agent dispute queue, scroll horizontally on small screens" tabindex="0">
+        <table class="cc-table">
+          <caption class="visually-hidden">Persisted dispute cases, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Case reference</th>
+              <th scope="col">Customer reference</th>
+              <th scope="col">Category</th>
+              <th scope="col">Transaction</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Case status</th>
+              <th scope="col">Submitted</th>
+              <th scope="col"><span class="visually-hidden">Action</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of current.page.items; track item.id) {
+              <tr>
+                <td><a [routerLink]="['/agent/disputes', item.id]"><strong>{{ item.reference }}</strong></a></td>
+                <td>{{ item.customerReference }}</td>
+                <td>{{ categoryLabel(item.category) }}</td>
+                <td>{{ item.transactionDescription }}</td>
+                <td>{{ decimalFromMinorUnits(item.amountMinorUnits) | decimalMoney:item.currency }}</td>
+                <td><span class="cc-status">{{ item.caseStatus }}</span></td>
+                <td>{{ item.createdAt | date:'mediumDate':'UTC' }}</td>
+                <td>
+                  <a class="row-action" [routerLink]="['/agent/disputes', item.id]"
+                    [attr.aria-label]="'Investigate ' + item.reference">Investigate</a>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <nav aria-label="Agent queue pages" class="pagination">
+      <button class="cc-button cc-button--secondary" type="button"
+        [disabled]="pageNumber() <= 1 || state().kind === 'loading'" (click)="previousPage()">Previous</button>
+      <span>Page {{ pageNumber() }}</span>
+      <button class="cc-button cc-button--secondary" type="button"
+        [disabled]="current.kind !== 'loaded' || !current.page.pageInfo.hasNextPage"
+        data-testid="next" (click)="nextPage()">Next</button>
+    </nav>
+  </section>
+</section>

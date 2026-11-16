@@ -13,7 +13,7 @@ export function loginDestination(user: AuthUser, returnUrl: string | null): stri
   const path = returnUrl?.split(/[?#]/, 1)[0] ?? '';
   const customerPath = /^\/(?:disputes(?:\/[0-9a-f-]{36})?|transactions\/[0-9a-f-]{36})?$/i.test(path);
   const allowed = (customerPath && user.roles.includes('Customer'))
-    || (path === '/agent/disputes' && user.roles.includes('Agent'))
+    || (/^\/agent\/disputes(?:\/[0-9a-f-]{36})?$/i.test(path) && user.roles.includes('Agent'))
     || (path === '/agent/escalations' && user.roles.includes('Supervisor'));
   return allowed && returnUrl !== null && !/[\\\u0000-\u001f]/.test(returnUrl) ? returnUrl : homeUrl(user);
 }

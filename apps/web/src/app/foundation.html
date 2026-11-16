@@ -1,7 +1,7 @@
 <div class="announcement-bar">Unofficial assessment concept · Synthetic demo data</div>
 <a class="skip-link" href="#main-content">Skip to main content</a>
 <div class="app-frame" [class.signed-out]="auth.user() === null">
-  @if (auth.user()) {
+  @if (auth.user(); as user) {
   <aside class="sidebar" [class.is-open]="mobileNavigationOpen()">
     <a class="brand" [routerLink]="home()" aria-label="ClearCase home" (click)="closeMobileNavigation()">
       <span class="brand-mark" aria-hidden="true">C</span>
@@ -22,8 +22,10 @@
         <span class="nav-icon" aria-hidden="true">▤</span> Your disputes
       </a>
       } @else {
-        <a #firstCustomerLink [routerLink]="home()" routerLinkActive="active" ariaCurrentWhenActive="page"
-          (click)="closeMobileNavigation()">Your workspace</a>
+        <a #firstCustomerLink [routerLink]="user.roles.includes('Agent') ? '/agent/disputes' : home()"
+          routerLinkActive="active" ariaCurrentWhenActive="page" (click)="closeMobileNavigation()">
+          {{ user.roles.includes('Agent') ? 'Agent dispute queue' : 'Your workspace' }}
+        </a>
       }
     </nav>
     <div class="sidebar-note">

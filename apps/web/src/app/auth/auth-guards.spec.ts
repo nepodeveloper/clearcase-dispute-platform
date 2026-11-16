@@ -55,6 +55,10 @@ describe('authentication routing', () => {
       expect(loginDestination(session, url)).toBe('/');
     }
     expect(loginDestination({ ...session, roles: ['Agent'] }, null)).toBe('/agent/disputes');
+    expect(loginDestination({ ...session, roles: ['Agent'] }, '/agent/disputes/00000000-0000-0000-0000-000000000001'))
+      .toBe('/agent/disputes/00000000-0000-0000-0000-000000000001');
+    expect(loginDestination({ ...session, roles: ['Customer'] }, '/agent/disputes/00000000-0000-0000-0000-000000000001'))
+      .toBe('/');
     expect(loginDestination({ ...session, roles: ['Supervisor'] }, '/')).toBe('/agent/escalations');
   });
 });

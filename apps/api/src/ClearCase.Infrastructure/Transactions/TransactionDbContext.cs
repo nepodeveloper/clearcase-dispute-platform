@@ -3,6 +3,7 @@ using ClearCase.Infrastructure.Authentication;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Chargebacks;
+using ClearCase.Infrastructure.AgentDisputes;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedConsumerEffect> ConsumerEffects => Set<PersistedConsumerEffect>();
     public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
     public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
+    public DbSet<PersistedInvestigationNote> InvestigationNotes => Set<PersistedInvestigationNote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +47,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         OutboxPersistenceModel.Configure(modelBuilder);
         KafkaInboxPersistenceModel.Configure(modelBuilder);
         ChargebackPersistenceModel.Configure(modelBuilder);
+        AgentDisputePersistenceModel.Configure(modelBuilder);
     }
 }
 

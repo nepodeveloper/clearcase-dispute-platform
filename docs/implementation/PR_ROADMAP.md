@@ -1,8 +1,10 @@
 # ClearCase — small PR delivery roadmap
 
-This is the execution plan, **not** a claim that the features already exist. All 21 PRs must remain independently mergeable and green. Current baseline is the `card-dispute-portal-starter` (.NET single API project, Angular frontend, SQLite, unversioned `/api` routes). Target is the v2 design.
+This is the execution plan, **not** a claim that the features already exist. The original 21-PR plan must remain independently mergeable and green. Current baseline is the `card-dispute-portal-starter` (.NET single API project, Angular frontend, SQLite, unversioned `/api` routes). Target is the v2 design.
 
-> Assignment override (2026-11-14): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, PR-13 is authentication UI integration ([delivery](PR-13-auth-integration.md)) and PR-14 is Customer Portal Integration ([customer journey](../../README.md#connected-customer-journey-pr-14)). The original PR-11 to PR-21 were therefore **renumbered PR-15 to PR-25**; tables, headings and tickets below use the new numbers. PR-15 (submission idempotency) is implemented; PR-16 onward remain proposed.
+> Assignment override (2026-11-14): delivered PR-11 is the isolated UI design, PR-12 is the Identity foundation, PR-13 is authentication UI integration ([delivery](PR-13-auth-integration.md)) and PR-14 is Customer Portal Integration ([customer journey](../../README.md#connected-customer-journey-pr-14)). The original PR-11 to PR-21 were therefore **renumbered PR-15 to PR-25**; tables, headings and tickets below use the new numbers. PR-15 (submission idempotency) is implemented; on 2026-11-14, PR-16 onward remained proposed.
+
+> Priority override (2026-11-16): after PR-25, implement **PR-26 Agent Work Queue and Investigation** before returning to the roadmap's deferred operational/security follow-ups. This is additive sequencing only: it does not renumber or rewrite the PR-19 to PR-25 history above. PR-27 Supervisor Escalation depends on PR-26 being reviewed, merged and green; do not start PR-27 as part of PR-26.
 
 ## Release cut lines
 
@@ -37,6 +39,8 @@ This is the execution plan, **not** a claim that the features already exist. All
 | Batch 04 | PR-23 | Observability and controlled load tests | Can trace dispute from HTTP to event worker |
 | Batch 05 | PR-24 | Container and Kubernetes deployment blueprint | Images build locally |
 | Batch 05 | PR-25 | Release readiness and interview demo | Clean-clone setup is reproducible |
+| Batch 06 | PR-26 | Agent work queue and investigation | Authorized Agents search persisted disputes and record private idempotent notes |
+| Batch 06 | PR-27 | Escalation and Supervisor review | Only after PR-26 is merged and CI is green |
 
 ## Dependencies and sequencing
 
@@ -46,6 +50,7 @@ This is the execution plan, **not** a claim that the features already exist. All
 - PR-20 security hardening must also be continually enforced in previous PRs; it is a dedicated negative-test sweep, **not** the first time security is implemented.
 - PR-21 storage is optional for the minimum brief but adds credible secure evidence. PR-22 UX/E2E, PR-23 measured operations.
 - PR-24 and PR-25 are deployment/release work; no paid AWS provisioning without explicit authorization.
+- Priority override: PR-26 follows PR-25 as recorded above. PR-27 remains blocked on PR-26 merge and a new assignment; neither changes the historical PR-19 to PR-25 scope.
 
 ## Detailed acceptance criteria
 
@@ -384,3 +389,26 @@ This is the execution plan, **not** a claim that the features already exist. All
 **Not in scope:** Do not assert production deployment, legal certification or benchmark results without evidence.
 
 **Merge and rollback rule:** Keep prior behavior working. A new schema or public contract must be forward/backward compatible or introduce an explicit bridge/migration; include precise rollback instructions in the PR.
+
+### PR-26 — Agent work queue and investigation
+
+**Priority:** Assignment override after PR-25; preserve all historical PR-19 to PR-25 entries and IDs.
+
+**Outcome:** Give authenticated bank employees a persisted, searchable dispute queue and investigation detail view, with append-only private notes.
+
+**Allowed implementation:** Add `/api/v1/agent/disputes` and detail/note routes under `BankEmployeeAccess`; explicitly use the synthetic bank-wide operational scope with no invented assignments; project SQLite records with bounded stable cursor pagination; persist immutable notes with employee claim, UTC time, correlation ID and durable idempotency; connect Angular Agent queue/detail pages; add focused integration/UI/real-API E2E coverage and update OpenAPI/README.
+
+**Acceptance:**
+- [ ] Agent/Supervisor roles can access operational projections; Customer and anonymous callers cannot.
+- [ ] All persisted card, debit-order and bank-charge disputes can be searched and filtered server-side.
+- [ ] Queue ordering and cursors are stable and bounded; invalid query inputs return Problem Details.
+- [ ] Case details include only persisted transaction/workflow/timeline facts and distinct case, decision and financial statuses.
+- [ ] Notes use authenticated employee attribution, normalized 15-2000 character validation, durable idempotency and append-only database protection.
+- [ ] Customer projections, timeline and outbox payloads never include note text; note creation is CSRF-protected.
+- [ ] Connected desktop/mobile queue and investigation flows use the existing design system and real SQLite-backed APIs.
+
+**Not in scope:** Assignment management, escalation or Supervisor review, changes to financial processing, real bank operations, changes to customer DTOs, external identity provider or Kafka payloads.
+
+**Migration/backout:** Add a new notes-table migration only; do not edit historical migrations. Roll back application code and migrate the database down to the immediately preceding `AddKafkaInbox` migration after backing up and stopping API instances.
+
+**Merge and rollback rule:** Additive API and schema only; keep customer flows and existing dispute statuses unchanged. PR-27 remains blocked until this PR is reviewed, merged and CI is green.

@@ -21,7 +21,8 @@ for (let index = 0; index < cliArgs.length; index++) {
 
 const selectedProjects = projectNames.length > 0
   ? projectNames
-  : ['desktop', 'mobile', 'authentication', 'customer-desktop', 'customer-mobile'];
+  : ['desktop', 'mobile', 'authentication', 'customer-desktop', 'customer-mobile',
+    'agent-desktop', 'agent-mobile'];
 const projectGroups = [
   selectedProjects.filter(project => ['desktop', 'mobile', 'authentication'].includes(project)),
   ...selectedProjects.filter(project => project.startsWith('customer-')).map(project => [project]),

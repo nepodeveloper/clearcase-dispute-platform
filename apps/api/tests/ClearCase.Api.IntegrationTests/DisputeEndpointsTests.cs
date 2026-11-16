@@ -350,6 +350,9 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
         Assert.True(paths.GetProperty("/api/v1/disputes/{id}").TryGetProperty("get", out _));
         Assert.True(paths.TryGetProperty("/v1/disputes", out _));
         Assert.True(paths.TryGetProperty("/v1/disputes/{id}", out _));
+        Assert.True(paths.GetProperty("/api/v1/agent/disputes").TryGetProperty("get", out _));
+        Assert.True(paths.GetProperty("/api/v1/agent/disputes/{id}").TryGetProperty("get", out _));
+        Assert.True(paths.GetProperty("/api/v1/agent/disputes/{id}/notes").TryGetProperty("post", out _));
     }
 
     private async Task<int> CountDisputes(string transactionId)
