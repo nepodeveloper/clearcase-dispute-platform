@@ -11,6 +11,14 @@ namespace ClearCase.Infrastructure.AgentDisputes;
 
 public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAgentDisputeReader
 {
+    public Task<AgentDisputeProcessingTarget?> ReadProcessingTargetAsync(
+        Guid disputeId, CancellationToken cancellationToken) =>
+        context.Disputes.AsNoTracking().Where(item => item.Id == disputeId)
+            .Select(item => new AgentDisputeProcessingTarget(item.CustomerId, item.Category,
+                context.DisputeEscalations.Any(escalation => escalation.DisputeId == item.Id
+                    && escalation.Status != DisputeEscalationStatus.Resolved)))
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task<AgentDisputePage> ReadPageAsync(
         ListAgentDisputesQuery query, CancellationToken cancellationToken)
     {

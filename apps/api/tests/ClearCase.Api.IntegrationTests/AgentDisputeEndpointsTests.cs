@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ClearCase.Application.DisputeEligibility;
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
@@ -11,6 +12,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -24,6 +27,300 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
     private readonly SqliteWebApplicationFactory _factory;
 
     public AgentDisputeEndpointsTests(SqliteWebApplicationFactory factory) => _factory = factory;
+
+    [Theory]
+    [InlineData(TransactionType.BankCharge, "agent.demo",
+        new[] { "StartReview", "Approve", "RequestAdjustment", "ExecuteAdjustment", "Close" })]
+    [InlineData(TransactionType.DebitOrder, "agent.demo",
+        new[] { "StartReview", "CompleteInvestigation", "RequestReversal", "ExecuteReversal", "Close" })]
+    [InlineData(TransactionType.CardPurchase, "supervisor.demo",
+        new[] { "Initiate", "ForwardToAcquirer", "MerchantContest", "ReceiveRepresentment",
+            "ReviewRepresentment", "Approve", "RequestSettlement", "ExecuteSettlement", "Close" })]
+    public async Task EmployeeCanProcessOwnedCaseWithoutCustomerImpersonationOrSimulationKey(
+        TransactionType type, string username, string[] commands)
+    {
+        var caseId = await AddCommandCaseAsync(type);
+        using var employee = await CreateSignedInClientAsync(username);
+        employee.DefaultRequestHeaders.Add("X-Correlation-ID", "employee-command-correlation");
+        long version = 1;
+        foreach (var command in commands)
+        {
+            using var response = await SendCommandAsync(employee, caseId, command, version);
+            using var body = await ReadJson(response);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(++version, body.RootElement.GetProperty("version").GetInt64());
+            if (command is "Approve" or "RequestReversal")
+                Assert.NotEqual("Confirmed", body.RootElement.GetProperty("financialStatus").GetString());
+            Assert.DoesNotContain("employeeId", body.RootElement.GetRawText());
+        }
+
+        using var owner = await CreateSignedInClientAsync("customer.other");
+        using var finalResponse = await owner.GetAsync($"/api/v1/disputes/{caseId}");
+        using var final = await ReadJson(finalResponse);
+        Assert.Equal(HttpStatusCode.OK, finalResponse.StatusCode);
+        Assert.Equal("Closed", final.RootElement.GetProperty("caseStatus").GetString());
+        Assert.Equal("Confirmed", final.RootElement.GetProperty("financialStatus").GetString());
+        Assert.Equal(version, final.RootElement.GetProperty("timeline").GetArrayLength());
+        using var otherCustomer = await CreateSignedInClientAsync("customer.demo");
+        using var denied = await otherCustomer.GetAsync($"/api/v1/disputes/{caseId}");
+        Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var employeeId = await database.Users.Where(item => item.UserName == username).Select(item => item.Id).SingleAsync();
+        var audit = await database.DisputeCommandAuditEvents.AsNoTracking().Where(item => item.DisputeId == caseId)
+            .OrderBy(item => item.Version).ToArrayAsync();
+        Assert.Equal(commands, audit.Select(item => item.Command));
+        Assert.Equal(Enumerable.Range(2, commands.Length).Select(value => (long)value), audit.Select(item => item.Version));
+        Assert.All(audit, item =>
+        {
+            Assert.Equal(employeeId, item.EmployeeId);
+            Assert.Equal("employee-command-correlation", item.CorrelationId);
+            Assert.Equal(CreatedAt, item.OccurredAt);
+        });
+        if (type == TransactionType.CardPurchase)
+        {
+            var cardAudit = await database.ChargebackAuditEvents.Where(item => item.DisputeId == caseId).ToArrayAsync();
+            Assert.All(cardAudit, item => Assert.Equal(employeeId, item.ActorId));
+        }
+        var outbox = await database.OutboxMessages.Where(item => item.AggregateId == caseId)
+            .OrderBy(item => item.AggregateVersion).ToArrayAsync();
+        Assert.Equal(audit.Select(item => item.Version), outbox.Select(item => item.AggregateVersion));
+        Assert.All(outbox, item => Assert.DoesNotContain(employeeId.ToString(), item.Payload));
+        await Assert.ThrowsAsync<SqliteException>(() => database.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE \"DisputeCommandAuditEvents\" SET \"Command\" = 'changed' WHERE \"DisputeId\" = {caseId}"));
+        await Assert.ThrowsAsync<SqliteException>(() => database.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM \"DisputeCommandAuditEvents\" WHERE \"DisputeId\" = {caseId}"));
+    }
+
+    [Theory]
+    [InlineData(TransactionType.BankCharge, "StartReview")]
+    [InlineData(TransactionType.DebitOrder, "StartReview")]
+    [InlineData(TransactionType.CardPurchase, "Initiate")]
+    public async Task EmployeeAuditFailureRollsBackCaseTimelineOutboxAndCardAudit(TransactionType type, string command)
+    {
+        var id = await AddCommandCaseAsync(type);
+        using var employee = await CreateSignedInClientAsync("agent.demo");
+        employee.DefaultRequestHeaders.Add("X-Correlation-ID", "reject-audit-write");
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        await database.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER "FailTestCommandAudit" BEFORE INSERT ON "DisputeCommandAuditEvents"
+            WHEN NEW."CorrelationId" = 'reject-audit-write'
+            BEGIN SELECT RAISE(ABORT, 'Test audit write failure'); END;
+            """);
+        try
+        {
+            using var response = await SendCommandAsync(employee, id, command, 1);
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal(1, (await database.Disputes.AsNoTracking().SingleAsync(item => item.Id == id)).Version);
+            Assert.Single(await database.DisputeEvents.Where(item => item.DisputeId == id).ToArrayAsync());
+            Assert.Empty(await database.DisputeCommandAuditEvents.Where(item => item.DisputeId == id).ToArrayAsync());
+            Assert.Empty(await database.OutboxMessages.Where(item => item.AggregateId == id).ToArrayAsync());
+            Assert.Empty(await database.ChargebackAuditEvents.Where(item => item.DisputeId == id).ToArrayAsync());
+            Assert.Empty(await database.Chargebacks.Where(item => item.DisputeId == id).ToArrayAsync());
+        }
+        finally
+        {
+            await database.Database.ExecuteSqlRawAsync("DROP TRIGGER \"FailTestCommandAudit\";");
+        }
+    }
+
+    [Fact]
+    public async Task StaffCommandCannotBypassAnActiveSupervisorEscalation()
+    {
+        var id = await AddCommandCaseAsync(TransactionType.CardPurchase);
+        using var employee = await CreateSignedInClientAsync("agent.demo");
+        using var escalation = CreateEscalationRequest(id, "command-escalation-guard",
+            "Additional investigation required", "Supervisor review is required before processing this case.");
+        using var created = await employee.SendAsync(escalation);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var response = await SendCommandAsync(employee, id, "Initiate", 2);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var body = await ReadJson(response);
+        Assert.Equal("dispute.activeEscalation", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task CommandAuditMigrationUpAndDownPreservesExistingCaseAndTimeline()
+    {
+        var id = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var employee = await CreateSignedInClientAsync("agent.demo");
+        using var response = await SendCommandAsync(employee, id, "StartReview", 1);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var source = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var dispute = await source.Disputes.AsNoTracking().Include(item => item.Events).SingleAsync(item => item.Id == id);
+        var transaction = await source.Transactions.AsNoTracking().SingleAsync(item => item.Id == dispute.TransactionId);
+        var audit = await source.DisputeCommandAuditEvents.AsNoTracking().SingleAsync(item => item.DisputeId == id);
+        await using var isolated = new TemporaryDatabase();
+        await using var database = isolated.CreateContext();
+        var migrator = database.GetService<IMigrator>();
+        const string previous = "20261116151544_AddSupervisorEscalations";
+        await migrator.MigrateAsync(previous);
+        database.Transactions.Add(transaction);
+        database.Disputes.Add(dispute);
+        await database.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        database.DisputeCommandAuditEvents.Add(audit);
+        await database.SaveChangesAsync();
+
+        await migrator.MigrateAsync(previous);
+        database.ChangeTracker.Clear();
+        Assert.Equal(2, (await database.Disputes.SingleAsync(item => item.Id == id)).Version);
+        Assert.Equal(2, await database.DisputeEvents.CountAsync(item => item.DisputeId == id));
+        Assert.Single(await database.Transactions.ToArrayAsync());
+        await migrator.MigrateAsync();
+        Assert.Empty(await database.DisputeCommandAuditEvents.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task OpenApiDescribesStaffCommandVersionEvidenceAndErrors()
+    {
+        using var client = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Development")).CreateClient();
+        using var response = await client.GetAsync("/openapi/v1.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await ReadJson(response);
+        var operation = body.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/agent/disputes/{id}/commands").GetProperty("post");
+        foreach (var status in new[] { "200", "400", "401", "403", "404", "409", "503" })
+            Assert.True(operation.GetProperty("responses").TryGetProperty(status, out _));
+        var schema = body.RootElement.GetProperty("components").GetProperty("schemas")
+            .GetProperty("AgentDisputeCommandRequest");
+        Assert.Contains("expectedVersion", schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()));
+        Assert.True(schema.GetProperty("properties").TryGetProperty("evidence", out _));
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData("customer.demo", HttpStatusCode.Forbidden)]
+    public async Task NonEmployeeCannotIssueCommands(string? username, HttpStatusCode expected)
+    {
+        var caseId = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var client = username is null ? CreateUnauthenticatedClient()
+            : await CreateSignedInClientAsync(username);
+        using var response = await SendCommandAsync(client, caseId, "StartReview", 1);
+        Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CommandsRequireCsrfAndVersionAndRejectInvalidCommandsWithoutWrites()
+    {
+        var caseId = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var employee = await CreateSignedInClientAsync("agent.demo");
+        employee.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        using var noCsrf = await SendCommandAsync(employee, caseId, "StartReview", 1);
+        Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var csrfBody = await ReadJson(noCsrf);
+        Assert.Equal("auth.csrfInvalid", csrfBody.RootElement.GetProperty("code").GetString());
+        await SetCsrfTokenAsync(employee);
+        foreach (var version in new long?[] { null, 0, -1 })
+        {
+            using var invalid = await SendCommandAsync(employee, caseId, "StartReview", version);
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        foreach (var command in new[] { "Initiate", "0", "startReview" })
+        {
+            using var invalid = await SendCommandAsync(employee, caseId, command, 1);
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using var badTransition = await SendCommandAsync(employee, caseId, "ExecuteAdjustment", 1);
+        Assert.Equal(HttpStatusCode.Conflict, badTransition.StatusCode);
+        using var missing = await SendCommandAsync(employee, Guid.NewGuid(), "StartReview", 1);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        using var valid = await SendCommandAsync(employee, caseId, "StartReview", 1);
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+        using var stale = await SendCommandAsync(employee, caseId, "Reject", 1);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using var staleBody = await ReadJson(stale);
+        Assert.Equal("dispute.concurrencyConflict", staleBody.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task ConcurrentEmployeeCommandsCommitOneTransition()
+    {
+        var caseId = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var employee = await CreateSignedInClientAsync("agent.demo");
+        var responses = await Task.WhenAll(
+            SendCommandAsync(employee, caseId, "StartReview", 1),
+            SendCommandAsync(employee, caseId, "StartReview", 1));
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        }
+        finally
+        {
+            foreach (var response in responses) response.Dispose();
+        }
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        Assert.Single(await database.DisputeCommandAuditEvents.Where(item => item.DisputeId == caseId).ToArrayAsync());
+        Assert.Single(await database.OutboxMessages.Where(item => item.AggregateId == caseId).ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ProductionAllowsStaffDecisionsButNeverUsesMockFinancialConfirmation()
+    {
+        var rejectedId = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var unconfiguredEmployee = await CreateSignedInClientAsync("agent.demo", "Production");
+        using var review = await SendCommandAsync(unconfiguredEmployee, rejectedId, "StartReview", 1);
+        Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+        using var noPolicy = await SendCommandAsync(unconfiguredEmployee, rejectedId, "Approve", 2);
+        Assert.Equal(HttpStatusCode.Conflict, noPolicy.StatusCode);
+        using var rejected = await SendCommandAsync(unconfiguredEmployee, rejectedId, "Reject", 2);
+        Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
+        using var closed = await SendCommandAsync(unconfiguredEmployee, rejectedId, "Close", 3);
+        Assert.Equal(HttpStatusCode.OK, closed.StatusCode);
+
+        var caseId = await AddCommandCaseAsync(TransactionType.BankCharge);
+        using var employee = await CreateSignedInClientAsync("agent.demo", "Production", configuredTestPolicy: true);
+        long version = 1;
+        foreach (var command in new[] { "StartReview", "Approve", "RequestAdjustment" })
+        {
+            using var response = await SendCommandAsync(employee, caseId, command, version++);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        using var execute = await SendCommandAsync(employee, caseId, "ExecuteAdjustment", version);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, execute.StatusCode);
+        using var body = await ReadJson(execute);
+        Assert.Equal("dispute.processingUnavailable", body.RootElement.GetProperty("code").GetString());
+        using var stateResponse = await employee.GetAsync($"/api/v1/agent/disputes/{caseId}");
+        using var state = await ReadJson(stateResponse);
+        Assert.Equal(version, state.RootElement.GetProperty("version").GetInt64());
+        Assert.Equal("Requested", state.RootElement.GetProperty("financialStatus").GetString());
+        var cardId = await AddCommandCaseAsync(TransactionType.CardPurchase);
+        foreach (var command in new[] { "MerchantAccept", "MerchantContest", "ReceiveRepresentment" })
+        {
+            using var syntheticUpdate = await SendCommandAsync(employee, cardId, command, 1);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, syntheticUpdate.StatusCode);
+        }
+    }
+
+    private async Task<Guid> AddCommandCaseAsync(TransactionType type)
+    {
+        var id = await AddDisputeAsync(type, $"DSP-CMD-{Guid.NewGuid():N}", OtherCustomerId);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var dispute = await database.Disputes.SingleAsync(item => item.Id == id);
+        var transaction = await database.Transactions.SingleAsync(item => item.Id == dispute.TransactionId);
+        transaction.IsDebit = true;
+        transaction.CollectionDate = DateOnly.FromDateTime(CreatedAt.AddDays(-1).UtcDateTime);
+        if (type == TransactionType.DebitOrder) dispute.ReasonCode = "duplicateCollection";
+        await database.SaveChangesAsync();
+        return id;
+    }
+
+    private static Task<HttpResponseMessage> SendCommandAsync(
+        HttpClient client, Guid id, string command, long? expectedVersion) =>
+        client.PostAsJsonAsync($"/api/v1/agent/disputes/{id}/commands", new
+        {
+            command, expectedVersion,
+            evidence = command == "ReceiveRepresentment"
+                ? new { id = Guid.NewGuid(), kind = "Receipt" } : null,
+            customerId = CustomerId,
+            employeeId = CustomerId
+        });
 
     [Fact]
     public async Task AgentCanSearchAndReadPersistedCasesAcrossCustomersAndCategories()
@@ -479,17 +776,28 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
     private HttpClient CreateUnauthenticatedClient() =>
         _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production")).CreateClient();
 
-    private async Task<HttpClient> CreateSignedInClientAsync(string username)
+    private async Task<HttpClient> CreateSignedInClientAsync(
+        string username, string environment = "Testing", bool configuredTestPolicy = false)
     {
         var client = _factory.WithWebHostBuilder(builder =>
         {
-            builder.UseEnvironment("Testing");
+            builder.UseEnvironment(environment);
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(new FrozenTimeProvider(CreatedAt));
+                if (configuredTestPolicy)
+                {
+                    services.RemoveAll<DisputeEligibilityPolicySettings>();
+                    services.AddSingleton(new DisputeEligibilityPolicySettings { DemoPoliciesEnabled = true });
+                }
+                if (environment == "Testing")
+                {
+                    services.RemoveAll<IDebitOrderMandateReader>();
+                    services.AddSingleton<IDebitOrderMandateReader>(new CommandMandateReader());
+                }
             });
-        }).CreateClient();
+        }).CreateClient(new() { BaseAddress = new Uri("https://localhost") });
         using var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login",
             new { username, password = TestIdentityPasswords.For(username) });
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
@@ -511,5 +819,14 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
     private sealed class FrozenTimeProvider(DateTimeOffset instant) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => instant;
+    }
+
+    private sealed class CommandMandateReader : IDebitOrderMandateReader
+    {
+        public Task<DebitOrderMandate?> ReadAsync(
+            Guid customerId, Guid transactionId, CancellationToken cancellationToken) =>
+            Task.FromResult<DebitOrderMandate?>(new(DebitOrderMandateType.EftDebitOrder,
+                DebitOrderMandateStatus.Active, true, 123.45m, "ZAR",
+                DateOnly.FromDateTime(CreatedAt.AddDays(-1).UtcDateTime)));
     }
 }

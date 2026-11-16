@@ -16,7 +16,6 @@ public static class BankChargeSimulationEndpoints
     public static void AddBankChargeSimulation(this WebApplicationBuilder builder)
     {
         if (!SimulationAuthorization.IsEnabled(builder.Environment)) return;
-        builder.Services.AddScoped<IBankChargeProcessingHandler, BankChargeProcessingHandler>();
         builder.Services.AddSingleton<IBankChargeAdjustmentGateway>(new MockBankChargeAdjustmentGateway());
         SimulationAuthorization.AddPolicy(builder, "BankChargeSimulation", "Simulation:BankChargeKey");
     }

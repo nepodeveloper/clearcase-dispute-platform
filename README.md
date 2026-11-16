@@ -192,6 +192,34 @@ Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview
 
 For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
 
+## Staff case commands (PR-29)
+
+`POST /api/v1/agent/disputes/{id}/commands` allows authenticated Agents and Supervisors to process cases in the same explicitly bank-wide scope as the investigation workspace. It requires the session's CSRF token and a positive `expectedVersion` from the latest case read, **not** `X-Simulation-Key`. The owner is looked up from the stored case; the employee comes from the authenticated identity. Neither identity can be supplied by JSON.
+
+```json
+{ "command": "StartReview", "expectedVersion": 1 }
+```
+
+| Category | Commands (existing workflow prerequisites still apply) |
+| --- | --- |
+| Debit order | `StartReview`, `VerifyMandate`, `CompleteInvestigation`, `RequestReversal`, `ExecuteReversal`, `ReconcileReversal`, `Reject`, `Close` |
+| Card purchase | `Initiate`, `ForwardToAcquirer`, `MerchantAccept`, `MerchantContest`, `ReceiveRepresentment`, `ReviewRepresentment`, `Approve`, `Reject`, `RequestSettlement`, `ExecuteSettlement`, `Close` |
+| Bank charge | `StartReview`, `Approve`, `Reject`, `RequestAdjustment`, `ExecuteAdjustment`, `Close` |
+
+`ReceiveRepresentment` requires `evidence: { "id": "<nonempty GUID>", "kind": "Receipt" }`; the other supported kinds are `DeliveryConfirmation` and `AuthorizationRecord`. Evidence remains synthetic metadata, not verified files, and is forbidden on other commands. Synthetic merchant acceptance, contest and representment updates are available only in Development/Testing.
+
+Success returns `200` with the updated customer-safe case, timeline and incremented version. Missing/invalid version, command or evidence returns `400 agentDispute.invalidRequest`; missing cases return `404 dispute.notFound`; stale versions return `409 dispute.concurrencyConflict`; invalid workflow transitions return `409 dispute.invalidTransition`. An unresolved escalation blocks commands with `409 dispute.activeEscalation` until the independent Supervisor flow completes. Repeating a committed request with its original version returns 409 and cannot repeat its effect; this is version-based duplicate prevention, not idempotency-key response replay.
+
+Every successful employee command commits the state/version, customer timeline, existing event envelope and an immutable `DisputeCommandAuditEvents` row together. Audit records include the employee ID, command, resulting statuses, version, UTC timestamp and correlation ID. Card audit records also identify the employee rather than the customer. Employee IDs are not added to customer DTOs, timelines or event payloads. Existing customer-scoped simulator routes retain their environment, owner and secret-key restrictions.
+
+**No real money movement:** local financial adapters remain pure mocks inside the SQLite transaction. Outside Development/Testing, unconfigured financial adapters and synthetic merchant updates return `503 dispute.processingUnavailable` without committing a transition. Default Production policy configuration also continues to block approval; this PR does not authorize demo policy for real disputes. Do not replace these mocks with external calls inside the transaction. Existing eligibility rechecks, unknown-outcome reconciliation and separation of approval from confirmation are unchanged.
+
+**Demo:** create a fresh fee dispute as a customer; sign out and sign in as `agent.demo`; GET `/api/v1/agent/disputes/{id}`; POST `StartReview`, then `Approve`, `RequestAdjustment`, `ExecuteAdjustment`, `Close`, using the new version after each success. Alternatively, use `StartReview`, `Reject`, `Close`. Requests are included in [ClearCase.Api.http](apps/api/ClearCase.Api.http). There are no staff command buttons yet.
+
+**Migration/backout:** apply additive migration `AddDisputeCommandAudit` using [the migration procedure](#migrations-and-seed). It adds only the audit table, unique case/version index and append-only triggers. To roll back, stop API instances, retain a verified database/audit backup, redeploy the previous API and migrate down to `AddSupervisorEscalations` using the same project, startup-project and connection arguments. Downgrading deletes this new audit history, not cases, timelines, outbox records or prior card audits; it cannot undo decisions or financial outcomes. Retaining the additive table when rolling back code preserves the history.
+
+Deferred: connected staff controls, assignment/delegation and MFA, decision-reason capture, real banking adapters, the unified aggregate/transition-store refactor, and changes to submission-time versus processing-time eligibility policy.
+
 ## Transaction listing API
 
 `GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.

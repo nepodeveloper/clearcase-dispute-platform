@@ -1,4 +1,5 @@
 using ClearCase.Application.DisputeEligibility;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
@@ -19,13 +20,14 @@ public interface IDebitOrderProcessingStore
     /// <summary>Serializes the local simulation, committing case, operation reference and timeline together.</summary>
     Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
-        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null);
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
+        Guid? employeeId = null);
 }
 
 public interface IDebitOrderProcessingHandler
 {
     Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null, string? correlationId = null);
+        long? expectedVersion = null, string? correlationId = null, EmployeeDisputeScope? employee = null);
 }
 
 public sealed class DebitOrderProcessingHandler(
@@ -34,8 +36,10 @@ public sealed class DebitOrderProcessingHandler(
     : IDebitOrderProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null, string? correlationId = null) =>
-        store.ApplyAsync(customer.CustomerId, disputeId, command, async dispute =>
+        long? expectedVersion = null, string? correlationId = null, EmployeeDisputeScope? employee = null)
+    {
+        var customerId = employee?.CustomerId ?? customer.CustomerId;
+        return store.ApplyAsync(customerId, disputeId, command, async dispute =>
         {
             if (dispute.Category != TransactionCategory.DebitOrder)
                 throw new InvalidDebitOrderTransitionException();
@@ -49,9 +53,9 @@ public sealed class DebitOrderProcessingHandler(
             }
 
             var transaction = await transactions.ReadForEligibilityAsync(
-                customer.CustomerId, dispute.TransactionId, cancellationToken);
+                customerId, dispute.TransactionId, cancellationToken);
             var eligible = transaction is not null
-                && (await evaluator.EvaluateAsync(customer.CustomerId, transaction, cancellationToken)).Outcome
+                && (await evaluator.EvaluateAsync(customerId, transaction, cancellationToken)).Outcome
                     == DisputeEligibilityOutcome.EligibleToSubmit;
             var transition = state.Apply(command, eligible, dispute.ReasonCode != "duplicateCollection");
             if (command == DebitOrderCommand.ExecuteReversal)
@@ -61,5 +65,6 @@ public sealed class DebitOrderProcessingHandler(
                 transition = state.CompleteReversal(await gateway.ReverseAsync(reference, cancellationToken));
             }
             return transition;
-        }, clock.GetUtcNow(), cancellationToken, expectedVersion, correlationId);
+        }, clock.GetUtcNow(), cancellationToken, expectedVersion, correlationId, employee?.EmployeeId);
+    }
 }

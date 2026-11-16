@@ -17,6 +17,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedTransaction> Transactions => Set<PersistedTransaction>();
     public DbSet<PersistedDispute> Disputes => Set<PersistedDispute>();
     public DbSet<PersistedDisputeEvent> DisputeEvents => Set<PersistedDisputeEvent>();
+    public DbSet<PersistedDisputeCommandAuditEvent> DisputeCommandAuditEvents => Set<PersistedDisputeCommandAuditEvent>();
     public DbSet<PersistedDisputeSubmission> DisputeSubmissions => Set<PersistedDisputeSubmission>();
     public DbSet<PersistedOutboxMessage> OutboxMessages => Set<PersistedOutboxMessage>();
     public DbSet<PersistedConsumerInboxMessage> ConsumerInbox => Set<PersistedConsumerInboxMessage>();

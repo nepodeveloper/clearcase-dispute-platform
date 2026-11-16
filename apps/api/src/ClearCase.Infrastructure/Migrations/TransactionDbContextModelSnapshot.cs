@@ -363,6 +363,52 @@ namespace ClearCase.Infrastructure.Migrations
                     b.ToTable("Disputes", (string)null);
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeCommandAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CaseStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Command")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinancialStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisputeId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("DisputeCommandAuditEvents", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -807,6 +853,15 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasOne("ClearCase.Infrastructure.Transactions.PersistedTransaction", null)
                         .WithMany()
                         .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedDisputeCommandAuditEvent", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
+                        .HasForeignKey("DisputeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

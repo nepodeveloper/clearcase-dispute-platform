@@ -1,4 +1,5 @@
 using ClearCase.Application.DisputeEligibility;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
@@ -15,13 +16,14 @@ public interface IBankChargeProcessingStore
 {
     Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, BankChargeCommand command,
         DateTimeOffset occurredAt, Func<DisputeView, Task<BankChargeTransition>> transition,
-        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null);
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
+        Guid? employeeId = null);
 }
 
 public interface IBankChargeProcessingHandler
 {
     Task<DisputeView?> HandleAsync(Guid disputeId, BankChargeCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null, string? correlationId = null);
+        long? expectedVersion = null, string? correlationId = null, EmployeeDisputeScope? employee = null);
 }
 
 public sealed class BankChargeProcessingHandler(
@@ -30,14 +32,16 @@ public sealed class BankChargeProcessingHandler(
     : IBankChargeProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, BankChargeCommand command, CancellationToken cancellationToken,
-        long? expectedVersion = null, string? correlationId = null) =>
-        store.ApplyAsync(customer.CustomerId, disputeId, command, clock.GetUtcNow(), async dispute =>
+        long? expectedVersion = null, string? correlationId = null, EmployeeDisputeScope? employee = null)
+    {
+        var customerId = employee?.CustomerId ?? customer.CustomerId;
+        return store.ApplyAsync(customerId, disputeId, command, clock.GetUtcNow(), async dispute =>
         {
             if (dispute.Category != TransactionCategory.BankCharge)
                 throw new InvalidBankChargeTransitionException();
-            var transaction = await transactions.ReadForEligibilityAsync(customer.CustomerId, dispute.TransactionId, cancellationToken);
+            var transaction = await transactions.ReadForEligibilityAsync(customerId, dispute.TransactionId, cancellationToken);
             var eligibility = transaction is null ? null
-                : await evaluator.EvaluateAsync(customer.CustomerId, transaction, cancellationToken);
+                : await evaluator.EvaluateAsync(customerId, transaction, cancellationToken);
             var ready = eligibility is not null && eligibility.Outcome != DisputeEligibilityOutcome.Ineligible
                 && eligibility.ReasonCodes.All(code => code == "bankCharge.configuredReviewCondition");
             var state = new BankChargeState(dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus);
@@ -49,5 +53,6 @@ public sealed class BankChargeProcessingHandler(
                 change = state.CompleteAdjustment(await gateway.AdjustAsync(reference, cancellationToken));
             }
             return change;
-        }, cancellationToken, expectedVersion, correlationId);
+        }, cancellationToken, expectedVersion, correlationId, employee?.EmployeeId);
+    }
 }

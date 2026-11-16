@@ -21,7 +21,8 @@ public sealed class SqliteBankChargeProcessingStore(TransactionDbContext context
 {
     public async Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, BankChargeCommand command,
         DateTimeOffset occurredAt, Func<DisputeView, Task<BankChargeTransition>> transition,
-        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null)
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
+        Guid? employeeId = null)
     {
         // The writer lock serializes local simulations; this gateway must remain free of external side effects.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -47,6 +48,9 @@ public sealed class SqliteBankChargeProcessingStore(TransactionDbContext context
         context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
             item, command.ToString(), occurredAt, "dispute.bank-charge-transitioned.v1",
             correlationId ?? "local"));
+        if (employeeId is { } actor)
+            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
+                item, actor, command.ToString(), correlationId ?? "local", occurredAt));
         try
         {
             await context.SaveChangesAsync(cancellationToken);

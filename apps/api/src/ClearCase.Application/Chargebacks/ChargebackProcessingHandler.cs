@@ -1,4 +1,5 @@
 using ClearCase.Application.DisputeEligibility;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Disputes;
 using ClearCase.Application.Transactions;
 using ClearCase.Domain.Chargebacks;
@@ -24,12 +25,13 @@ public interface IChargebackProcessingStore
 {
     Task<DisputeView?> ApplyAsync(Guid customerId, ChargebackProcessingCommand command,
         DateTimeOffset occurredAt, Func<DisputeView, Task<ChargebackTransition>> transition,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Guid? employeeId = null);
 }
 
 public interface IChargebackProcessingHandler
 {
-    Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken);
+    Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken,
+        EmployeeDisputeScope? employee = null);
 }
 
 public sealed class ChargebackProcessingHandler(
@@ -37,12 +39,14 @@ public sealed class ChargebackProcessingHandler(
     DisputeEligibilityEvaluator evaluator, ICardNetworkGateway gateway, TimeProvider clock)
     : IChargebackProcessingHandler
 {
-    public Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken)
+    public Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken,
+        EmployeeDisputeScope? employee = null)
     {
+        var customerId = employee?.CustomerId ?? customer.CustomerId;
         var now = clock.GetUtcNow();
         var evidence = command.EvidenceId is { } id && command.EvidenceKind is { } kind
             ? new RepresentmentEvidence(id, kind, now) : null;
-        return store.ApplyAsync(customer.CustomerId, command, now, async dispute =>
+        return store.ApplyAsync(customerId, command, now, async dispute =>
         {
             if (dispute.Category != TransactionCategory.CardPurchase || dispute.CaseStatus == DisputeCaseStatus.Closed)
                 throw new InvalidChargebackTransitionException();
@@ -53,9 +57,9 @@ public sealed class ChargebackProcessingHandler(
                     || dispute.CaseStatus is not (DisputeCaseStatus.Submitted or DisputeCaseStatus.ManualReview))
                     throw new InvalidChargebackTransitionException();
                 var transaction = await transactions.ReadForEligibilityAsync(
-                    customer.CustomerId, dispute.TransactionId, cancellationToken);
+                    customerId, dispute.TransactionId, cancellationToken);
                 if (transaction is null || (await evaluator.EvaluateAsync(
-                        customer.CustomerId, transaction, cancellationToken)).Outcome != DisputeEligibilityOutcome.EligibleToSubmit)
+                        customerId, transaction, cancellationToken)).Outcome != DisputeEligibilityOutcome.EligibleToSubmit)
                     throw new InvalidChargebackTransitionException();
                 chargeback = Chargeback.Create(dispute.Id, dispute.ReasonCode);
             }
@@ -65,6 +69,6 @@ public sealed class ChargebackProcessingHandler(
                     chargeback.OperationReference(command.Command), chargeback.Reference, command.Command), cancellationToken)
                 : CardNetworkOutcome.Succeeded;
             return chargeback.Apply(command.Command, dispute.DecisionStatus, dispute.FinancialStatus, evidence, outcome);
-        }, cancellationToken);
+        }, cancellationToken, employee?.EmployeeId);
     }
 }

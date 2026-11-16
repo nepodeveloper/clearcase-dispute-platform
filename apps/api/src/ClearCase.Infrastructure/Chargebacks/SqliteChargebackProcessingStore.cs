@@ -12,7 +12,8 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
 {
     public async Task<DisputeView?> ApplyAsync(
         Guid customerId, ChargebackProcessingCommand command, DateTimeOffset occurredAt,
-        Func<DisputeView, Task<ChargebackTransition>> transition, CancellationToken cancellationToken)
+        Func<DisputeView, Task<ChargebackTransition>> transition, CancellationToken cancellationToken,
+        Guid? employeeId = null)
     {
         // Only a pure mock may run under this SQLite writer lock; external banking cannot join this transaction.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -43,9 +44,12 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
             Id = Guid.NewGuid(), DisputeId = item.Id, OperationReference = next.Chargeback.OperationReference(command.Command),
             Command = command.Command, ChargebackStatus = next.Chargeback.Status,
             DecisionStatus = item.DecisionStatus, FinancialStatus = item.FinancialStatus,
-            Outcome = next.Chargeback.LastOperationOutcome, ActorId = customerId, CorrelationId = command.CorrelationId,
+            Outcome = next.Chargeback.LastOperationOutcome, ActorId = employeeId ?? customerId, CorrelationId = command.CorrelationId,
             EvidenceId = next.Chargeback.Evidence?.Id, EvidenceKind = next.Chargeback.Evidence?.Kind, OccurredAt = occurredAt
         });
+        if (employeeId is { } actor)
+            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
+                item, actor, command.Command.ToString(), command.CorrelationId, occurredAt));
         try
         {
             await context.SaveChangesAsync(cancellationToken);

@@ -4,6 +4,7 @@ using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Api.Authentication;
 using ClearCase.Application.AgentDisputes;
+using ClearCase.Application.Chargebacks;
 using ClearCase.Application.Transactions;
 using ClearCase.Application.Disputes;
 using ClearCase.Application.DisputeEligibility;
@@ -90,6 +91,12 @@ else
 {
     builder.Services.AddSingleton<IDebitOrderMandateReader, UnavailableDebitOrderMandateReader>();
 }
+builder.Services.AddScoped<IDebitOrderProcessingHandler, DebitOrderProcessingHandler>();
+builder.Services.AddScoped<IBankChargeProcessingHandler, BankChargeProcessingHandler>();
+builder.Services.AddScoped<IChargebackProcessingHandler, ChargebackProcessingHandler>();
+builder.Services.AddSingleton<IDebitOrderProcessingGateway, UnavailableDisputeProcessingGateway>();
+builder.Services.AddSingleton<IBankChargeAdjustmentGateway, UnavailableDisputeProcessingGateway>();
+builder.Services.AddSingleton<ICardNetworkGateway, UnavailableDisputeProcessingGateway>();
 builder.AddDebitOrderSimulation();
 builder.AddChargebackSimulation();
 builder.AddBankChargeSimulation();
@@ -103,6 +110,7 @@ builder.Services.AddScoped<ISubmitDisputeHandler, SubmitDisputeHandler>();
 builder.Services.AddScoped<IGetDisputeHandler, GetDisputeHandler>();
 builder.Services.AddScoped<IListDisputesHandler, ListDisputesHandler>();
 builder.Services.AddScoped<IAgentDisputeReader, SqliteAgentDisputeReader>();
+builder.Services.AddScoped<IAgentDisputeCommandHandler, AgentDisputeCommandHandler>();
 builder.Services.AddScoped<IInvestigationNoteStore, SqliteInvestigationNoteStore>();
 builder.Services.AddScoped<IListAgentDisputesHandler, ListAgentDisputesHandler>();
 builder.Services.AddScoped<IGetAgentDisputeHandler, GetAgentDisputeHandler>();
@@ -189,6 +197,7 @@ app.MapAuthEndpoints();
 app.MapTransactionEndpoints();
 app.MapDisputeEndpoints();
 app.MapAgentDisputeEndpoints();
+app.MapAgentDisputeCommands();
 app.MapSupervisorEscalationEndpoints();
 app.MapDebitOrderSimulation();
 app.MapChargebackSimulation();

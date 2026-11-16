@@ -90,13 +90,21 @@ Unique per-command operation references prevent repeat effects. The mock is safe
 transaction **only because it has no external effects**; network intent/outbox, external idempotency,
 authoritative settlement and recovery must be implemented before replacing it.
 
-The sole processing route is `POST /api/v1/disputes/{id}/chargeback-simulations`; it is absent outside
+The original simulator route is `POST /api/v1/disputes/{id}/chargeback-simulations`; it is absent outside
 Development/Testing and requires authentication plus a separate server-configured card simulation
 key. Customer GET responses expose explicit safe DTOs, never EF entities, audit identities or secrets.
 Evidence is metadata only (nonempty GUID, allow-listed kind, server timestamp), not uploaded or
 verified documents. Real operations authorization, evidence storage, arbitration and Kafka are not
 part of this slice. See [the implemented workflow and rollback guide](../../README.md#pr-09-card-chargeback-and-representment-simulation)
 and the generated Development OpenAPI for current contracts.
+
+PR-29 adds `POST /api/v1/agent/disputes/{id}/commands` for Agent/Supervisor sessions, with CSRF and
+a required expected version. It resolves the case owner from storage separately from the employee
+actor, preserves workflow guards, and records employee audit atomically with state/timeline/outbox.
+Active escalations must complete first. Local mock gateways remain Development/Testing-only;
+unconfigured financial adapters and synthetic merchant updates return 503 elsewhere without writes.
+The original simulator route remains compatible. This is an API-only slice, not the proposed unified
+aggregate/transition store or a production banking integration.
 
 ## Workflow B: debit order
 

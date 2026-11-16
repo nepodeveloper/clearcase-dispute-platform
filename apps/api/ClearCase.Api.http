@@ -213,3 +213,40 @@ GET {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}
 ### Logout requires the authenticated cookie and current CSRF token
 POST {{baseUrl}}/api/v1/auth/logout
 X-CSRF-TOKEN: {{csrfToken}}
+
+### PR-29: sign in as an employee after customer logout; no simulation key
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "agent.demo",
+  "password": "{{$processEnv Authentication__SeedPasswords__Agent}}"
+}
+
+### Refresh the employee CSRF token
+# @name employeeMe
+GET {{baseUrl}}/api/v1/auth/me
+
+### Use a fresh bankFeeCase above; skip the preceding customer simulator commands
+# @name employeeCase
+GET {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}
+
+### Refresh employeeCase before each command: StartReview, Approve, RequestAdjustment, ExecuteAdjustment, Close
+# Alternatively StartReview, Reject, Close. Approval alone never confirms funds.
+POST {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}/commands
+Content-Type: application/json
+X-CSRF-TOKEN: {{employeeMe.response.body.$.csrfToken}}
+X-Correlation-ID: staff-case-command
+
+{
+  "command": "StartReview",
+  "expectedVersion": {{employeeCase.response.body.$.version}}
+}
+
+### Repeating the previous request without refreshing employeeCase returns 409, not a second effect
+### Unknown case returns 404; customer or anonymous sessions return 403 or 401
+POST {{baseUrl}}/api/v1/agent/disputes/00000000-0000-0000-0000-000000000000/commands
+Content-Type: application/json
+X-CSRF-TOKEN: {{employeeMe.response.body.$.csrfToken}}
+
+{ "command": "StartReview", "expectedVersion": 1 }

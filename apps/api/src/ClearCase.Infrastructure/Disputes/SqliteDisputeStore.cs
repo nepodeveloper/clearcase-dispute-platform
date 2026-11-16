@@ -122,7 +122,8 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
     public async Task<DisputeView?> ApplyAsync(
         Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
-        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null)
+        CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
+        Guid? employeeId = null)
     {
         // SQLite's non-deferred transaction takes the writer lock before reading or calling the pure mock.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -149,6 +150,9 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
         context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
             item, command.ToString(), occurredAt, "dispute.debit-order-transitioned.v1",
             correlationId ?? "local"));
+        if (employeeId is { } actor)
+            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
+                item, actor, command.ToString(), correlationId ?? "local", occurredAt));
         try
         {
             await context.SaveChangesAsync(cancellationToken);

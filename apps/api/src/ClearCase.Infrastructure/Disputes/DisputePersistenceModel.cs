@@ -68,6 +68,20 @@ internal static class DisputePersistenceModel
         submission.HasOne<PersistedDispute>().WithMany()
             .HasForeignKey(item => item.DisputeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        var audit = modelBuilder.Entity<PersistedDisputeCommandAuditEvent>();
+        audit.ToTable("DisputeCommandAuditEvents");
+        audit.HasKey(item => item.Id);
+        audit.HasIndex(item => new { item.DisputeId, item.Version }).IsUnique();
+        audit.Property(item => item.Command).IsRequired();
+        audit.Property(item => item.CorrelationId).IsRequired();
+        audit.Property(item => item.CaseStatus).HasConversion<string>();
+        audit.Property(item => item.DecisionStatus).HasConversion<string>();
+        audit.Property(item => item.FinancialStatus).HasConversion<string>();
+        audit.Property(item => item.OccurredAt).HasConversion(
+            value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
+        audit.HasOne<PersistedDispute>().WithMany()
+            .HasForeignKey(item => item.DisputeId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -112,4 +126,27 @@ public sealed class PersistedDisputeSubmission
     public string RequestFingerprint { get; set; } = string.Empty;
     public Guid DisputeId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class PersistedDisputeCommandAuditEvent
+{
+    public Guid Id { get; set; }
+    public Guid DisputeId { get; set; }
+    public long Version { get; set; }
+    public Guid EmployeeId { get; set; }
+    public string Command { get; set; } = string.Empty;
+    public string CorrelationId { get; set; } = string.Empty;
+    public DateTimeOffset OccurredAt { get; set; }
+    public DisputeCaseStatus CaseStatus { get; set; }
+    public DisputeDecisionStatus DecisionStatus { get; set; }
+    public DisputeFinancialStatus FinancialStatus { get; set; }
+
+    public static PersistedDisputeCommandAuditEvent Create(
+        PersistedDispute dispute, Guid employeeId, string command, string correlationId, DateTimeOffset occurredAt) =>
+        new()
+        {
+            Id = Guid.NewGuid(), DisputeId = dispute.Id, Version = dispute.Version,
+            EmployeeId = employeeId, Command = command, CorrelationId = correlationId, OccurredAt = occurredAt,
+            CaseStatus = dispute.CaseStatus, DecisionStatus = dispute.DecisionStatus, FinancialStatus = dispute.FinancialStatus
+        };
 }

@@ -194,6 +194,50 @@ paths:
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+  /agent/disputes/{id}/commands:
+    post:
+      operationId: processAgentDisputeCommand
+      summary: Apply a version-guarded staff case command
+      description: >-
+        Implemented PR-29 API. Requires an Agent or Supervisor session in the existing bank-wide scope
+        and CSRF, not a simulation key. The stored case category selects the workflow.
+        Owner and employee identity never come from request JSON. State/version, timeline,
+        employee audit and outbox commit atomically. An active escalation blocks processing.
+        Repeating a committed request with its old version returns 409, without another effect.
+        Financial adapters and merchant acceptance/contest/representment inputs are simulated only
+        in Development/Testing; unconfigured external processing returns 503 without writes.
+        Existing eligibility checks remain in force. Approval never confirms funds.
+      parameters:
+        - $ref: '#/components/parameters/AgentDisputeId'
+        - $ref: '#/components/parameters/XsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffDisputeCommand'
+      responses:
+        '200':
+          description: Updated customer-safe case with its new version and timeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeCommandResult'
+        '400':
+          description: Invalid command/category, expectedVersion or evidence; or invalid CSRF
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          description: dispute.concurrencyConflict, dispute.invalidTransition or dispute.activeEscalation
+          $ref: '#/components/responses/Problem'
+        '503':
+          description: dispute.processingUnavailable; no transition committed
+          $ref: '#/components/responses/Problem'
   /agent/disputes/{id}/notes:
     get:
       operationId: listInvestigationNotes
@@ -687,6 +731,63 @@ components:
         caseStatus: { $ref: '#/components/schemas/CaseStatus' }
         description: { type: string }
         occurredAt: { type: string, format: date-time }
+    StaffDisputeCommand:
+      type: object
+      required: [command, expectedVersion]
+      properties:
+        command:
+          type: string
+          description: Case-sensitive; only commands for the stored category and current workflow state are accepted.
+          enum: [StartReview, VerifyMandate, CompleteInvestigation, RequestReversal, ExecuteReversal,
+            ReconcileReversal, Initiate, ForwardToAcquirer, MerchantAccept, MerchantContest,
+            ReceiveRepresentment, ReviewRepresentment, Approve, Reject, RequestSettlement,
+            ExecuteSettlement, RequestAdjustment, ExecuteAdjustment, Close]
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        evidence:
+          type: [object, 'null']
+          description: Required only for ReceiveRepresentment; synthetic metadata, not a verified file.
+          required: [id, kind]
+          properties:
+            id: { type: string, format: uuid }
+            kind: { type: string, enum: [Receipt, DeliveryConfirmation, AuthorizationRecord] }
+    DisputeCommandResult:
+      type: object
+      required: [id, reference, transactionId, category, reasonCode, description, caseStatus,
+        decisionStatus, financialStatus, createdAt, version, statusDescription, timeline]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        transactionId: { type: string, format: uuid }
+        category: { $ref: '#/components/schemas/TransactionKindPascal' }
+        reasonCode: { type: string }
+        description: { type: string }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string, enum: [Pending, Approved, Rejected] }
+        financialStatus: { type: string, enum: [NotInitiated, Requested, Confirmed, Failed, OutcomeUnknown] }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 1 }
+        statusDescription: { type: string }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/AgentTimelineEvent' }
+        chargeback:
+          type: object
+          required: [reference, reasonCode, status, lastOperationOutcome]
+          properties:
+            reference: { type: string }
+            reasonCode: { type: string }
+            status: { type: string }
+            lastOperationOutcome: { type: string }
+            evidence:
+              type: object
+              required: [id, kind, receivedAt]
+              properties:
+                id: { type: string, format: uuid }
+                kind: { type: string, enum: [Receipt, DeliveryConfirmation, AuthorizationRecord] }
+                receivedAt: { type: string, format: date-time }
     CreateInvestigationNote:
       type: object
       required: [text]

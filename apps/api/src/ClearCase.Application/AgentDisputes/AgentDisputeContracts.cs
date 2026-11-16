@@ -115,6 +115,9 @@ public sealed record CreateInvestigationNoteCommand(
 
 public interface IAgentDisputeReader
 {
+    Task<AgentDisputeProcessingTarget?> ReadProcessingTargetAsync(
+        Guid disputeId, CancellationToken cancellationToken);
+
     Task<AgentDisputePage> ReadPageAsync(ListAgentDisputesQuery query, CancellationToken cancellationToken);
 
     Task<AgentDisputeDetails?> ReadAsync(Guid disputeId, CancellationToken cancellationToken);

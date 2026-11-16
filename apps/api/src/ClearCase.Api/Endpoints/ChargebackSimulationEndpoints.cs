@@ -17,12 +17,33 @@ public sealed record ChargebackSimulationRequest(
 /// <summary>Identifies a synthetic receipt, delivery confirmation or authorization record.</summary>
 public sealed record RepresentmentEvidenceRequest(string? Id, string? Kind);
 
+internal static class RepresentmentEvidenceValidation
+{
+    public static void Validate(string? command, RepresentmentEvidenceRequest? evidence, List<QueryError> errors,
+        out Guid? evidenceId, out ChargebackEvidenceKind? evidenceKind)
+    {
+        evidenceId = null;
+        evidenceKind = null;
+        if (command == nameof(ChargebackCommand.ReceiveRepresentment))
+        {
+            if (!Guid.TryParse(evidence?.Id, out var parsedId) || parsedId == Guid.Empty)
+                errors.Add(new("/evidence/id", "evidence.idInvalid", "Provide a nonempty evidence GUID."));
+            else evidenceId = parsedId;
+            if (!Enum.TryParse<ChargebackEvidenceKind>(evidence?.Kind, out var kind)
+                || !Enum.IsDefined(kind) || evidence?.Kind != kind.ToString())
+                errors.Add(new("/evidence/kind", "evidence.kindInvalid", "Select a supported synthetic evidence kind."));
+            else evidenceKind = kind;
+        }
+        else if (evidence is not null)
+            errors.Add(new("/evidence", "evidence.notAllowed", "Evidence is only accepted with ReceiveRepresentment."));
+    }
+}
+
 public static class ChargebackSimulationEndpoints
 {
     public static void AddChargebackSimulation(this WebApplicationBuilder builder)
     {
         if (!SimulationAuthorization.IsEnabled(builder.Environment)) return;
-        builder.Services.AddScoped<IChargebackProcessingHandler, ChargebackProcessingHandler>();
         builder.Services.AddSingleton<ICardNetworkGateway>(new MockCardNetworkGateway());
         SimulationAuthorization.AddPolicy(builder, "CardNetworkSimulation", "Simulation:CardNetworkKey");
     }
@@ -63,20 +84,8 @@ public static class ChargebackSimulationEndpoints
         var errors = new List<QueryError>();
         if (request.ExpectedVersion is <= 0)
             errors.Add(new("/expectedVersion", "expectedVersion.invalid", "Expected version must be a positive integer."));
-        Guid? evidenceId = null;
-        ChargebackEvidenceKind? evidenceKind = null;
-        if (command == ChargebackCommand.ReceiveRepresentment)
-        {
-            if (!Guid.TryParse(request.Evidence?.Id, out var parsedId) || parsedId == Guid.Empty)
-                errors.Add(new("/evidence/id", "evidence.idInvalid", "Provide a nonempty evidence GUID."));
-            else evidenceId = parsedId;
-            if (!Enum.TryParse<ChargebackEvidenceKind>(request.Evidence?.Kind, out var parsedKind)
-                || !Enum.IsDefined(parsedKind) || request.Evidence?.Kind != parsedKind.ToString())
-                errors.Add(new("/evidence/kind", "evidence.kindInvalid", "Select a supported synthetic evidence kind."));
-            else evidenceKind = parsedKind;
-        }
-        else if (request.Evidence is not null)
-            errors.Add(new("/evidence", "evidence.notAllowed", "Evidence is only accepted with ReceiveRepresentment."));
+        RepresentmentEvidenceValidation.Validate(request.Command, request.Evidence, errors,
+            out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
             return DisputeEndpoints.Problem(context, 400, "Invalid representment metadata", "chargeback.invalidRequest", errors: errors);
         try

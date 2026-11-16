@@ -42,6 +42,7 @@ This is the execution plan, **not** a claim that the features already exist. The
 | Batch 06 | PR-26 | Agent work queue and investigation | Authorized Agents search persisted disputes and record private idempotent notes |
 | Batch 06 | PR-27 | Escalation and Supervisor review | Only after PR-26 is merged and CI is green |
 | Batch 06 | PR-28 | Single connected frontend | One Angular application on the real API; no fixture-driven demo build |
+| Batch 07 | PR-29 | Staff case command APIs | Employee-authorized, version-guarded transitions with atomic employee audit; no UI changes |
 
 ## Dependencies and sequencing
 
@@ -53,6 +54,7 @@ This is the execution plan, **not** a claim that the features already exist. The
 - PR-24 and PR-25 are deployment/release work; no paid AWS provisioning without explicit authorization.
 - Priority override: PR-26 follows PR-25 as recorded above. PR-27 remains blocked on PR-26 merge and a new assignment; neither changes the historical PR-19 to PR-25 scope.
 - PR-28 is stacked on PR-27 and is frontend-only. It supersedes PR-27's "standalone demo retains mock behavior" rule: the mock preview is retired, not kept.
+- PR-29 follows PR-28: staff command APIs, audit, focused tests and contracts/docs only. The aggregate refactor, policy changes and remaining technical/customer improvements need separate assignments.
 
 ## Detailed acceptance criteria
 
@@ -453,3 +455,21 @@ This is the execution plan, **not** a claim that the features already exist. The
 **Migration/backout:** None for data. Roll back by redeploying the PR-27 frontend; the API and database are unchanged.
 
 **Merge and rollback rule:** Delivery override (2026-11-16): submit PR-27 and PR-28 together in one pull request and merge only after their combined checks pass. Routes, API contracts and customer-visible wording of statuses stay as they were.
+
+### PR-29 — Staff case command APIs
+
+**Outcome:** Agents and Supervisors issue category-specific commands using their own authenticated identity, without impersonating a customer or supplying a simulation secret.
+
+**Allowed implementation:** One bank-employee command endpoint reusing the existing workflow handlers; required expected version and CSRF; stored owner lookup; atomic append-only employee audit with the case, timeline and existing outbox contract. Preserve customer simulation routes and local mock adapters. Financial execution and synthetic merchant updates remain unavailable in Production.
+
+**Acceptance:**
+- [x] All three workflows are accessible to authorized employees; customer/anonymous requests fail.
+- [x] Version conflicts, invalid transitions, missing CSRF and active escalations prevent writes.
+- [x] Card audit identifies the employee; all staff commands have immutable audit records, private from customer projections and event payloads.
+- [x] Concurrent requests commit one effect; audit failure rolls back the case, timeline, outbox and card audit together.
+- [x] Policy and adapter availability still guard processing; approval is not financial confirmation.
+- [x] Generated OpenAPI and migration upgrade/downgrade are covered by focused tests.
+
+**Not in scope:** Staff UI controls, real banking integration, unified transition-store/domain refactor, eligibility-policy changes, or the remaining improvement backlog.
+
+**Migration/backout:** `AddDisputeCommandAudit` adds an audit table/index/triggers only. Prefer retaining it on code rollback. A schema downgrade to `AddSupervisorEscalations` requires stopped API instances and retained audit backups; it removes new audit history but does not reverse persisted case decisions, timeline/outbox or financial outcomes.

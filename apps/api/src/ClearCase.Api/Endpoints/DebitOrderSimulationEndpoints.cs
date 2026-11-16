@@ -16,7 +16,6 @@ public static class DebitOrderSimulationEndpoints
     public static void AddDebitOrderSimulation(this WebApplicationBuilder builder)
     {
         if (!SimulationAuthorization.IsEnabled(builder.Environment)) return;
-        builder.Services.AddScoped<IDebitOrderProcessingHandler, DebitOrderProcessingHandler>();
         var outcome = ReadOutcome(builder.Configuration, "Simulation:DebitOrderOutcome",
             DebitOrderGatewayOutcome.Confirmed);
         var reconciliationOutcome = ReadOutcome(builder.Configuration, "Simulation:DebitOrderStatus",
