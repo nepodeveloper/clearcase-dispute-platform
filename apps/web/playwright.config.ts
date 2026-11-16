@@ -27,6 +27,10 @@ export default defineConfig({
       use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 1440, height: 1000 }, trace: 'off' } },
     { name: 'customer-mobile', testMatch: 'customer.spec.ts',
       use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, trace: 'off' } },
+    { name: 'agent-desktop', testMatch: 'agent.spec.ts',
+      use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 1440, height: 1000 }, trace: 'off' } },
+    { name: 'agent-mobile', testMatch: 'agent.spec.ts',
+      use: { baseURL: 'http://127.0.0.1:4302', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, trace: 'off' } },
   ],
   // Concurrent entrypoints must not share Vite's optimized Angular dependency cache.
   webServer: [{

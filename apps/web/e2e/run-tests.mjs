@@ -21,7 +21,8 @@ for (let index = 0; index < cliArgs.length; index++) {
 
 const selectedProjects = projectNames.length > 0
   ? projectNames
-  : ['desktop', 'mobile', 'authentication', 'customer-desktop', 'customer-mobile'];
+  : ['desktop', 'mobile', 'authentication', 'customer-desktop', 'customer-mobile',
+    'agent-desktop', 'agent-mobile'];
 const projectGroups = [
   selectedProjects.filter(project => ['desktop', 'mobile', 'authentication'].includes(project)),
   ...selectedProjects.filter(project => project.startsWith('customer-')).map(project => [project]),
@@ -31,9 +32,11 @@ const projectGroups = [
 
 for (const projects of projectGroups) {
   const database = join(tmpdir(), `clearcase-e2e-${randomUUID()}.db`);
+  const output = resolve('test-results', projects.join('-'));
   try {
     const result = spawnSync(process.execPath, [
       resolve('node_modules', '@playwright', 'test', 'cli.js'), 'test',
+      '--output', output,
       ...projects.flatMap(project => ['--project', project]), ...otherArgs,
     ], {
       stdio: 'inherit',

@@ -135,6 +135,125 @@ paths:
                       $ref: '#/components/schemas/TimelineEvent'
         '404':
           $ref: '#/components/responses/Problem'
+  /agent/disputes:
+    get:
+      operationId: listAgentDisputes
+      summary: Search the synthetic bank-wide Agent dispute queue
+      description: >-
+        Requires BankEmployeeAccess. The current assessment visibility scope includes every
+        persisted synthetic dispute and does not imply assignment. Search matches reference,
+        transaction description, or reason code. Results use stable createdAt-descending,
+        reference-ascending ordering and bounded cursor pagination.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 100
+        - in: query
+          name: category
+          schema:
+            $ref: '#/components/schemas/TransactionKindPascal'
+        - in: query
+          name: caseStatus
+          schema:
+            $ref: '#/components/schemas/CaseStatus'
+      responses:
+        '200':
+          description: A page of minimal persisted operational case summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDisputePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /agent/disputes/{id}:
+    get:
+      operationId: getAgentDispute
+      summary: Read an operational case investigation projection
+      parameters:
+        - $ref: '#/components/parameters/AgentDisputeId'
+      responses:
+        '200':
+          description: Case, transaction, persisted workflow facts, timeline and private notes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDisputeDetail'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /agent/disputes/{id}/notes:
+    get:
+      operationId: listInvestigationNotes
+      summary: List private append-only investigation notes
+      parameters:
+        - $ref: '#/components/parameters/AgentDisputeId'
+      responses:
+        '200':
+          description: Notes ordered by persisted creation timestamp and unique ID
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvestigationNote'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createInvestigationNote
+      summary: Append a private investigation note
+      parameters:
+        - $ref: '#/components/parameters/AgentDisputeId'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvestigationNote'
+      responses:
+        '201':
+          description: Note created or original note replayed for the same key and text
+          headers:
+            Location:
+              schema:
+                type: string
+            Idempotent-Replayed:
+              schema:
+                type: string
+                enum: ['true']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestigationNote'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          description: Idempotency key was already used with different normalized text
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     cookieAuth:
@@ -155,6 +274,13 @@ components:
       name: cursor
       schema:
         type: string
+    AgentDisputeId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     DisputeId:
       name: disputeId
       in: path
@@ -180,10 +306,31 @@ components:
       required: true
       schema:
         type: string
+    CsrfToken:
+      in: header
+      name: X-CSRF-TOKEN
+      required: true
+      schema:
+        type: string
+    RequiredIdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[\x21-\x7E]+$'
   schemas:
     TransactionKind:
       type: string
       enum: [cardPurchase, debitOrder, bankCharge]
+    TransactionKindPascal:
+      type: string
+      enum: [CardPurchase, DebitOrder, BankCharge]
+    CaseStatus:
+      type: string
+      enum: [Submitted, ManualReview, Closed, UnderReview, MandateVerified, ReversalRequested, ReversalConfirmed, Rejected]
     Transaction:
       type: object
       required: [id, description, amountMinorUnits, currency, kind, postedAt, canDispute]
@@ -281,6 +428,122 @@ components:
           type: boolean
         nextCursor:
           type: string
+    AgentPageInfo:
+      type: object
+      required: [hasNextPage]
+      additionalProperties: false
+      properties:
+        hasNextPage:
+          type: boolean
+        nextCursor:
+          type: string
+    AgentDisputePage:
+      type: object
+      required: [items, pageInfo]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentDispute'
+        pageInfo:
+          $ref: '#/components/schemas/AgentPageInfo'
+    AgentDispute:
+      type: object
+      required: [id, reference, customerReference, category, transactionDescription, amountMinorUnits, currency, reasonCode, caseStatus, decisionStatus, financialStatus, createdAt, lastActivityAt, version]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        customerReference: { type: string, description: Stable pseudonymous reference derived from synthetic customer ID }
+        category: { $ref: '#/components/schemas/TransactionKindPascal' }
+        transactionDescription: { type: string }
+        amountMinorUnits: { type: string, pattern: '^-?[0-9]+$' }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        reasonCode: { type: string }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string }
+        financialStatus: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastActivityAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 1 }
+    AgentDisputeDetail:
+      type: object
+      required: [id, reference, customerReference, category, reasonCode, customerStatement, eligibilityOutcome, eligibilityPolicyVersion, caseStatus, decisionStatus, financialStatus, createdAt, version, transaction, timeline, notes]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        customerReference: { type: string }
+        category: { $ref: '#/components/schemas/TransactionKindPascal' }
+        reasonCode: { type: string }
+        customerStatement: { type: string }
+        eligibilityOutcome: { type: string }
+        eligibilityPolicyVersion: { type: string }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string }
+        financialStatus: { type: string }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 1 }
+        transaction:
+          type: object
+          required: [description, amountMinorUnits, currency, transactionDate]
+          properties:
+            description: { type: string }
+            amountMinorUnits: { type: string, pattern: '^-?[0-9]+$' }
+            currency: { type: string }
+            transactionDate: { type: string, format: date-time }
+            mandateType: { type: string }
+            collectionDate: { type: string, format: date }
+            mandateAuthorised: { type: boolean }
+            mandateMatchesCollection: { type: boolean }
+        reversalOperationReference: { type: string }
+        bankChargeAdjustmentReference: { type: string }
+        cardWorkflow:
+          type: object
+          properties:
+            reference: { type: string }
+            reasonCode: { type: string }
+            status: { type: string }
+            lastOperationOutcome: { type: string }
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentTimelineEvent'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvestigationNote'
+    AgentTimelineEvent:
+      type: object
+      required: [id, sequenceNumber, eventType, caseStatus, description, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        sequenceNumber: { type: integer }
+        eventType: { type: string }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        description: { type: string }
+        occurredAt: { type: string, format: date-time }
+    CreateInvestigationNote:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 15
+          maxLength: 2000
+          description: Length is validated after trimming and Unicode normalization.
+    InvestigationNote:
+      type: object
+      required: [id, disputeId, employeeId, text, createdAt, correlationId]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        disputeId: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
+        correlationId: { type: string }
     Problem:
       type: object
       required: [type, title, status, code, correlationId]

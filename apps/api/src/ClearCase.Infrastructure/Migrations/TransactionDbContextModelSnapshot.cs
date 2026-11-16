@@ -17,6 +17,50 @@ namespace ClearCase.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
+            modelBuilder.Entity("ClearCase.Infrastructure.AgentDisputes.PersistedInvestigationNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisputeId", "CreatedAt", "Id");
+
+                    b.HasIndex("DisputeId", "EmployeeId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_InvestigationNotes_DisputeId_EmployeeId_IdempotencyKey");
+
+                    b.ToTable("InvestigationNotes", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Authentication.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -620,6 +664,15 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.AgentDisputes.PersistedInvestigationNote", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ClearCase.Infrastructure.Chargebacks.ChargebackAuditEvent", b =>
