@@ -21,23 +21,16 @@ for (let index = 0; index < cliArgs.length; index++) {
 
 const selectedProjects = projectNames.length > 0
   ? projectNames
-  : ['desktop', 'mobile', 'authentication', 'customer-desktop', 'customer-mobile',
-    'agent-desktop', 'agent-mobile'];
-const projectGroups = [
-  selectedProjects.filter(project => ['desktop', 'mobile', 'authentication'].includes(project)),
-  ...selectedProjects.filter(project => project.startsWith('customer-')).map(project => [project]),
-  ...selectedProjects.filter(project => !['desktop', 'mobile', 'authentication'].includes(project)
-    && !project.startsWith('customer-')).map(project => [project]),
-].filter(group => group.length > 0);
+  : ['authentication', 'customer-desktop', 'customer-mobile', 'agent-desktop', 'agent-mobile'];
 
-for (const projects of projectGroups) {
+// One process and database per project keeps login rate limits and test data from leaking between them.
+for (const project of selectedProjects) {
   const database = join(tmpdir(), `clearcase-e2e-${randomUUID()}.db`);
-  const output = resolve('test-results', projects.join('-'));
+  const output = resolve('test-results', project);
   try {
     const result = spawnSync(process.execPath, [
       resolve('node_modules', '@playwright', 'test', 'cli.js'), 'test',
-      '--output', output,
-      ...projects.flatMap(project => ['--project', project]), ...otherArgs,
+      '--output', output, '--project', project, ...otherArgs,
     ], {
       stdio: 'inherit',
       env: { ...process.env, CLEARCASE_E2E_DATABASE: database, CLEARCASE_E2E_PASSWORD: `Cc1!${randomUUID()}` },

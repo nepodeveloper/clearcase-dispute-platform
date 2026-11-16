@@ -169,7 +169,7 @@ test('customer navigation, session expiry and ownership remain enforced', async 
     await expect(page).toHaveURL(/\/disputes$/);
   } else {
     await page.getByRole('navigation', { name: 'Customer navigation', exact: true })
-      .getByRole('link', { name: 'Your disputes', exact: true }).click();
+      .getByRole('link', { name: 'My disputes', exact: true }).click();
   }
   const cases: DisputePage = await (await page.request.get('/api/v1/disputes')).json();
   let owned = cases.items[0];

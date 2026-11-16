@@ -1,14 +1,11 @@
-import { inject } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentDisputesApi } from '../agent/agent-disputes-api';
-import { OPERATIONS_API } from '../operations/operations-api';
-import { DemoSupervisorQueuePage } from '../operations/supervisor-queue-page';
-import { SupervisorEscalationListItem, SupervisorEscalationsApi } from './supervisor-escalations-api';
+import { SupervisorEscalationListItem } from './supervisor-escalations-api';
+import { SupervisorQueuePage } from './supervisor-queue-page';
 
-describe('shared Supervisor queue API mode', () => {
+describe('Supervisor queue', () => {
   const item: SupervisorEscalationListItem = {
     id: '00000000-0000-0000-0000-000000000010',
     reference: 'ESC-00000000000000000000000000000010',
@@ -23,17 +20,8 @@ describe('shared Supervisor queue API mode', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [DemoSupervisorQueuePage],
-      providers: [
-        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        {
-          provide: OPERATIONS_API,
-          useFactory: () => ({
-            agent: inject(AgentDisputesApi),
-            supervisor: inject(SupervisorEscalationsApi),
-          }),
-        },
-      ],
+      imports: [SupervisorQueuePage],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -41,7 +29,7 @@ describe('shared Supervisor queue API mode', () => {
   afterEach(() => http.verify());
 
   function render() {
-    const fixture = TestBed.createComponent(DemoSupervisorQueuePage);
+    const fixture = TestBed.createComponent(SupervisorQueuePage);
     fixture.detectChanges();
     return fixture;
   }

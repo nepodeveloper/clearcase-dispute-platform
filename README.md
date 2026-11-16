@@ -80,7 +80,7 @@ Development seeds deterministic synthetic identities; integration tests explicit
 | `agent.demo` | `Agent` | `Agent` | `/agent/disputes` |
 | `supervisor.demo` | `Supervisor` | `Supervisor` | `/agent/escalations` |
 
-Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. Agent queue, investigation, escalation, Supervisor queue and review all use the shared screens under `apps/web/src/app/operations`; the normal app supplies authenticated API clients, while the separate UI demo supplies in-memory fixtures.
+Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. Agent queue, investigation, escalation, Supervisor queue and review live under `apps/web/src/app/operations` and call the authenticated API directly.
 
 Login and `/auth/me` return `{ username, actorType, roles, customerId, csrfToken }`; staff `customerId` is currently null. Angular restores `/auth/me` before route decisions, keeps identity/CSRF only in memory, and uses the HTTP-only `clearcase.auth` cookie as authority. It does not use localStorage/sessionStorage. Customer routes include `/`, `/transactions/:id`, `/disputes` and `/disputes/:id`; Agent routes include `/agent/disputes` and `/agent/disputes/:id`; Supervisor routes include `/agent/escalations` and `/agent/escalations/:id`. Role mismatch goes to `/unauthorized`. Only known, role-appropriate application-relative return URLs are preserved.
 
@@ -92,13 +92,15 @@ Seeding does not reset existing password hashes, security stamps or lockout stat
 
 ### Browser verification
 
-From `apps/web`, run `npm run test:e2e`. The wrapper runs the demo/authentication, customer-desktop, customer-mobile, agent-desktop and agent-mobile project groups in separate Playwright processes with ephemeral credentials and unique temporary SQLite databases. This keeps login rate-limit state and customer test data isolated; each database and its sidecars are deleted after its servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, customer submission with CSRF, and the Agent investigation/private-note journey. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Each project's test output is isolated under `apps/web/test-results` so later groups don't overwrite earlier screenshots; reports/screenshots are uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
+From `apps/web`, run `npm run test:e2e`. The wrapper runs the authentication, customer-desktop, customer-mobile, agent-desktop and agent-mobile projects in separate Playwright processes with ephemeral credentials and unique temporary SQLite databases. This keeps login rate-limit state and customer test data isolated; each database and its sidecars are deleted after its servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, customer submission with CSRF, and the Agent investigation/private-note journey. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Each project's test output is isolated under `apps/web/test-results` so later groups don't overwrite earlier screenshots; reports/screenshots are uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
 
-The separate `npm run start:ui` build remains an API-free design preview with an in-memory role picker; that picker is not included in the real application. Customer screens remain isolated from this demo. Agent and Supervisor screens are shared from `apps/web/src/app/operations` and switch to persisted APIs only when the normal application's `OPERATIONS_API` provider is present.
+### One frontend (PR-28)
+
+`npm start` is the only frontend. The former API-free UI demo (`npm run start:ui`), its in-memory fixtures and its role picker were removed; its design is now the layout of the connected application for every role. Shared building blocks are in `apps/web/src/app/ui` and layout styles in `apps/web/src/styles/clearcase-layout.css`. Demo elements that had no API behind them (free-text transaction search, a masked account number, "Remember this device" and "Forgot password") were removed rather than faked. Roll back by redeploying the PR-27 frontend; the API and database are unchanged.
 
 ## Connected customer journey (PR-14)
 
-Use the normal `npm start` application, not `npm run start:ui`:
+Start the application with `npm start`:
 
 1. Sign in at `/login` using a configured customer assessment account. Login opens **Your transactions**.
 2. Filter by transaction type and inclusive dates, then use **Next** / **Previous**. Filtering and pagination run on the server; unsupported demo search/account totals are not fabricated.
@@ -108,7 +110,7 @@ Use the normal `npm start` application, not `npm run start:ui`:
 6. Refresh or revisit a case to read its SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Only the customer-safe projection is rendered. A transient refresh failure retains the last loaded case with an explicit error and retry.
 7. Sign out to end the cookie session. Expired sessions return to login; another customer cannot access the transaction, eligibility or case.
 
-There is one active customer route implementation. The standalone UI demo retains its synthetic in-memory customer workspace, fake account details and role selector; those customer flows are not imported into the connected journey. The Agent and Supervisor routes reuse the shared `operations` screens, which use demo fixtures under `npm run start:ui` and authenticated APIs under `npm start`. Database seed records remain explicitly synthetic local assessment data.
+There is one route implementation for each screen, with no in-memory workspace, fake account details or role selector. Database seed records remain explicitly synthetic local assessment data.
 
 ### PR-14 verification and backout
 
@@ -119,7 +121,7 @@ npm run test:ci -- --include "src/app/transactions/*.spec.ts" --include "src/app
 npm run build
 ```
 
-The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database, not `DemoWorkspace`. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
+The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
 
 No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. Full idempotency-key replay, staff workflows and real financial processing remain deferred, not implied by the UI.
 
@@ -188,7 +190,7 @@ The connected Agent can create one active escalation per eligible dispute with a
 
 Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview`. Neither operation changes `decisionStatus` or `financialStatus`, and neither initiates or confirms money movement. Migration `AddSupervisorEscalations` is additive. To roll back, stop API instances, retain a database backup, revert the application, then migrate down to `AddInvestigationNotes`; this removes escalation/audit storage but preserves the case timeline and does not touch transaction data or financial operations.
 
-For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. `npm run start:ui` continues to use the same operations screens with mock data and does not call APIs. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
+For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
 
 ## Transaction listing API
 

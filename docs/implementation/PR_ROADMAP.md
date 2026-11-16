@@ -41,6 +41,7 @@ This is the execution plan, **not** a claim that the features already exist. The
 | Batch 05 | PR-25 | Release readiness and interview demo | Clean-clone setup is reproducible |
 | Batch 06 | PR-26 | Agent work queue and investigation | Authorized Agents search persisted disputes and record private idempotent notes |
 | Batch 06 | PR-27 | Escalation and Supervisor review | Only after PR-26 is merged and CI is green |
+| Batch 06 | PR-28 | Single connected frontend | One Angular application on the real API; no fixture-driven demo build |
 
 ## Dependencies and sequencing
 
@@ -51,6 +52,7 @@ This is the execution plan, **not** a claim that the features already exist. The
 - PR-21 storage is optional for the minimum brief but adds credible secure evidence. PR-22 UX/E2E, PR-23 measured operations.
 - PR-24 and PR-25 are deployment/release work; no paid AWS provisioning without explicit authorization.
 - Priority override: PR-26 follows PR-25 as recorded above. PR-27 remains blocked on PR-26 merge and a new assignment; neither changes the historical PR-19 to PR-25 scope.
+- PR-28 is stacked on PR-27 and is frontend-only. It supersedes PR-27's "standalone demo retains mock behavior" rule: the mock preview is retired, not kept.
 
 ## Detailed acceptance criteria
 
@@ -430,3 +432,24 @@ This is the execution plan, **not** a claim that the features already exist. The
 **Migration/backout:** Add only escalation and audit tables/indexes/triggers. Roll back after stopping API instances and retaining a database backup by reverting the application and migrating down to `AddInvestigationNotes`. Existing case timeline/outbox history and transaction/financial data remain intact.
 
 **Merge and rollback rule:** Preserve existing customer routes and the standalone mock preview. No assignment management, real bank operations, decision-making or financial status changes are in scope.
+
+### PR-28 — Single connected frontend
+
+**Priority:** Assignment override (2026-11-16), stacked on PR-27. Supersedes the PR-27 rule that kept the standalone mock preview.
+
+**Outcome:** One Angular application. The design from the former UI demo (shell, login, customer, Agent and Supervisor screens) is the only frontend and reads and writes through the authenticated API. No in-memory fixtures, role picker or second build remain.
+
+**Allowed implementation:** Restyle the existing API-backed shell and customer pages with the demo layout while keeping their data flow and test hooks; remove the fixture branches from the Agent and Supervisor screens; delete the demo entrypoint, fixtures, role picker, `start:ui`/`build:ui` scripts, the `ui-demo` Angular configuration and its browser projects; move shared UI building blocks to `apps/web/src/app/ui` and styles to `apps/web/src/styles`. Frontend, tooling and documentation only.
+
+**Acceptance:**
+- [x] `npm start` is the only frontend entrypoint; no component reads fixture data.
+- [x] Sign-in uses real accounts; the sidebar lists only destinations the signed-in role may open.
+- [x] Customer, Agent and Supervisor journeys pass against the real API on desktop and mobile without horizontal overflow.
+- [x] Demo elements with no API behind them (free-text transaction search, masked account number, "Remember this device", "Forgot password") are removed, not faked.
+- [x] One footer note states the data is synthetic and that this is not an official Capitec interface.
+
+**Not in scope:** API, schema, policy, authentication or event changes; a transaction search API; password reset or device trust.
+
+**Migration/backout:** None for data. Roll back by redeploying the PR-27 frontend; the API and database are unchanged.
+
+**Merge and rollback rule:** Delivery override (2026-11-16): submit PR-27 and PR-28 together in one pull request and merge only after their combined checks pass. Routes, API contracts and customer-visible wording of statuses stay as they were.

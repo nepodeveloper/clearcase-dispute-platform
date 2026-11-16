@@ -14,6 +14,20 @@ export type AgentCaseStatus =
 export type AgentDecisionStatus = 'Pending' | 'Approved' | 'Rejected';
 export type AgentFinancialStatus = 'NotInitiated' | 'Requested' | 'Confirmed' | 'Failed' | 'OutcomeUnknown';
 
+export function agentCaseStatusLabel(status: AgentCaseStatus): string {
+  const labels: Record<AgentCaseStatus, string> = {
+    Submitted: 'Submitted',
+    ManualReview: 'Specialist review',
+    Closed: 'Closed',
+    UnderReview: 'Under review',
+    MandateVerified: 'Mandate verified',
+    ReversalRequested: 'Reversal requested',
+    ReversalConfirmed: 'Reversal confirmed',
+    Rejected: 'Rejected',
+  };
+  return labels[status];
+}
+
 export interface AgentDisputeListItem {
   id: string;
   reference: string;

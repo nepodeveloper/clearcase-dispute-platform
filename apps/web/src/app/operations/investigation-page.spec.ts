@@ -1,15 +1,12 @@
-import { inject } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentActiveEscalation, AgentDisputeDetails, AgentDisputesApi, AgentInvestigationNote } from './agent-disputes-api';
-import { DemoEscalationForm } from '../operations/escalation-form';
-import { DemoInvestigationPage } from '../operations/investigation-page';
-import { OPERATIONS_API } from '../operations/operations-api';
-import { SupervisorEscalationsApi } from '../supervisor/supervisor-escalations-api';
+import { AgentActiveEscalation, AgentDisputeDetails, AgentInvestigationNote } from './agent-disputes-api';
+import { EscalationForm } from './escalation-form';
+import { InvestigationPage } from './investigation-page';
 
-describe('shared Agent investigation API mode', () => {
+describe('Agent investigation', () => {
   const caseId = '00000000-0000-0000-0000-000000000001';
   const details: AgentDisputeDetails = {
     id: caseId,
@@ -49,17 +46,8 @@ describe('shared Agent investigation API mode', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [DemoInvestigationPage, DemoEscalationForm],
-      providers: [
-        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        {
-          provide: OPERATIONS_API,
-          useFactory: () => ({
-            agent: inject(AgentDisputesApi),
-            supervisor: inject(SupervisorEscalationsApi),
-          }),
-        },
-      ],
+      imports: [InvestigationPage, EscalationForm],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -67,7 +55,7 @@ describe('shared Agent investigation API mode', () => {
   afterEach(() => http.verify());
 
   function renderDetails() {
-    const fixture = TestBed.createComponent(DemoInvestigationPage);
+    const fixture = TestBed.createComponent(InvestigationPage);
     fixture.componentRef.setInput('id', caseId);
     fixture.detectChanges();
     return fixture;
@@ -149,14 +137,12 @@ describe('shared Agent investigation API mode', () => {
   });
 
   it('submits escalations with an idempotency key and preserves the exact request on retry', async () => {
-    const fixture = TestBed.createComponent(DemoEscalationForm);
+    const fixture = TestBed.createComponent(EscalationForm);
     fixture.componentRef.setInput('caseId', caseId);
     fixture.componentRef.setInput('reference', details.reference);
     fixture.detectChanges();
     let completed: AgentActiveEscalation | null = null;
-    fixture.componentInstance.completed.subscribe(result => {
-      if (!('caseId' in result)) completed = result;
-    });
+    fixture.componentInstance.completed.subscribe(result => { completed = result; });
     const root = fixture.nativeElement as HTMLElement;
     const textarea = root.querySelector<HTMLTextAreaElement>('#escalation-note')!;
     const form = root.querySelector<HTMLFormElement>('form')!;

@@ -19,7 +19,6 @@ export const descriptionMaxLength = 2000;
   selector: 'app-dispute-form',
   imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './dispute-form.html',
-  styleUrl: './dispute-form.css',
 })
 export class DisputeForm {
   readonly transactionId = input.required<string>();

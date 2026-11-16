@@ -1,52 +1,47 @@
 @let current = dispute();
-<section class="case-detail-layout" aria-label="Case details">
-  <section class="timeline-panel cc-card" aria-labelledby="case-timeline-heading">
-    <h2 id="case-timeline-heading">Case timeline</h2>
-    <p class="timeline-intro">See how your case is progressing.</p>
-    @if (current.timeline.length === 0) {
+<div class="split-grid unequal">
+  <section class="panel" aria-labelledby="case-timeline-heading">
+    <div class="panel-title"><div>
+      <h2 id="case-timeline-heading">Case timeline</h2>
+      <p>See how your case is progressing.</p>
+    </div></div>
+    @if (events().length === 0) {
       <p class="cc-empty">No timeline events yet.</p>
     } @else {
-      <ol class="timeline" aria-label="Dispute timeline" tabindex="0">
-        @for (event of timeline(); track event.id) {
-          <li>
-            <span class="timeline-marker" aria-hidden="true"></span>
-            <div>
-              <h3>{{ statusLabel(event.caseStatus) }}</h3>
-              <time [attr.datetime]="event.occurredAt">{{ event.occurredAt | date:'medium':'UTC' }} UTC</time>
-              <p>{{ event.description }}</p>
-            </div>
-          </li>
-        }
-      </ol>
+      <cc-timeline [events]="events()" [complete]="finished()" />
     }
   </section>
 
-  <aside class="summary-panel cc-card" aria-label="Case summary">
-    <h2>Case summary</h2>
-    <div class="case-facts">
-      <p>Case reference <strong data-testid="dispute-reference">{{ current.reference }}</strong></p>
-      <p>Category <strong>{{ typeLabel(current.category) }}</strong></p>
-      <p>Case status <strong>{{ statusLabel(current.caseStatus) }}</strong></p>
-      <p>Decision: <strong>{{ current.decisionStatus }}</strong></p>
-      <p>Financial status: <strong>{{ financialLabel(current.financialStatus, current.category) }}</strong></p>
-    </div>
-    <p class="status-description">{{ current.statusDescription }}</p>
-    <p class="submitted-date">Submitted: <time [attr.datetime]="current.createdAt">{{ current.createdAt | date:'medium':'UTC' }} UTC</time></p>
-    <div class="customer-description">
-      <h3>Your description</h3>
-      <p>{{ current.description }}</p>
-    </div>
-    <a class="transaction-link" [routerLink]="['/transactions', current.transactionId]">View transaction</a>
-    @if (current.chargeback; as chargeback) {
-      <div class="chargeback-info">
-        <p>Chargeback reference: {{ chargeback.reference }}</p>
-        <p>Chargeback status: {{ chargebackLabel(chargeback.status) }}</p>
-        @if (chargeback.lastOperationOutcome !== 'Succeeded') {
-          <p>{{ chargeback.lastOperationOutcome === 'OutcomeUnknown'
-            ? 'Network outcome unknown - investigation required.'
-            : 'Network operation failed - investigation required.' }}</p>
-        }
+  <div class="stack">
+    <aside class="panel" aria-label="Case summary">
+      <h2>Case summary</h2>
+      <div class="case-facts">
+        <p>Case reference <strong data-testid="dispute-reference">{{ current.reference }}</strong></p>
+        <p>Category <strong>{{ typeLabel(current.category) }}</strong></p>
+        <p>Case status <strong>{{ statusLabel(current.caseStatus) }}</strong></p>
+        <p>Decision: <strong>{{ current.decisionStatus }}</strong></p>
+        <p>Financial status: <strong>{{ financialLabel(current.financialStatus, current.category) }}</strong></p>
+        <p>Submitted: <strong><time [attr.datetime]="current.createdAt">{{ current.createdAt | date:'medium':'UTC' }} UTC</time></strong></p>
       </div>
-    }
-  </aside>
-</section>
+      <div class="soft-box"><small>Latest update</small><p>{{ current.statusDescription }}</p></div>
+      <div class="soft-box"><small>Your description</small><p>{{ current.description }}</p></div>
+      @if (current.chargeback; as chargeback) {
+        <div class="soft-box"><small>Card chargeback</small>
+          <p>Chargeback reference: {{ chargeback.reference }}</p>
+          <p>Chargeback status: {{ chargebackLabel(chargeback.status) }}</p>
+          @if (chargeback.lastOperationOutcome !== 'Succeeded') {
+            <p>{{ chargeback.lastOperationOutcome === 'OutcomeUnknown'
+              ? 'Network outcome unknown - investigation required.'
+              : 'Network operation failed - investigation required.' }}</p>
+          }
+        </div>
+      }
+      <p><a class="back" [routerLink]="['/transactions', current.transactionId]">View transaction &rarr;</a></p>
+    </aside>
+    <aside class="panel info-panel">
+      <h3>Good to know</h3>
+      <p>An investigation decision and a financial adjustment are separate steps. An approved decision does not
+        mean funds have been returned, and no real money moves in this assessment environment.</p>
+    </aside>
+  </div>
+</div>

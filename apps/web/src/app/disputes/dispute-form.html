@@ -1,45 +1,52 @@
 @let current = state();
 @if (current.kind === 'submitted') {
-  <div class="confirmation-card" data-testid="dispute-confirmation">
+  <div class="notice" data-testid="dispute-confirmation">
     <p role="status"><strong>Dispute submitted.</strong></p>
     <p>Case reference: <strong data-testid="dispute-reference">{{ current.dispute.reference }}</strong></p>
     <p><a [routerLink]="['/disputes', current.dispute.id]" data-testid="track-dispute">Track this dispute</a></p>
   </div>
 } @else {
-  <form class="dispute-form" [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
-    <h3 id="dispute-form-heading">Tell us what happened</h3>
-    <p>Submitting a dispute opens a case for review. It does not immediately refund or reverse the transaction.</p>
+  <form class="form-stack" [formGroup]="form" (ngSubmit)="submit()" aria-labelledby="dispute-form-heading" novalidate>
+    <div>
+      <h3 id="dispute-form-heading">Tell us what happened</h3>
+      <p class="muted">Submitting a dispute opens a case for review. It does not immediately refund or reverse the transaction.</p>
+    </div>
 
-    <label class="cc-field" for="dispute-reason">Dispute reason
-    <select class="cc-control" id="dispute-reason" formControlName="reasonCode"
-            [attr.aria-invalid]="showError('reasonCode')"
-            [attr.aria-describedby]="showError('reasonCode') ? 'dispute-reason-error' : null">
-      <option value="">Select a reason</option>
-      @for (reason of reasons(); track reason.code) {
-        <option [value]="reason.code">{{ reason.label }}</option>
+    <div class="cc-field">
+      <label for="dispute-reason">Dispute reason</label>
+      <select class="cc-control" id="dispute-reason" formControlName="reasonCode"
+              [attr.aria-invalid]="showError('reasonCode')"
+              [attr.aria-describedby]="showError('reasonCode') ? 'dispute-reason-error' : null">
+        <option value="">Select a reason</option>
+        @for (reason of reasons(); track reason.code) {
+          <option [value]="reason.code">{{ reason.label }}</option>
+        }
+      </select>
+      @if (showError('reasonCode')) {
+        <span id="dispute-reason-error" class="cc-form-error">{{ serverErrors().reasonCode ?? 'Select a reason.' }}</span>
       }
-    </select>
-    </label>
-    @if (showError('reasonCode')) {
-      <p id="dispute-reason-error" class="field-error">{{ serverErrors().reasonCode ?? 'Select a reason.' }}</p>
-    }
+    </div>
 
-    <label class="cc-field" for="dispute-description">Describe the issue
-    <textarea class="cc-control" id="dispute-description" formControlName="description" rows="5" [attr.maxlength]="maxLength"
-              [attr.aria-invalid]="showError('description')"
-              [attr.aria-describedby]="showError('description') ? 'dispute-description-hint dispute-description-error' : 'dispute-description-hint'"></textarea>
-    </label>
-    <p id="dispute-description-hint" class="hint">Between 15 and {{ maxLength }} characters. Do not include passwords, PINs or personal information.</p>
-    @if (showError('description')) {
-      <p id="dispute-description-error" class="field-error">{{ serverErrors().description ?? 'Describe the problem in at least 15 characters.' }}</p>
-    }
+    <div class="cc-field">
+      <label for="dispute-description">Describe the issue</label>
+      <textarea class="cc-control" id="dispute-description" formControlName="description" rows="6" [attr.maxlength]="maxLength"
+                [attr.aria-invalid]="showError('description')"
+                [attr.aria-describedby]="showError('description') ? 'dispute-description-hint dispute-description-error' : 'dispute-description-hint'"></textarea>
+      <span id="dispute-description-hint" class="field-hint">Between 15 and {{ maxLength }} characters. Do not include passwords, PINs or personal information.</span>
+      @if (showError('description')) {
+        <span id="dispute-description-error" class="cc-form-error">{{ serverErrors().description ?? 'Describe the problem in at least 15 characters.' }}</span>
+      }
+    </div>
 
     @if (current.kind === 'error') {
-      <p role="alert" data-testid="dispute-error">{{ current.message }}</p>
+      <p class="cc-form-error" role="alert" data-testid="dispute-error">{{ current.message }}</p>
     }
 
-    <button class="cc-button cc-button--primary submit-button" type="submit" data-testid="submit-dispute" [disabled]="current.kind === 'submitting'">
-      {{ current.kind === 'submitting' ? 'Submitting...' : 'Submit dispute' }}
-    </button>
+    <div class="button-row align-right">
+      <a class="cc-button cc-button--secondary" routerLink="/">Cancel</a>
+      <button class="cc-button cc-button--primary" type="submit" data-testid="submit-dispute" [disabled]="current.kind === 'submitting'">
+        {{ current.kind === 'submitting' ? 'Submitting...' : 'Submit dispute' }} <span aria-hidden="true">&rarr;</span>
+      </button>
+    </div>
   </form>
 }

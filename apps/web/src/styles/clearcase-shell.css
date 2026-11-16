@@ -6,17 +6,6 @@ app-root {
   font-family: var(--cc-font);
 }
 
-.announcement-bar {
-  padding: 0.35rem 1rem;
-  color: var(--cc-surface);
-  background: var(--cc-navy-deep);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-align: center;
-  text-transform: uppercase;
-}
-
 .skip-link {
   position: absolute;
   z-index: 6;
@@ -35,7 +24,7 @@ app-root {
 
 .app-frame {
   display: grid;
-  min-height: calc(100vh - 1.75rem);
+  min-height: 100vh;
   grid-template-columns: 12.5rem minmax(0, 1fr);
 }
 
@@ -45,7 +34,7 @@ app-root {
   position: sticky;
   top: 0;
   display: flex;
-  height: calc(100vh - 1.75rem);
+  height: 100vh;
   flex-direction: column;
   padding: 1.5rem 0.85rem 1rem;
   color: var(--cc-sidebar-text);
@@ -146,27 +135,10 @@ app-root {
   text-align: center;
 }
 
-.sidebar-note {
-  margin-top: auto;
-  padding: 1rem 0.55rem 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  font-size: 0.7rem;
-}
-
-.sidebar-note strong {
-  color: var(--cc-surface);
-}
-
-.sidebar-note p {
-  margin: 0.5rem 0 0;
-  color: var(--cc-sidebar-muted);
-  line-height: 1.45;
-}
-
 .main-column {
   display: flex;
   min-width: 0;
-  min-height: calc(100vh - 1.75rem);
+  min-height: 100vh;
   flex-direction: column;
 }
 
@@ -208,19 +180,6 @@ app-root {
   gap: var(--cc-space-2);
 }
 
-.environment-label {
-  flex: 0 0 auto;
-  padding: 0.3rem 0.65rem;
-  border: 1px solid var(--cc-danger-bg);
-  border-radius: 999px;
-  color: var(--cc-danger);
-  background: var(--cc-danger-bg);
-  font-size: 0.68rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .user-avatar {
   display: grid;
   width: 1.85rem;
@@ -233,7 +192,7 @@ app-root {
   font-weight: 900;
 }
 
-.demo-user {
+.user-name {
   color: var(--cc-ink-strong);
   font-size: 0.76rem;
   font-weight: 800;
@@ -325,7 +284,7 @@ main {
   .sidebar {
     position: fixed;
     z-index: 5;
-    top: 1.75rem;
+    top: 0;
     bottom: 0;
     left: 0;
     width: min(17rem, 86vw);
@@ -343,7 +302,7 @@ main {
   .navigation-backdrop {
     position: fixed;
     z-index: 4;
-    inset: 1.75rem 0 0;
+    inset: 0;
     display: block;
     border: 0;
     background: rgba(8, 43, 74, 0.45);
@@ -370,21 +329,8 @@ main {
     flex: 0 0 auto;
   }
 
-  .demo-user {
+  .user-name {
     display: none;
-  }
-
-  .environment-label {
-    width: 5.7rem;
-    font-size: 0.54rem;
-    line-height: 1.2;
-    text-align: center;
-    white-space: normal;
-  }
-
-  .announcement-bar {
-    font-size: 0.56rem;
-    letter-spacing: 0.08em;
   }
 
   main {

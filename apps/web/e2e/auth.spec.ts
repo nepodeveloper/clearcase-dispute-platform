@@ -10,7 +10,7 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
 for (const [role, username, home, heading] of [
   ['customer', 'customer.demo', '/', 'Your transactions'],
   ['agent', 'agent.demo', '/agent/disputes', 'Dispute work queue'],
-  ['supervisor', 'supervisor.demo', '/agent/escalations', 'Supervisor workspace'],
+  ['supervisor', 'supervisor.demo', '/agent/escalations', 'Escalations queue'],
 ]) {
   test(`${role} signs in, restores, enforces roles and signs out with the real API`, async ({ page, context }, testInfo) => {
     await page.goto(role === 'customer' ? '/disputes' : '/login');

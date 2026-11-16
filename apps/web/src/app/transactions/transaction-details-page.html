@@ -1,12 +1,15 @@
-<section class="page-section" aria-labelledby="transaction-details-heading">
-  <a class="back-link" routerLink="/" data-testid="back-to-transactions">← Back to transactions</a>
-  <header class="page-heading">
-    <p class="eyebrow">Customer portal</p>
-    <h1 class="cc-page-title" id="transaction-details-heading" tabindex="-1">Transaction details</h1>
-    <p class="cc-description">Review the details and tell us what happened.</p>
-  </header>
+@let view = state();
+<section aria-labelledby="transaction-details-heading">
+  <div class="screen-head">
+    <div>
+      <a class="back" routerLink="/" data-testid="back-to-transactions">&larr; Back to transactions</a>
+      <span class="eyebrow">Customer portal</span>
+      <h1 id="transaction-details-heading" tabindex="-1">Transaction details</h1>
+      <p>Review the details and tell us what happened.</p>
+    </div>
+    @if (view.kind === 'loaded') { <cc-status-badge [label]="view.transaction.status" /> }
+  </div>
 
-  @let view = state();
   @if (view.kind === 'loading') {
     <p class="cc-empty" role="status">Loading transaction...</p>
   } @else if (view.kind === 'not-found') {
@@ -19,49 +22,52 @@
       }
     </div>
   } @else {
-    <div class="detail-grid">
-      <article class="cc-card transaction-card" aria-label="Transaction information">
-        <div class="transaction-heading">
-          <div>
-            <h2>{{ view.transaction.description }}</h2>
-            <p>{{ typeLabel(view.transaction.transactionType) }} · {{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</p>
+    <div class="split-grid">
+      <div class="stack">
+        <section class="panel" aria-label="Transaction information">
+          <div class="transaction-hero">
+            <span class="glyph" aria-hidden="true">&#9635;</span>
+            <div>
+              <h2>{{ view.transaction.description }}</h2>
+              <small>{{ typeLabel(view.transaction.transactionType) }} &middot; {{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</small>
+            </div>
+            <div class="transaction-amount">{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</div>
           </div>
-          <strong>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</strong>
-        </div>
-        <dl class="detail-list">
-          <div><dt>Reference</dt><dd>{{ view.transaction.reference ?? 'Not available' }}</dd></div>
-          <div><dt>Merchant</dt><dd>{{ view.transaction.merchantName ?? 'Not available' }}</dd></div>
-          <div><dt>Transaction type</dt><dd>{{ typeLabel(view.transaction.transactionType) }}</dd></div>
-          <div><dt>Amount</dt><dd>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</dd></div>
-          <div><dt>Date</dt><dd>{{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</dd></div>
-          <div><dt>Status</dt><dd><span class="cc-status cc-status--success">{{ view.transaction.status }}</span></dd></div>
-        </dl>
-        <aside class="info-panel">
+          <dl class="description-grid">
+            <dt>Reference</dt><dd>{{ view.transaction.reference ?? 'Not available' }}</dd>
+            <dt>Merchant</dt><dd>{{ view.transaction.merchantName ?? 'Not available' }}</dd>
+            <dt>Transaction type</dt><dd>{{ typeLabel(view.transaction.transactionType) }}</dd>
+            <dt>Amount</dt><dd>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</dd>
+            <dt>Date</dt><dd>{{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</dd>
+          </dl>
+        </section>
+        <aside class="panel info-panel">
           <h3>What happens next?</h3>
           <p>We will review your information and keep the case timeline updated. Submitting a dispute does not immediately reverse the transaction.</p>
         </aside>
-      </article>
-      <section class="cc-card eligibility-card" aria-labelledby="dispute-eligibility-heading">
-      <p class="eyebrow">Review options</p>
-      <h2 id="dispute-eligibility-heading">Submit a dispute</h2>
-      <p class="cc-description">Tell us what doesn't look right with this transaction.</p>
-      @if (view.eligibility.kind === 'loading') {
-        <p class="state-message" role="status">Checking dispute eligibility...</p>
-      } @else if (view.eligibility.kind === 'error') {
-        <div class="state-message" role="alert">
-          <p>{{ view.eligibility.message }}</p>
-          @if (view.eligibility.retryable) {
-            <button class="cc-button cc-button--secondary" type="button" data-testid="retry-eligibility" (click)="retry()">Retry eligibility check</button>
+      </div>
+      <section class="panel" aria-labelledby="dispute-eligibility-heading">
+        <div class="panel-title"><div>
+          <h2 id="dispute-eligibility-heading">Submit a dispute</h2>
+          <p>Tell us what doesn't look right with this transaction.</p>
+        </div></div>
+        @if (view.eligibility.kind === 'loading') {
+          <p class="state-message" role="status">Checking dispute eligibility...</p>
+        } @else if (view.eligibility.kind === 'error') {
+          <div class="state-message" role="alert">
+            <p>{{ view.eligibility.message }}</p>
+            @if (view.eligibility.retryable) {
+              <button class="cc-button cc-button--secondary" type="button" data-testid="retry-eligibility" (click)="retry()">Retry eligibility check</button>
+            }
+          </div>
+        } @else {
+          <p class="eligibility-result" role="status"><strong>{{ eligibilityLabel(view.eligibility.result.outcome) }}</strong></p>
+          <p class="eligibility-explanation">{{ view.eligibility.result.explanation }}</p>
+          @if (view.eligibility.result.outcome !== 'Ineligible' && view.eligibility.result.availableReasons.length > 0) {
+            <app-dispute-form [transactionId]="view.transaction.id"
+                              [reasons]="view.eligibility.result.availableReasons" />
           }
-        </div>
-      } @else {
-        <p class="eligibility-result" role="status"><strong>{{ eligibilityLabel(view.eligibility.result.outcome) }}</strong></p>
-        <p class="eligibility-explanation">{{ view.eligibility.result.explanation }}</p>
-        @if (view.eligibility.result.outcome !== 'Ineligible' && view.eligibility.result.availableReasons.length > 0) {
-          <app-dispute-form [transactionId]="view.transaction.id"
-                            [reasons]="view.eligibility.result.availableReasons" />
         }
-      }
       </section>
     </div>
   }

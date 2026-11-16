@@ -24,7 +24,7 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the ClearCase identity, customer navigation and demo scope', async () => {
+  it('renders the ClearCase identity, customer navigation and a single scope note', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
@@ -33,11 +33,12 @@ describe('App', () => {
     expect(compiled.querySelector('nav[aria-label="Customer navigation"] a[href="/"]')?.textContent)
       .toContain('Transactions');
     expect(compiled.querySelector('nav[aria-label="Customer navigation"] a[href="/disputes"]')?.textContent)
-      .toContain('Your disputes');
-    expect(compiled.textContent).toContain('Unofficial demo');
-    expect(compiled.querySelector('[data-testid="scope-note"]')?.textContent).toContain(
-      'Synthetic data and local assessment accounts only',
-    );
+      .toContain('My disputes');
+    expect(compiled.textContent).not.toContain('Unofficial demo');
+    expect(compiled.querySelector('select')).toBeNull();
+    const scopeNote = compiled.querySelector('[data-testid="scope-note"]')?.textContent;
+    expect(scopeNote).toContain('Synthetic data and local assessment accounts only');
+    expect(scopeNote).toContain('Not an official Capitec interface');
   });
 
   it('exposes and dismisses the mobile navigation with Escape', async () => {
@@ -47,23 +48,45 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     const toggle = compiled.querySelector<HTMLButtonElement>('.mobile-menu-toggle')!;
-    const firstLink = compiled.querySelector<HTMLAnchorElement>('#customer-navigation a')!;
+    const firstLink = compiled.querySelector<HTMLAnchorElement>('#primary-navigation a')!;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
     toggle.focus();
     toggle.click();
     fixture.detectChanges();
     await fixture.whenStable();
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(compiled.querySelector('.sidebar')?.classList.contains('is-open')).toBe(true);
     expect(document.activeElement).toBe(firstLink);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(compiled.querySelector('.sidebar')?.classList.contains('is-open')).toBe(false);
     expect(document.activeElement).toBe(toggle);
+  });
+
+  it('traps focus in the open drawer and makes the page behind it inert', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    compiled.querySelector<HTMLButtonElement>('.mobile-menu-toggle')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const sidebar = compiled.querySelector<HTMLElement>('.sidebar')!;
+    const controls = sidebar.querySelectorAll<HTMLElement>('a[href], button');
+    const last = controls[controls.length - 1];
+    expect(sidebar.getAttribute('aria-modal')).toBe('true');
+    expect(compiled.querySelector<HTMLElement>('.main-column')?.inert).toBe(true);
+
+    controls[0].focus();
+    controls[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(last);
+    last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(controls[0]);
   });
 
   it('shows only operations navigation for an authenticated employee', async () => {

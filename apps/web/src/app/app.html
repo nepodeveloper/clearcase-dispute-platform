@@ -1,0 +1,57 @@
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<div class="app-frame" [class.signed-out]="auth.user() === null">
+  @if (auth.user()) {
+    <aside #sidebar class="sidebar" [class.is-open]="menuOpen()" [attr.role]="menuOpen() ? 'dialog' : null"
+      [attr.aria-modal]="menuOpen() ? 'true' : null" aria-label="Workspace navigation" (keydown)="menuKeydown($event)">
+      @if (menuOpen()) {
+        <button class="drawer-close cc-button cc-button--secondary" type="button" (click)="closeMenu()">Close navigation &times;</button>
+      }
+      <a class="brand" [routerLink]="home()" aria-label="ClearCase home" (click)="menuOpen.set(false)">
+        <span class="brand-mark" aria-hidden="true">C</span>
+        <span class="brand-name"><strong>ClearCase</strong><small>Dispute management</small></span>
+      </a>
+      <p class="nav-group-label">{{ customer() ? 'Customer portal' : 'Operations workspace' }}</p>
+      <nav id="primary-navigation" [attr.aria-label]="customer() ? 'Customer navigation' : 'Operations navigation'">
+        @for (link of links(); track link.url) {
+          <a [routerLink]="link.url" [class.active]="section() === link.section"
+            [attr.aria-current]="section() === link.section ? 'page' : null" (click)="menuOpen.set(false)">
+            <span class="nav-icon" aria-hidden="true">{{ link.icon }}</span>{{ link.label }}
+          </a>
+        }
+      </nav>
+    </aside>
+  }
+  @if (menuOpen()) {
+    <button class="navigation-backdrop" type="button" tabindex="-1" aria-label="Close navigation" (click)="closeMenu()"></button>
+  }
+  <div class="main-column" [inert]="menuOpen()">
+    <header class="utility-header">
+      @if (auth.user()) {
+        <button #menuButton class="mobile-menu-toggle" type="button" aria-label="Open navigation"
+          [attr.aria-expanded]="menuOpen()" aria-controls="primary-navigation" (click)="openMenu()">
+          <span class="menu-icon" aria-hidden="true"></span>
+        </button>
+      }
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+        <li><a [routerLink]="home()">ClearCase</a></li><li aria-hidden="true">&rsaquo;</li><li aria-current="page">{{ label() }}</li>
+      </ol></nav>
+      @if (auth.user(); as user) {
+        <div class="user-tools">
+          <span class="user-name">{{ user.username }}</span>
+          <span class="user-avatar" aria-hidden="true">{{ initials() }}</span>
+          <button class="cc-button cc-button--secondary" type="button" (click)="logout()" [disabled]="auth.loading()">Sign out</button>
+        </div>
+      }
+    </header>
+    <main #main id="main-content" tabindex="-1">
+      @if (auth.user() === null && auth.loading()) { <p role="status">Checking your session...</p> }
+      @if (auth.user() && auth.error()) { <p class="cc-form-error" role="alert">{{ auth.error() }}</p> }
+      <router-outlet />
+    </main>
+    <footer class="app-footer"><div class="scope-note" data-testid="scope-note">
+      <span class="scope-indicator" aria-hidden="true"></span>
+      <p>ClearCase &middot; Synthetic data and local assessment accounts only. Not an official Capitec interface.
+        Submitted disputes never move money.</p>
+    </div></footer>
+  </div>
+</div>

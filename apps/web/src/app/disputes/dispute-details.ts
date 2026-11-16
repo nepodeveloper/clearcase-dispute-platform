@@ -3,6 +3,7 @@ import { Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TransactionType } from '../transactions/transaction-api';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
+import { Timeline, TimelineEvent } from '../ui/ui-components';
 import { ChargebackStatus, Dispute, DisputeCaseStatus } from './dispute-api';
 
 export function disputeStatusLabel(status: DisputeCaseStatus): string {
@@ -36,14 +37,21 @@ export function disputeFinancialLabel(status: string, category: TransactionType)
 
 @Component({
   selector: 'app-dispute-details',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, Timeline],
   templateUrl: './dispute-details.html',
-  styleUrl: './dispute-tracking.css',
 })
 export class DisputeDetails {
   readonly dispute = input.required<Dispute>();
-  protected readonly timeline = computed(() =>
-    [...this.dispute().timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber));
+  // Sequence numbers order the timeline; timestamps can tie or arrive out of order.
+  protected readonly events = computed<TimelineEvent[]>(() =>
+    [...this.dispute().timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber).map(event => ({
+      id: event.id,
+      title: disputeStatusLabel(event.caseStatus),
+      description: event.description,
+      occurredAt: event.occurredAt,
+    })));
+  protected readonly finished = computed(() =>
+    ['Closed', 'Rejected', 'ReversalConfirmed'].includes(this.dispute().caseStatus));
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
   protected readonly financialLabel = disputeFinancialLabel;

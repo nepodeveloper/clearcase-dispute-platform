@@ -4,56 +4,40 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { SupervisorEscalation, EscalationStatus } from '../supervisor/supervisor-escalations-api';
-import { DemoEvent } from './demo-data';
-import { DemoWorkspace } from './demo-workspace';
-import { OPERATIONS_API } from './operations-api';
-import { DemoHeading, DemoStatus, DemoTimeline } from './shared';
-
-interface EscalationView {
-  id: string;
-  reference: string;
-  caseId: string;
-  reason: string;
-  note?: string;
-  status: EscalationStatus;
-  createdAt: string;
-  history: readonly DemoEvent[];
-}
+import { PageHeading, StatusBadge, Timeline, TimelineEvent } from '../ui/ui-components';
+import { SupervisorEscalation, SupervisorEscalationsApi } from './supervisor-escalations-api';
 
 @Component({
-  selector: 'cc-demo-supervisor-detail',
-  host: { class: 'operations-content' },
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, DemoHeading, DemoStatus, DemoTimeline],
+  selector: 'cc-supervisor-detail',
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, PageHeading, StatusBadge, Timeline],
   template: `
-    @if (operationsApi !== null && apiLoading() && apiEscalation() === null) {
+    @if (loading() && escalation() === null) {
       <p class="notice" role="status">Loading persisted escalation...</p>
-    } @else if (apiError()) {
-      <div class="cc-empty" role="alert"><h1>Escalation unavailable</h1><p>{{ apiError() }}</p>
-        <button class="cc-button cc-button--secondary" type="button" (click)="loadApiEscalation()">Retry</button>
+    } @else if (loadError()) {
+      <div class="cc-empty" role="alert"><h1 tabindex="-1">Escalation unavailable</h1><p>{{ loadError() }}</p>
+        <button class="cc-button cc-button--secondary" type="button" (click)="loadEscalation()">Retry</button>
       </div>
     } @else if (escalation(); as item) {
-      <cc-demo-heading [title]="'Escalation ' + item.reference" [description]="'Linked dispute ' + dispute()?.reference + ' \u00b7 ' + item.reason">
+      <cc-page-heading [title]="'Escalation ' + item.reference"
+        [description]="'Linked dispute ' + item.disputeReference + ' \u00b7 ' + item.reason">
         <a back class="back" routerLink="/agent/escalations">&larr; Back to escalations</a>
-        <cc-demo-status [label]="item.status" />
-      </cc-demo-heading>
+        <cc-status-badge [label]="item.status" />
+      </cc-page-heading>
       @if (confirmation()) { <p class="notice" role="status">{{ confirmation() }}</p> }
       <div class="split-grid">
         <div class="stack">
           <section class="panel"><h2>Escalation overview</h2>
             <dl class="description-grid"><dt>Raised by</dt><dd>Agent &middot; {{ item.createdAt | date:'dd MMM yyyy':'UTC' }}</dd>
-              <dt>Linked case</dt><dd>{{ dispute()?.reference }}</dd>
-              <dt>Status</dt><dd>{{ item.status }}</dd><dt>Customer</dt><dd>{{ dispute()?.customerName }}</dd>
-              @if (apiEscalation(); as persisted) {
-                <dt>Case status</dt><dd>{{ persisted.caseStatus }}</dd>
-                <dt>Decision status</dt><dd>{{ persisted.decisionStatus }}</dd>
-                <dt>Financial status</dt><dd>{{ persisted.financialStatus }}</dd>
-              }
+              <dt>Linked case</dt><dd>{{ item.disputeReference }}</dd>
+              <dt>Status</dt><dd>{{ item.status }}</dd><dt>Customer</dt><dd>{{ item.customerReference }}</dd>
+              <dt>Case status</dt><dd>{{ item.caseStatus }}</dd>
+              <dt>Decision status</dt><dd>{{ item.decisionStatus }}</dd>
+              <dt>Financial status</dt><dd>{{ item.financialStatus }}</dd>
             </dl>
             <div class="soft-box"><small>Internal note</small><p>{{ item.note || 'No private note recorded.' }}</p></div>
           </section>
           <section class="panel"><div class="panel-title"><h2>Internal history</h2></div>
-            <cc-demo-timeline [events]="item.history" [complete]="item.status === 'Resolved'" label="Internal escalation history"
+            <cc-timeline [events]="history()" [complete]="item.status === 'Resolved'" label="Internal escalation history"
               [pendingTitle]="item.status === 'Open' ? 'Supervisor acknowledgement' : 'Resolution'"
               pendingDescription="Awaiting the next internal review action." />
           </section>
@@ -63,7 +47,7 @@ interface EscalationView {
             <p class="muted">Choose an operation only when your role and case state permit it.</p>
             @if (item.status !== 'Resolved') {
               <button class="cc-button cc-button--secondary full" type="button" [disabled]="item.status !== 'Open' || pending()" (click)="acknowledge()">
-                {{ item.status === 'Open' ? (operationsApi === null ? 'Acknowledge demo escalation' : 'Acknowledge escalation') : 'Acknowledged' }}
+                {{ item.status === 'Open' ? 'Acknowledge escalation' : 'Acknowledged' }}
               </button>
               <form class="form-stack note-form" (submit)="resolve($event)" novalidate>
                 <div class="cc-field"><label for="resolution-note">Resolution note</label>
@@ -75,7 +59,7 @@ interface EscalationView {
                     @if (item.status === 'Open') { Acknowledge the escalation before resolving. }</span>
                 </div>
                 <button class="cc-button cc-button--primary full" type="submit" [disabled]="item.status !== 'Acknowledged' || pending()">
-                  {{ operationsApi === null ? 'Resolve demo escalation' : 'Resolve escalation' }}
+                  Resolve escalation
                 </button>
               </form>
             } @else {
@@ -85,104 +69,71 @@ interface EscalationView {
             <div id="resolution-error">@if (error()) { <p class="cc-form-error" role="alert">{{ error() }}</p> }</div>
           </section>
           <aside class="panel info-panel"><h3>Privacy safeguard</h3>
-            <p>Customer timeline shows only a safe progress update. Internal notes are available only in the authenticated Supervisor workspace.
-              @if (operationsApi === null) { These are synthetic fixtures, not real customer records or authentication. }</p>
+            <p>Customer timeline shows only a safe progress update. Internal notes are available only in the authenticated Supervisor workspace.</p>
           </aside>
         </div>
       </div>
-    } @else {
-      <div class="cc-empty"><h1 tabindex="-1">Escalation not found</h1><a routerLink="/agent/escalations">Back to escalations</a></div>
     }`,
 })
-export class DemoSupervisorDetailPage {
+export class SupervisorDetailPage {
   readonly id = input.required<string>();
-  private readonly workspace = inject(DemoWorkspace, { optional: true });
-  protected readonly operationsApi = inject(OPERATIONS_API, { optional: true });
-  protected readonly apiEscalation = signal<SupervisorEscalation | null>(null);
-  protected readonly apiLoading = signal(false);
-  protected readonly apiError = signal('');
+  private readonly api = inject(SupervisorEscalationsApi);
+  protected readonly escalation = signal<SupervisorEscalation | null>(null);
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal('');
   protected readonly pending = signal(false);
   private acknowledgementRequestKey: string | null = null;
   private resolutionRequest: { key: string; note: string } | null = null;
-  protected readonly escalation = computed<EscalationView | undefined>(() => {
-    if (this.operationsApi !== null) {
-      const item = this.apiEscalation();
-      if (item === null) return undefined;
-      return {
-        id: item.id, reference: item.reference, caseId: item.disputeId, reason: item.reason,
-        note: item.note, status: item.status, createdAt: item.createdAt,
-        history: item.history.map(event => ({
-          id: event.id,
-          title: event.action === 'Created' ? 'Escalation created'
-            : event.action === 'Acknowledged' ? 'Supervisor acknowledgement' : 'Escalation resolved',
-          occurredAt: event.occurredAt,
-          description: event.action === 'Created'
-            ? 'Agent requested specialist review.'
-            : event.privateNote ?? `${event.action} recorded by an authorized supervisor.`,
-        })),
-      };
-    }
-    return this.workspace?.escalation(this.id());
-  });
-  protected readonly dispute = computed(() => {
-    const escalation = this.escalation();
-    if (escalation === undefined) return undefined;
-    if (this.operationsApi !== null) {
-      const item = this.apiEscalation();
-      return item === null ? undefined : {
-        reference: item.disputeReference,
-        customerName: item.customerReference,
-      };
-    }
-    return this.workspace?.agentCase(escalation.caseId);
-  });
+  protected readonly history = computed<TimelineEvent[]>(() => (this.escalation()?.history ?? []).map(event => ({
+    id: event.id,
+    title: event.action === 'Created' ? 'Escalation created'
+      : event.action === 'Acknowledged' ? 'Supervisor acknowledgement' : 'Escalation resolved',
+    occurredAt: event.occurredAt,
+    description: event.action === 'Created'
+      ? 'Agent requested specialist review.'
+      : event.privateNote ?? `${event.action} recorded by an authorized supervisor.`,
+  })));
   protected readonly note = new FormControl('', { nonNullable: true });
   protected readonly error = signal('');
   protected readonly confirmation = signal('');
 
   constructor() {
     effect(() => {
-      this.id();
+      const id = this.id();
       this.note.reset();
       this.error.set('');
       this.confirmation.set('');
       this.acknowledgementRequestKey = null;
       this.resolutionRequest = null;
-      if (this.operationsApi !== null) void this.loadApiEscalation();
+      this.escalation.set(null);
+      void this.loadEscalation(id);
     });
   }
 
-  protected async loadApiEscalation(): Promise<void> {
-    if (this.operationsApi === null) return;
-    this.apiLoading.set(true);
-    this.apiError.set('');
+  protected async loadEscalation(id = this.id()): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set('');
     try {
-      this.apiEscalation.set(await firstValueFrom(this.operationsApi.supervisor.get(this.id())));
+      this.escalation.set(await firstValueFrom(this.api.get(id)));
     } catch (error: unknown) {
-      this.apiError.set(error instanceof HttpErrorResponse && error.status === 404
+      this.loadError.set(error instanceof HttpErrorResponse && error.status === 404
         ? 'This escalation could not be found in the Supervisor scope.'
         : 'Unable to load the escalation. Check your Supervisor session and retry.');
     } finally {
-      this.apiLoading.set(false);
+      this.loading.set(false);
     }
   }
 
   protected async acknowledge(): Promise<void> {
-    if (this.operationsApi === null) {
-      const result = this.workspace?.acknowledge(this.id());
-      if (!result?.ok) { this.error.set(result?.message ?? 'Escalation not found.'); return; }
-      this.error.set('');
-      this.confirmation.set('Escalation acknowledged in this demo. Record an internal resolution when your review is complete.');
-      return;
-    }
+    // Retrying reuses the key so the server replays instead of repeating the action.
     this.acknowledgementRequestKey ??= crypto.randomUUID();
     this.pending.set(true);
     this.error.set('');
     try {
-      await firstValueFrom(this.operationsApi.supervisor.acknowledge(this.id(), this.acknowledgementRequestKey));
+      await firstValueFrom(this.api.acknowledge(this.id(), this.acknowledgementRequestKey));
       this.acknowledgementRequestKey = null;
       this.confirmation.set('Escalation acknowledged. Record an internal resolution when your review is complete.');
-      await this.loadApiEscalation();
+      await this.loadEscalation();
     } catch {
       this.error.set('Unable to acknowledge the escalation. Retry to safely repeat the same request.');
     } finally {
@@ -197,14 +148,6 @@ export class DemoSupervisorDetailPage {
       this.error.set('Enter an internal resolution note between 15 and 2000 normalized characters.');
       return;
     }
-    if (this.operationsApi === null) {
-      const result = this.workspace?.resolve(this.id(), note);
-      if (!result?.ok) { this.error.set(result?.message ?? 'Escalation not found.'); return; }
-      this.note.reset();
-      this.error.set('');
-      this.confirmation.set('Demo escalation resolved. The customer sees a safe progress update; no funds are confirmed.');
-      return;
-    }
     let request = this.resolutionRequest;
     if (request?.note !== note) {
       request = { key: crypto.randomUUID(), note };
@@ -213,11 +156,11 @@ export class DemoSupervisorDetailPage {
     this.pending.set(true);
     this.error.set('');
     try {
-      await firstValueFrom(this.operationsApi.supervisor.resolve(this.id(), note, request.key));
+      await firstValueFrom(this.api.resolve(this.id(), note, request.key));
       this.resolutionRequest = null;
       this.note.reset();
       this.confirmation.set('Escalation resolved. The linked case remains under review; no funds are confirmed.');
-      await this.loadApiEscalation();
+      await this.loadEscalation();
     } catch {
       this.error.set('Unable to resolve the escalation. Retry to safely repeat the same request.');
     } finally {

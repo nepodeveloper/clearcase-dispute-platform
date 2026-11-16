@@ -1,14 +1,11 @@
-import { inject } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentDisputesApi } from '../agent/agent-disputes-api';
-import { OPERATIONS_API } from '../operations/operations-api';
-import { DemoSupervisorDetailPage } from '../operations/supervisor-detail-page';
-import { SupervisorEscalation, SupervisorEscalationsApi } from './supervisor-escalations-api';
+import { SupervisorDetailPage } from './supervisor-detail-page';
+import { SupervisorEscalation } from './supervisor-escalations-api';
 
-describe('shared Supervisor detail API mode', () => {
+describe('Supervisor escalation review', () => {
   const escalationId = '00000000-0000-0000-0000-000000000010';
   const details: SupervisorEscalation = {
     id: escalationId,
@@ -38,17 +35,8 @@ describe('shared Supervisor detail API mode', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [DemoSupervisorDetailPage],
-      providers: [
-        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        {
-          provide: OPERATIONS_API,
-          useFactory: () => ({
-            agent: inject(AgentDisputesApi),
-            supervisor: inject(SupervisorEscalationsApi),
-          }),
-        },
-      ],
+      imports: [SupervisorDetailPage],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -56,7 +44,7 @@ describe('shared Supervisor detail API mode', () => {
   afterEach(() => http.verify());
 
   it('requires acknowledgement before resolution and leaves decision and financial statuses unchanged', async () => {
-    const fixture = TestBed.createComponent(DemoSupervisorDetailPage);
+    const fixture = TestBed.createComponent(SupervisorDetailPage);
     fixture.componentRef.setInput('id', escalationId);
     fixture.detectChanges();
     http.expectOne(`/api/v1/supervisor/escalations/${escalationId}`).flush(details);

@@ -1,26 +1,34 @@
 @let current = state();
-<section class="page-section" aria-labelledby="dispute-heading"
+<section aria-labelledby="dispute-heading"
          [attr.aria-busy]="current.kind === 'loading' || (current.kind === 'loaded' && current.refreshing)">
-  <a class="back-link" routerLink="/disputes" data-testid="back-to-disputes">← Back to my disputes</a>
-  <header class="page-heading">
-    <p class="eyebrow">Customer portal</p>
-    <h1 class="cc-page-title" id="dispute-heading" tabindex="-1" #heading>
-      @if (current.kind === 'loaded') { Dispute {{ current.dispute.reference }} } @else { Dispute details }
-    </h1>
-  </header>
+  <div class="screen-head">
+    <div>
+      <a class="back" routerLink="/disputes" data-testid="back-to-disputes">&larr; Back to my disputes</a>
+      <span class="eyebrow">Customer portal</span>
+      <h1 id="dispute-heading" tabindex="-1" #heading>
+        @if (current.kind === 'loaded') { Dispute {{ current.dispute.reference }} } @else { Dispute details }
+      </h1>
+      @if (current.kind === 'loaded') { <p>{{ typeLabel(current.dispute.category) }} dispute</p> }
+    </div>
+    @if (current.kind === 'loaded') {
+      <cc-status-badge [label]="statusLabel(current.dispute.caseStatus)" [status]="current.dispute.caseStatus" />
+    }
+  </div>
   @if (current.kind === 'loading') {
     <p class="cc-empty" role="status">Loading dispute...</p>
   } @else if (current.kind === 'not-found') {
     <p class="cc-empty" role="status">Dispute not found.</p>
   } @else if (current.kind === 'error') {
-    <p class="state-message" role="alert">{{ current.message }}</p>
+    <div class="state-message" role="alert"><p>{{ current.message }}</p></div>
     @if (current.retryable) { <button class="cc-button cc-button--secondary" type="button" data-testid="retry" (click)="refresh()">Retry</button> }
   } @else {
     <app-dispute-details [dispute]="current.dispute" />
-    @if (current.error; as error) {
-      <p role="alert">{{ error.message }} Showing the last loaded case.</p>
-    }
-    <button class="cc-button cc-button--secondary refresh-button" type="button" data-testid="refresh-dispute"
-            [disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>
+    <div class="panel-footer">
+      <button class="cc-button cc-button--secondary" type="button" data-testid="refresh-dispute"
+              [disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>
+      @if (current.error; as error) {
+        <p class="state-message" role="alert">{{ error.message }} Showing the last loaded case.</p>
+      }
+    </div>
   }
 </section>

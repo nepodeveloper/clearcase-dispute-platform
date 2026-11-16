@@ -1,14 +1,11 @@
-import { inject } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentDisputesApi, AgentDisputeListItem, AgentDisputePage } from './agent-disputes-api';
-import { OPERATIONS_API } from '../operations/operations-api';
-import { DemoAgentQueuePage } from '../operations/agent-queue-page';
-import { SupervisorEscalationsApi } from '../supervisor/supervisor-escalations-api';
+import { AgentDisputeListItem, AgentDisputePage } from './agent-disputes-api';
+import { AgentQueuePage } from './agent-queue-page';
 
-describe('shared Agent queue API mode', () => {
+describe('Agent queue', () => {
   const item: AgentDisputeListItem = {
     id: '00000000-0000-0000-0000-000000000001',
     reference: 'DSP-AGENT000001',
@@ -29,17 +26,8 @@ describe('shared Agent queue API mode', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [DemoAgentQueuePage],
-      providers: [
-        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        {
-          provide: OPERATIONS_API,
-          useFactory: () => ({
-            agent: inject(AgentDisputesApi),
-            supervisor: inject(SupervisorEscalationsApi),
-          }),
-        },
-      ],
+      imports: [AgentQueuePage],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -47,7 +35,7 @@ describe('shared Agent queue API mode', () => {
   afterEach(() => http.verify());
 
   function render() {
-    const fixture = TestBed.createComponent(DemoAgentQueuePage);
+    const fixture = TestBed.createComponent(AgentQueuePage);
     fixture.detectChanges();
     return fixture;
   }

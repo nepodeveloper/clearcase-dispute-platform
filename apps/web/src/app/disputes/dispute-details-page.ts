@@ -3,8 +3,10 @@ import { Component, DestroyRef, ElementRef, inject, OnInit, signal, viewChild } 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, map, of, startWith, Subject, switchMap } from 'rxjs';
+import { transactionTypeLabel } from '../transactions/transaction-type-label';
+import { StatusBadge } from '../ui/ui-components';
 import { Dispute, DisputeApi, DisputeQueryError, disputeQueryError } from './dispute-api';
-import { DisputeDetails } from './dispute-details';
+import { DisputeDetails, disputeStatusLabel } from './dispute-details';
 
 type ViewState = { kind: 'loading' } | { kind: 'not-found' }
   | ({ kind: 'error' } & DisputeQueryError)
@@ -12,9 +14,8 @@ type ViewState = { kind: 'loading' } | { kind: 'not-found' }
 
 @Component({
   selector: 'app-dispute-details-page',
-  imports: [DisputeDetails, RouterLink],
+  imports: [DisputeDetails, RouterLink, StatusBadge],
   templateUrl: './dispute-details-page.html',
-  styleUrl: './dispute-tracking.css',
 })
 export class DisputeDetailsPage implements OnInit {
   private readonly api = inject(DisputeApi);
@@ -23,6 +24,8 @@ export class DisputeDetailsPage implements OnInit {
   private readonly refreshes = new Subject<void>();
   private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('heading');
   protected readonly state = signal<ViewState>({ kind: 'loading' });
+  protected readonly typeLabel = transactionTypeLabel;
+  protected readonly statusLabel = disputeStatusLabel;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
