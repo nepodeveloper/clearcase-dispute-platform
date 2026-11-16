@@ -55,6 +55,74 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CustomerViews_IncludeExactTransactionContextAndAnOwnedExistingCaseLink()
+    {
+        using var scope = _app.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var transaction = await database.Transactions.SingleAsync(
+            item => item.Id == Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        transaction.MerchantName = "Synthetic merchant";
+        transaction.AmountMinorUnits = 9007199254740991;
+        await database.SaveChangesAsync();
+        using var client = Client(false);
+        var created = await Submit(client, 1, "duplicateCharge");
+        var id = created.GetProperty("id").GetGuid();
+        var detail = await client.GetFromJsonAsync<JsonElement>($"/api/v1/disputes/{id}");
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/disputes");
+
+        foreach (var view in new[] { created, detail, list.GetProperty("items")[0] })
+        {
+            var context = view.GetProperty("transaction");
+            Assert.Equal("Woolworths", context.GetProperty("description").GetString());
+            Assert.Equal("Synthetic merchant", context.GetProperty("merchantName").GetString());
+            Assert.Equal("90071992547409.91", context.GetProperty("amount").GetString());
+            Assert.Equal("ZAR", context.GetProperty("currency").GetString());
+            Assert.Equal(transaction.TransactionDate, context.GetProperty("transactionDate").GetDateTimeOffset());
+            Assert.False(context.TryGetProperty("customerId", out _));
+        }
+
+        var transactionDetail = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/transactions/{transaction.Id}");
+        var transactions = await client.GetFromJsonAsync<JsonElement>("/api/v1/transactions");
+        Assert.Equal(id, transactionDetail.GetProperty("activeDisputeId").GetGuid());
+        Assert.Equal(id, transactions.GetProperty("items")[0].GetProperty("activeDisputeId").GetGuid());
+        var searched = await client.GetFromJsonAsync<JsonElement>(
+            "/api/v1/transactions?search=SYNTHETIC%20MERCHANT");
+        Assert.Equal(transaction.Id, Assert.Single(searched.GetProperty("items").EnumerateArray())
+            .GetProperty("id").GetGuid());
+
+        using var otherApp = _app.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(configuration =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Demo:CustomerId"] = "22222222-2222-2222-2222-222222222222"
+            })));
+        using var other = otherApp.CreateClient();
+        using var hidden = await other.GetAsync($"/api/v1/disputes/{id}");
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        var otherTransactions = await other.GetFromJsonAsync<JsonElement>("/api/v1/transactions");
+        Assert.False(Assert.Single(otherTransactions.GetProperty("items").EnumerateArray())
+            .TryGetProperty("activeDisputeId", out _));
+    }
+
+    [Fact]
+    public async Task ExistingCaseLink_RemainsUntilClosureAndOmitsMissingMerchant()
+    {
+        using var client = Client();
+        var created = await Submit(client, 3, "incorrectFee");
+        var id = created.GetProperty("id").GetGuid();
+        Assert.False(created.GetProperty("transaction").TryGetProperty("merchantName", out _));
+        await Command(client, id, "StartReview", "UnderReview", "Pending", "NotInitiated");
+        await Command(client, id, "Reject", "Rejected", "Rejected", "NotInitiated");
+        const string path = "/api/v1/transactions/00000000-0000-0000-0000-000000000003";
+        var rejected = await client.GetFromJsonAsync<JsonElement>(path);
+        Assert.Equal(id, rejected.GetProperty("activeDisputeId").GetGuid());
+
+        await Command(client, id, "Close", "Closed", "Rejected", "NotInitiated");
+        var closed = await client.GetFromJsonAsync<JsonElement>(path);
+        Assert.False(closed.TryGetProperty("activeDisputeId", out _));
+    }
+
+    [Fact]
     public async Task BankApproval_SeparatesDecisionPendingAdjustmentAndConfirmation()
     {
         using var client = Client();

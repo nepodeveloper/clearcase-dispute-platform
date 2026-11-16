@@ -12,6 +12,7 @@ export interface Transaction {
   transactionDate: string;
   status: string;
   isDisputable: boolean;
+  activeDisputeId?: string;
 }
 
 export interface TransactionPage {
@@ -56,6 +57,7 @@ export interface TransactionQuery {
   transactionType: TransactionType | '';
   fromDate: string;
   toDate: string;
+  search: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -69,6 +71,7 @@ export class TransactionApi {
     if (query.transactionType !== '') params = params.set('transactionType', query.transactionType);
     if (query.fromDate !== '') params = params.set('fromDate', query.fromDate);
     if (query.toDate !== '') params = params.set('toDate', query.toDate);
+    if (query.search !== '') params = params.set('search', query.search);
     return this.http.get<TransactionPage>('/api/v1/transactions', { params });
   }
 

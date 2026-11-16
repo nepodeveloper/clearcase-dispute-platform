@@ -2,7 +2,9 @@ openapi: 3.1.0
 info:
   title: ClearCase Dispute Platform API
   version: 1.0.0
-  description: Design-first API draft. Implementation remains separate from this contract.
+  description: >-
+    Target-design contract with implemented customer UX (PR-22) and staff slices documented below.
+    Future features remain proposed; the Development OpenAPI endpoint describes the running build.
 servers:
   - url: /api/v1
 security:
@@ -11,14 +13,32 @@ paths:
   /transactions:
     get:
       operationId: listTransactions
-      summary: List posted customer-owned transactions
+      summary: List and search customer-owned transactions
+      description: >-
+        Implemented page-number pagination, including pending transactions. Search is a trimmed,
+        case-insensitive literal substring of description, merchant or reference (maximum 100 characters).
+        Owner, search, type and date filters precede counting and pagination. Ordering is transactionDate
+        descending then id ascending. Responses are private, no-store. /v1/transactions remains an alias.
       parameters:
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/CustomerPageSize'
         - in: query
-          name: kind
+          name: pageNumber
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: search
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: transactionType
           schema:
-            $ref: '#/components/schemas/TransactionKind'
+            $ref: '#/components/schemas/TransactionKindPascal'
+        - in: query
+          name: fromDate
+          description: Inclusive UTC calendar date; must not follow toDate.
+          schema: { type: string, format: date }
+        - in: query
+          name: toDate
+          description: Inclusive UTC calendar date.
+          schema: { type: string, format: date }
       responses:
         '200':
           description: A page of owned transactions
@@ -26,22 +46,53 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, pageInfo]
+                required: [items, pageNumber, pageSize, totalCount, totalPages, hasNextPage]
                 properties:
                   items:
                     type: array
                     items:
                       $ref: '#/components/schemas/Transaction'
-                  pageInfo:
-                    $ref: '#/components/schemas/PageInfo'
+                  pageNumber: { type: integer, minimum: 1 }
+                  pageSize: { type: integer, minimum: 1, maximum: 100 }
+                  totalCount: { type: integer, minimum: 0 }
+                  totalPages: { type: integer, minimum: 0 }
+                  hasNextPage: { type: boolean }
+        '400':
+          $ref: '#/components/responses/Problem'
         '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /transactions/{transactionId}:
+    get:
+      operationId: getTransaction
+      summary: Read owned transaction details and an existing-case link
+      description: Missing and other-customer IDs both return 404. Responses are private, no-store.
+      parameters:
+        - in: path
+          name: transactionId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Owned transaction; optional fields are omitted when absent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
   /disputes:
     get:
       operationId: listDisputes
       summary: List customer-owned disputes
       parameters:
-        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/CustomerPageSize'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
@@ -55,17 +106,21 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Dispute'
+                      $ref: '#/components/schemas/DisputeSummary'
                   pageInfo:
                     $ref: '#/components/schemas/PageInfo'
+        '400':
+          $ref: '#/components/responses/Problem'
         '401':
+          $ref: '#/components/responses/Problem'
+        '403':
           $ref: '#/components/responses/Problem'
     post:
       operationId: createDispute
       summary: Create a case; does not itself reverse funds
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/XsrfToken'
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -99,6 +154,8 @@ paths:
           $ref: '#/components/responses/Problem'
         '401':
           $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
   /disputes/{disputeId}:
     get:
       operationId: getDispute
@@ -112,9 +169,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Dispute'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
-  /disputes/{disputeId}/timeline-events:
+  /disputes/{disputeId}/events:
     get:
       operationId: listCaseTimelineEvents
       summary: Immutable customer-facing case timeline
@@ -126,13 +189,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TimelineEvent'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimelineEvent'
         '404':
           $ref: '#/components/responses/Problem'
   /agent/disputes:
@@ -458,8 +517,12 @@ components:
     cookieAuth:
       type: apiKey
       in: cookie
-      name: ClearCase.Session
+      name: clearcase.auth
   parameters:
+    CustomerPageSize:
+      in: query
+      name: pageSize
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
     PageSize:
       in: query
       name: pageSize
@@ -539,7 +602,7 @@ components:
       enum: [Submitted, ManualReview, Closed, UnderReview, MandateVerified, ReversalRequested, ReversalConfirmed, Rejected]
     Transaction:
       type: object
-      required: [id, description, amountMinorUnits, currency, kind, postedAt, canDispute]
+      required: [id, transactionType, description, amount, currency, transactionDate, status, isDisputable]
       additionalProperties: false
       properties:
         id:
@@ -547,20 +610,35 @@ components:
           format: uuid
         description:
           type: string
-        amountMinorUnits:
-          type: integer
-          minimum: 0
+        amount:
+          type: string
+          pattern: '^-?[0-9]+\.[0-9]{2}$'
+          example: '750.00'
         currency:
           type: string
           minLength: 3
           maxLength: 3
-        kind:
-          $ref: '#/components/schemas/TransactionKind'
-        postedAt:
+        transactionType:
+          $ref: '#/components/schemas/TransactionKindPascal'
+        transactionDate:
           type: string
           format: date-time
-        canDispute:
+        status:
+          type: string
+          enum: [Posted, Settled, PendingAuthorization]
+        isDisputable:
           type: boolean
+          description: Navigation affordance, false for non-posted/pending payments. Eligibility remains authoritative.
+        activeDisputeId:
+          type: string
+          format: uuid
+          description: Owned linked case whose caseStatus is not Closed; omitted when none exists.
+        merchantName:
+          type: string
+          description: Details only; omitted when absent and on list items.
+        reference:
+          type: string
+          description: Details only; omitted when absent and on list items.
     CreateDispute:
       type: object
       required: [transactionId, reasonCode, description]
@@ -576,60 +654,41 @@ components:
           type: string
           minLength: 15
           maxLength: 2000
-        evidenceIds:
-          type: array
-          uniqueItems: true
-          items:
-            type: string
-            format: uuid
     Dispute:
+      $ref: '#/components/schemas/DisputeCommandResult'
+    DisputeSummary:
       type: object
-      required: [id, transactionId, type, caseStatus, financialStatus, createdAt, version]
+      required: [id, reference, transactionId, category, caseStatus, decisionStatus, financialStatus,
+        createdAt, statusDescription, transaction]
       additionalProperties: false
       properties:
-        id:
-          type: string
-          format: uuid
-        transactionId:
-          type: string
-          format: uuid
-        type:
-          $ref: '#/components/schemas/TransactionKind'
-        caseStatus:
-          type: string
-        financialStatus:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        version:
-          type: integer
-          format: int64
-          minimum: 1
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        transactionId: { type: string, format: uuid }
+        category: { $ref: '#/components/schemas/TransactionKindPascal' }
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string, enum: [Pending, Approved, Rejected] }
+        financialStatus: { type: string, enum: [NotInitiated, Requested, Confirmed, Failed, OutcomeUnknown] }
+        createdAt: { type: string, format: date-time }
+        statusDescription: { type: string }
+        transaction: { $ref: '#/components/schemas/DisputedTransaction' }
+    DisputedTransaction:
+      type: object
+      required: [description, amount, currency, transactionDate]
+      additionalProperties: false
+      properties:
+        description: { type: string }
+        merchantName: { type: string, description: Omitted when absent. }
+        amount: { type: string, pattern: '^-?[0-9]+\.[0-9]{2}$', example: '750.00' }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        transactionDate: { type: string, format: date-time }
     TimelineEvent:
-      type: object
-      required: [id, sequenceNo, status, occurredAt]
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-          format: uuid
-        sequenceNo:
-          type: integer
-        status:
-          type: string
-        publicDescription:
-          type: string
-        occurredAt:
-          type: string
-          format: date-time
+      $ref: '#/components/schemas/AgentTimelineEvent'
     PageInfo:
       type: object
-      required: [pageSize, hasNextPage]
+      required: [hasNextPage]
       additionalProperties: false
       properties:
-        pageSize:
-          type: integer
         hasNextPage:
           type: boolean
         nextCursor:
@@ -756,7 +815,7 @@ components:
     DisputeCommandResult:
       type: object
       required: [id, reference, transactionId, category, reasonCode, description, caseStatus,
-        decisionStatus, financialStatus, createdAt, version, statusDescription, timeline]
+        decisionStatus, financialStatus, createdAt, version, statusDescription, timeline, transaction]
       properties:
         id: { type: string, format: uuid }
         reference: { type: string }
@@ -770,6 +829,7 @@ components:
         createdAt: { type: string, format: date-time }
         version: { type: integer, format: int64, minimum: 1 }
         statusDescription: { type: string }
+        transaction: { $ref: '#/components/schemas/DisputedTransaction' }
         timeline:
           type: array
           items: { $ref: '#/components/schemas/AgentTimelineEvent' }

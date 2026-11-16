@@ -1,5 +1,6 @@
 using System.Globalization;
 using ClearCase.Application.Transactions;
+using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +12,13 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
         Guid customerId, ListTransactionsQuery query, CancellationToken cancellationToken)
     {
         var matching = context.Transactions.AsNoTracking().Where(item => item.CustomerId == customerId);
+        if (query.Search is { Length: > 0 } search)
+        {
+            var term = search.ToLowerInvariant();
+            matching = matching.Where(item => item.Description.ToLower().Contains(term)
+                || (item.MerchantName != null && item.MerchantName.ToLower().Contains(term))
+                || (item.Reference != null && item.Reference.ToLower().Contains(term)));
+        }
         if (query.Type is not null)
             matching = matching.Where(item => item.Type == query.Type);
         if (query.FromDate is not null)
@@ -30,11 +38,21 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
         var records = offset >= totalCount
             ? []
             : await matching.OrderByDescending(item => item.TransactionDate).ThenBy(item => item.Id)
-                .Skip((int)offset).Take(query.PageSize).ToArrayAsync(cancellationToken);
-        var items = records.Select(item => new TransactionResponse(
-            item.Id, item.Type.ToString(), item.Description,
-            Amount(item).ToString("0.00", CultureInfo.InvariantCulture), item.Currency,
-            item.TransactionDate, item.Status.ToString(), item.IsDisputable)).ToArray();
+                .Skip((int)offset).Take(query.PageSize)
+                .Select(item => new
+                {
+                    Transaction = item,
+                    ActiveDisputeId = context.Disputes.Where(dispute => dispute.CustomerId == customerId
+                        && dispute.TransactionId == item.Id && dispute.CaseStatus != DisputeCaseStatus.Closed)
+                        .Select(dispute => (Guid?)dispute.Id).FirstOrDefault()
+                }).ToArrayAsync(cancellationToken);
+        var items = records.Select(row =>
+        {
+            var item = row.Transaction;
+            return new TransactionResponse(item.Id, item.Type.ToString(), item.Description,
+                Amount(item).ToString("0.00", CultureInfo.InvariantCulture), item.Currency,
+                item.TransactionDate, item.Status.ToString(), CanOfferDispute(item), row.ActiveDisputeId);
+        }).ToArray();
 
         return new TransactionListResponse(
             items, query.PageNumber, query.PageSize, totalCount, totalPages, query.PageNumber < totalPages);
@@ -44,9 +62,15 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
         Guid customerId, Guid transactionId, CancellationToken cancellationToken)
     {
         var item = await FindAsync(customerId, transactionId, cancellationToken);
-        return item is null ? null : new TransactionDetails(
+        if (item is null) return null;
+        var activeDisputeId = await context.Disputes.AsNoTracking()
+            .Where(dispute => dispute.CustomerId == customerId && dispute.TransactionId == transactionId
+                && dispute.CaseStatus != DisputeCaseStatus.Closed)
+            .Select(dispute => (Guid?)dispute.Id).SingleOrDefaultAsync(cancellationToken);
+        return new TransactionDetails(
             item.Id, item.Type.ToString(), item.Description, item.MerchantName, Amount(item),
-            item.Currency, item.TransactionDate, item.Status.ToString(), item.Reference, item.IsDisputable);
+            item.Currency, item.TransactionDate, item.Status.ToString(), item.Reference,
+            CanOfferDispute(item), activeDisputeId);
     }
 
     public async Task<DisputeTransaction?> ReadForEligibilityAsync(
@@ -73,4 +97,7 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
             item => item.CustomerId == customerId && item.Id == transactionId, cancellationToken);
 
     private static decimal Amount(PersistedTransaction item) => item.AmountMinorUnits / 100m;
+
+    private static bool CanOfferDispute(PersistedTransaction item) =>
+        item.IsDisputable && item.IsDebit && item.Status is TransactionStatus.Posted or TransactionStatus.Settled;
 }

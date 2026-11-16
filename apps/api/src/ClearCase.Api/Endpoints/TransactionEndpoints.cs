@@ -16,6 +16,9 @@ public static class TransactionEndpoints
         app.MapGet("/api/v1/transactions", List)
             .WithName("ListTransactions")
             .WithSummary("List the authenticated customer's synthetic transactions")
+            .WithDescription("Search description, merchant or reference with search (trimmed, at most 100 characters). "
+                + "Filtering precedes page-number pagination. activeDisputeId is present only for an owned case "
+                + "that is not closed. isDisputable is an affordance; the eligibility endpoint remains authoritative.")
             .Produces<TransactionListResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -149,7 +152,7 @@ public static class TransactionEndpoints
             transaction.Id, transaction.TransactionType, transaction.Description, transaction.MerchantName,
             transaction.Amount.ToString("0.00", CultureInfo.InvariantCulture), transaction.Currency,
             transaction.TransactionDate, transaction.Status,
-            transaction.Reference, transaction.IsDisputable));
+            transaction.Reference, transaction.IsDisputable, transaction.ActiveDisputeId));
     }
 
     private static async Task<Results<Ok<TransactionListResponse>, ProblemHttpResult>> List(
@@ -162,6 +165,9 @@ public static class TransactionEndpoints
         var pageSize = ParseNumber(request.PageSize, 20, 100, "pageSize", errors);
         var fromDate = ParseDate(request.FromDate, "fromDate", errors);
         var toDate = ParseDate(request.ToDate, "toDate", errors);
+        var search = request.Search?.Trim();
+        if (search?.Length > 100)
+            errors.Add(new("/search", "search.tooLong", "Search must be at most 100 characters."));
         TransactionType? type = null;
         if (request.TransactionType is not null)
         {
@@ -186,7 +192,8 @@ public static class TransactionEndpoints
         }
 
         var result = await handler.HandleAsync(
-            new(pageNumber, pageSize, type, fromDate, toDate), cancellationToken);
+            new(pageNumber, pageSize, type, fromDate, toDate, string.IsNullOrEmpty(search) ? null : search),
+            cancellationToken);
         return TypedResults.Ok(result);
     }
 

@@ -9,7 +9,12 @@ public static class SyntheticTransactionSeeder
 {
     private static readonly Guid DemoCustomer = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid OtherCustomer = Guid.Parse("22222222-2222-2222-2222-222222222222");
-    private static readonly string[] Descriptions = ["Woolworths", "Monthly insurance", "Account service fee"];
+    private static readonly string[][] Descriptions =
+    [
+        ["Woolworths", "Local pharmacy", "Online bookstore", "Fuel station", "Neighbourhood cafe"],
+        ["Monthly insurance", "Internet service", "Gym membership", "Vehicle cover", "Music subscription"],
+        ["Account service fee", "ATM withdrawal fee", "Card replacement fee", "Cash deposit fee", "Overdraft fee"]
+    ];
     private static readonly long[] AmountsMinorUnits = [75000, 42050, 1500];
     private static readonly DateTimeOffset Start = new(2026, 11, 10, 8, 30, 0, TimeSpan.Zero);
 
@@ -47,19 +52,20 @@ public static class SyntheticTransactionSeeder
             var date = Start.AddDays(-Math.Min(index - 1, 28));
             var type = (TransactionType)typeIndex;
             var isDebitOrder = type == TransactionType.DebitOrder;
+            var description = Descriptions[typeIndex][((index - 1) / 3) % Descriptions[typeIndex].Length];
             yield return new PersistedTransaction
             {
                 Id = Guid.Parse($"00000000-0000-0000-0000-{index:000000000000}"),
                 CustomerId = DemoCustomer,
                 Type = type,
-                Description = Descriptions[typeIndex],
-                MerchantName = typeIndex == 2 ? null : Descriptions[typeIndex],
+                Description = description,
+                MerchantName = typeIndex == 2 ? null : description,
                 AmountMinorUnits = index == 5 ? 200001 : AmountsMinorUnits[typeIndex],
                 Currency = "ZAR",
                 TransactionDate = date,
                 Status = index == 4 ? TransactionStatus.PendingAuthorization : TransactionStatus.Posted,
                 Reference = $"TXN-2026-{index:000000}",
-                IsDisputable = true,
+                IsDisputable = index != 4,
                 IsDebit = true,
                 HasRequiredDisputeInformation = index != 8,
                 CollectionDate = isDebitOrder ? DateOnly.FromDateTime(date.UtcDateTime) : null,

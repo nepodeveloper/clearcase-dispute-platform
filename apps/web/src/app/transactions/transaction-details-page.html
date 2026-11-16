@@ -7,7 +7,9 @@
       <h1 id="transaction-details-heading" tabindex="-1">Transaction details</h1>
       <p>Review the details and tell us what happened.</p>
     </div>
-    @if (view.kind === 'loaded') { <cc-status-badge [label]="view.transaction.status" /> }
+    @if (view.kind === 'loaded') {
+      <cc-status-badge [label]="statusLabel(view.transaction.status)" [status]="view.transaction.status" />
+    }
   </div>
 
   @if (view.kind === 'loading') {
@@ -29,7 +31,7 @@
             <span class="glyph" aria-hidden="true">&#9635;</span>
             <div>
               <h2>{{ view.transaction.description }}</h2>
-              <small>{{ typeLabel(view.transaction.transactionType) }} &middot; {{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</small>
+              <small>{{ typeLabel(view.transaction.transactionType) }} &middot; {{ view.transaction.transactionDate | date:'mediumDate' }}</small>
             </div>
             <div class="transaction-amount">{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</div>
           </div>
@@ -38,7 +40,7 @@
             <dt>Merchant</dt><dd>{{ view.transaction.merchantName ?? 'Not available' }}</dd>
             <dt>Transaction type</dt><dd>{{ typeLabel(view.transaction.transactionType) }}</dd>
             <dt>Amount</dt><dd>{{ view.transaction.amount | decimalMoney:view.transaction.currency }}</dd>
-            <dt>Date</dt><dd>{{ view.transaction.transactionDate | date:'mediumDate':'UTC' }}</dd>
+            <dt>Date</dt><dd><time [attr.datetime]="view.transaction.transactionDate">{{ view.transaction.transactionDate | date:'mediumDate' }}</time></dd>
           </dl>
         </section>
         <aside class="panel info-panel">
@@ -48,10 +50,15 @@
       </div>
       <section class="panel" aria-labelledby="dispute-eligibility-heading">
         <div class="panel-title"><div>
-          <h2 id="dispute-eligibility-heading">Submit a dispute</h2>
-          <p>Tell us what doesn't look right with this transaction.</p>
+          <h2 id="dispute-eligibility-heading">{{ view.transaction.activeDisputeId ? 'Your dispute' : 'Submit a dispute' }}</h2>
+          <p>{{ view.transaction.activeDisputeId ? 'Follow the case already linked to this transaction.' : "Tell us what doesn't look right with this transaction." }}</p>
         </div></div>
-        @if (view.eligibility.kind === 'loading') {
+        @if (view.transaction.activeDisputeId; as disputeId) {
+          <div class="notice">
+            <p role="status">A dispute is already in progress for this transaction.</p>
+            <a class="cc-button cc-button--primary" [routerLink]="['/disputes', disputeId]">View existing dispute &rarr;</a>
+          </div>
+        } @else if (view.eligibility.kind === 'loading') {
           <p class="state-message" role="status">Checking dispute eligibility...</p>
         } @else if (view.eligibility.kind === 'error') {
           <div class="state-message" role="alert">
@@ -60,12 +67,12 @@
               <button class="cc-button cc-button--secondary" type="button" data-testid="retry-eligibility" (click)="retry()">Retry eligibility check</button>
             }
           </div>
-        } @else {
+        } @else if (view.eligibility.kind === 'loaded') {
           <p class="eligibility-result" role="status"><strong>{{ eligibilityLabel(view.eligibility.result.outcome) }}</strong></p>
           <p class="eligibility-explanation">{{ view.eligibility.result.explanation }}</p>
           @if (view.eligibility.result.outcome !== 'Ineligible' && view.eligibility.result.availableReasons.length > 0) {
             <app-dispute-form [transactionId]="view.transaction.id"
-                              [reasons]="view.eligibility.result.availableReasons" />
+                              [reasons]="view.eligibility.result.availableReasons" (activeDisputeExists)="retry()" />
           }
         }
       </section>

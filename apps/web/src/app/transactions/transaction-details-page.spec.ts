@@ -95,6 +95,41 @@ describe('TransactionDetailsPage', () => {
     expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).not.toBeNull();
   });
 
+  it('replaces the form with a link to the existing case', async () => {
+    const disputeId = 'aaaaaaaa-1111-4222-8333-444455556666';
+    const harness = await RouterTestingHarness.create(`/transactions/${id}`);
+    http.expectOne(`/api/v1/transactions/${id}`).flush({ ...transaction, activeDisputeId: disputeId });
+    harness.detectChanges();
+
+    http.expectNone(`/api/v1/transactions/${id}/dispute-eligibility`);
+    expect(harness.routeNativeElement?.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+    expect(harness.routeNativeElement?.querySelector(`a[href="/disputes/${disputeId}"]`)?.textContent)
+      .toContain('View existing dispute');
+  });
+
+  it('finds the existing case when another request submits the transaction first', async () => {
+    const disputeId = 'aaaaaaaa-1111-4222-8333-444455556666';
+    const harness = await RouterTestingHarness.create(`/transactions/${id}`);
+    http.expectOne(`/api/v1/transactions/${id}`).flush(transaction);
+    expectEligibility();
+    harness.detectChanges();
+    const element = harness.routeNativeElement!;
+    const reason = element.querySelector<HTMLSelectElement>('#dispute-reason')!;
+    reason.value = 'duplicateCharge';
+    reason.dispatchEvent(new Event('change'));
+    const description = element.querySelector<HTMLTextAreaElement>('#dispute-description')!;
+    description.value = 'Please investigate this duplicate transaction.';
+    description.dispatchEvent(new Event('input'));
+    element.querySelector<HTMLButtonElement>('[data-testid="submit-dispute"]')!.click();
+    http.expectOne('/api/v1/disputes').flush(
+      { code: 'dispute.activeCaseExists' }, { status: 409, statusText: 'Conflict' });
+    http.expectOne(`/api/v1/transactions/${id}`).flush({ ...transaction, activeDisputeId: disputeId });
+    harness.detectChanges();
+
+    expect(element.querySelector(`a[href="/disputes/${disputeId}"]`)).not.toBeNull();
+    expect(element.querySelector('[data-testid="submit-dispute"]')).toBeNull();
+  });
+
   it('keeps the persisted decimal amount exact in the summary and facts', async () => {
     const harness = await RouterTestingHarness.create(`/transactions/${id}`);
     http.expectOne(`/api/v1/transactions/${id}`).flush({ ...transaction, amount: '90071992547409.91' });

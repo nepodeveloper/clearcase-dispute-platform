@@ -15,12 +15,14 @@ public sealed record DisputePageInfo(bool HasNextPage,
 
 /// <summary>Customer-safe case summary, without complaint text, evidence, audit data or full history.</summary>
 public sealed record DisputeSummaryResponse(Guid Id, string Reference, Guid TransactionId, string Category,
-    string CaseStatus, string DecisionStatus, string FinancialStatus, DateTimeOffset CreatedAt, string StatusDescription)
+    string CaseStatus, string DecisionStatus, string FinancialStatus, DateTimeOffset CreatedAt, string StatusDescription,
+    DisputedTransactionResponse Transaction)
 {
     public static DisputeSummaryResponse From(DisputeListItem item) =>
         new(item.Id, item.Reference, item.TransactionId, item.Category.ToString(), item.CaseStatus.ToString(),
             item.DecisionStatus.ToString(), item.FinancialStatus.ToString(), item.CreatedAt,
-            DisputeResponse.DescribeStatus(item.CaseStatus, item.DecisionStatus, item.FinancialStatus));
+            DisputeResponse.DescribeStatus(item.CaseStatus, item.DecisionStatus, item.FinancialStatus),
+            DisputedTransactionResponse.From(item.Transaction));
 }
 
 internal static class DisputeCursorCodec

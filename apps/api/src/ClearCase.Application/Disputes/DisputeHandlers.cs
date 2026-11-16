@@ -71,7 +71,9 @@ public sealed class SubmitDisputeHandler(
             command.ReasonCode, command.Description, eligibility, Guid.NewGuid());
         return await disputeStore.AddAsync(dispute, submission, cancellationToken,
             new OutboxMetadata(command.CorrelationId ?? "local")) == DisputeAddResult.Added
-            ? new SubmitDisputeResult.Created(DisputeView.From(dispute))
+            ? new SubmitDisputeResult.Created(
+                await disputeStore.ReadAsync(customerId, dispute.Id, cancellationToken)
+                ?? throw new InvalidOperationException("The newly created dispute could not be loaded."))
             : await ConflictAsync(customerId, submission, cancellationToken);
     }
 

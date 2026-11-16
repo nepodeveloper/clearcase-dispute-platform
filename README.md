@@ -61,6 +61,8 @@ npm start
 
 Open `http://localhost:4200`. The Angular development server proxies `/api` to `http://localhost:5100`; start the API with the URL above. The API exposes `GET /health/live` and `GET /health/ready` at `http://localhost:5100`. In Development, the generated OpenAPI document is available at `http://localhost:5100/openapi/v1.json`. The readiness response verifies application startup only; it does not check a database or other dependency.
 
+After backend changes, stop and rerun `dotnet run` in its original terminal to preserve its configuration. Angular's automatic reload does not restart the API; an older API can ignore new query parameters such as `search`. The running OpenAPI document shows whether the new parameter is loaded.
+
 For a manual API smoke check, open `apps/api/ClearCase.Api.http` in VS Code with the REST Client extension, or request the endpoints directly with `curl`.
 
 ## Local authentication and UI integration (PR-12 / PR-13)
@@ -96,21 +98,35 @@ From `apps/web`, run `npm run test:e2e`. The wrapper runs the authentication, cu
 
 ### One frontend (PR-28)
 
-`npm start` is the only frontend. The former API-free UI demo (`npm run start:ui`), its in-memory fixtures and its role picker were removed; its design is now the layout of the connected application for every role. Shared building blocks are in `apps/web/src/app/ui` and layout styles in `apps/web/src/styles/clearcase-layout.css`. Demo elements that had no API behind them (free-text transaction search, a masked account number, "Remember this device" and "Forgot password") were removed rather than faked. Roll back by redeploying the PR-27 frontend; the API and database are unchanged.
+`npm start` is the only frontend. The former API-free UI demo (`npm run start:ui`), its in-memory fixtures and its role picker were removed; its design is now the layout of the connected application for every role. Shared building blocks are in `apps/web/src/app/ui` and layout styles in `apps/web/src/styles/clearcase-layout.css`. Demo elements that had no API behind them (a masked account number, "Remember this device" and "Forgot password") remain absent rather than faked. Transaction search now uses the real API in PR-22.
 
 ## Connected customer journey (PR-14)
 
 Start the application with `npm start`:
 
 1. Sign in at `/login` using a configured customer assessment account. Login opens **Your transactions**.
-2. Filter by transaction type and inclusive dates, then use **Next** / **Previous**. Filtering and pagination run on the server; unsupported demo search/account totals are not fabricated.
-3. Select a transaction to view its persisted GUID-linked details and authoritative eligibility. The shared ClearCase theme is retained; amounts are formatted directly from decimal strings without floating-point conversion.
+2. Search by description, merchant or reference and filter by transaction type and inclusive UTC dates, then use **Next** / **Previous**. Filtering and pagination run on the server; account totals are not fabricated.
+3. Select a transaction to view its persisted GUID-linked details and authoritative eligibility. Already-disputed transactions link to the existing case; pending payments offer **View details**, not **View & dispute**. Amounts are formatted directly from decimal strings without floating-point conversion.
 4. Select a backend-provided reason, enter a 15-2000 character description, and **Submit dispute**. Pending submission is locked against repeated clicks. Field errors remain associated with the form; forbidden, expired-session, duplicate and ineligible responses are explained.
 5. Successful submission automatically opens `/disputes/{id}` using the backend-issued case ID/reference. **My disputes** uses the API's opaque continuation cursor. Case, decision and financial statuses remain distinct; no approval implies confirmed funds.
-6. Refresh or revisit a case to read its SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Only the customer-safe projection is rendered. A transient refresh failure retains the last loaded case with an explicit error and retry.
+6. Follow the event-specific, SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Open cases refresh every 30 seconds while the tab is visible, without stealing focus or overlapping requests. Manual refresh remains available; failures retain the last loaded case with an explicit error and retry.
 7. Sign out to end the cookie session. Expired sessions return to login; another customer cannot access the transaction, eligibility or case.
 
 There is one route implementation for each screen, with no in-memory workspace, fake account details or role selector. Database seed records remain explicitly synthetic local assessment data.
+
+### Customer UX improvements (PR-22)
+
+1. **Recognizable cases:** list cards and details include the original transaction description, available merchant, exact amount/currency and transaction date.
+2. **Existing-case recovery:** transactions expose an owner-scoped `activeDisputeId` until the case is `Closed`, including rejected or refund-confirmed cases awaiting closure. The form handles a concurrent duplicate (`409 dispute.activeCaseExists`) by reloading owned details and linking to that case.
+3. **Useful progress:** event-specific milestones, next-step guidance and visible-tab refresh explain what is happening. No completion deadline is invented; open cases explicitly say none has been confirmed.
+4. **Plain status language:** case progress, review decision and money updates stay separate. Approval or an unknown outcome never implies a confirmed refund. The assessment notice and explicit no-real-money confirmation remain.
+5. **Local times:** customer dates/times use the device timezone; ISO UTC values remain in the API and HTML `datetime`. Date filters still use UTC calendar days, as noted in the UI. Staff history keeps its UTC default.
+6. **Find transactions:** bounded, case-insensitive search runs before paging; pending transactions do not advertise submission. Fresh synthetic databases have varied merchants/descriptions. Repeat seeding deliberately preserves existing rows, so retained databases keep their old samples.
+7. **Correct recovery:** unknown application URLs retain their address and show **Page not found**, with a role-appropriate home/sign-in link. Valid routes still enforce authentication and roles.
+
+The API adds transaction context and optional active-case links without changing routes, database schema, events, policy, authorization or financial processing. Deploy the API before the web build. To roll back, redeploy the previous API/web build together; retain all SQLite records and migrations. Older frontends ignore the additive fields; the new frontend tolerates missing transaction context during deployment. New seed descriptions require no reset, and existing databases must not be deleted to refresh a demo.
+
+Focused customer browser verification: `npm run test:e2e -- --project customer-desktop --project customer-mobile` from `apps/web`. Both projects use isolated temporary databases and `Africa/Johannesburg` browser time, covering search, all three submission categories, context, existing-case links, automatic refresh without focus theft, local times, mobile overflow, not-found recovery, session expiry and ownership.
 
 ### PR-14 verification and backout
 
@@ -229,9 +245,12 @@ Deferred: connected staff controls, assignment/delegation and MFA, decision-reas
 | `pageNumber` | Positive integer, default `1`. |
 | `pageSize` | Integer from `1` to `100`, default `20`. |
 | `transactionType` | Optional, case-sensitive `CardPurchase`, `DebitOrder`, or `BankCharge`. |
+| `search` | Optional description/merchant/reference substring, trimmed and case-insensitive, at most 100 characters. `%` and `_` are literal characters, not wildcards. |
 | `fromDate`, `toDate` | Optional inclusive UTC calendar dates in `YYYY-MM-DD` format; `fromDate` must not be later than `toDate`. |
 
 Filtering occurs before offset pagination; ordering is transaction date descending, then ID ascending. `totalCount` counts filtered records; `totalPages` is zero for no matches and `hasNextPage` is false on the last page. A page beyond the end has an empty `items` array. Invalid parameters return HTTP 400 `application/problem+json` with a stable code, correlation ID and per-field errors. Responses use `Cache-Control: private, no-store`.
+
+List/detail items include `activeDisputeId` only when the authenticated customer has a linked case that is not closed; it is omitted otherwise. `isDisputable` is a navigation affordance, false for pending/non-posted transactions, not a substitute for the server eligibility decision. Customer dispute creation, detail and list responses include `transaction: { description, merchantName?, amount, currency, transactionDate }`, with amount as an exact decimal string and absent merchant omitted.
 
 The Angular filters reject an inverted date range before making a request and display validation messages returned by the API. After a page change, focus moves to the transactions heading.
 

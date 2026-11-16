@@ -11,7 +11,7 @@
   <div class="stats-grid">
     <cc-stat label="Cases shown" [value]="shown() ?? '–'" hint="Loaded so far" />
     <cc-stat label="In progress" [value]="inProgress() ?? '–'" hint="Awaiting review or an outcome" />
-    <cc-stat label="Finished" [value]="finished() ?? '–'" hint="Closed, rejected or reversal confirmed" />
+    <cc-stat label="Closed cases" [value]="finished() ?? '–'" hint="The case has been closed" />
   </div>
   <section class="panel" aria-labelledby="cases-heading">
     <div class="panel-title"><h2 id="cases-heading">Your dispute cases</h2></div>
@@ -35,14 +35,25 @@
                 <h3><a [routerLink]="['/disputes', dispute.id]">{{ dispute.reference }}</a></h3>
                 <cc-status-badge [label]="statusLabel(dispute.caseStatus)" [status]="dispute.caseStatus" />
               </div>
-              <p class="case-category">{{ typeLabel(dispute.category) }}</p>
+              @if (dispute.transaction; as transaction) {
+                <p class="case-category">{{ transaction.description }}</p>
+                @if (transaction.merchantName && transaction.merchantName !== transaction.description) {
+                  <p class="muted">{{ transaction.merchantName }}</p>
+                }
+                <p class="money">{{ transaction.amount | decimalMoney:transaction.currency }}</p>
+                <p class="muted">{{ typeLabel(dispute.category) }} &middot;
+                  <time [attr.datetime]="transaction.transactionDate">{{ transaction.transactionDate | date:'mediumDate' }}</time>
+                </p>
+              } @else {
+                <p class="case-category">{{ typeLabel(dispute.category) }}</p>
+              }
               <p class="case-description">{{ dispute.statusDescription }}</p>
               <dl class="case-outcomes">
-                <dt>Decision</dt><dd>{{ dispute.decisionStatus }}</dd>
-                <dt>Financial status</dt><dd>{{ financialLabel(dispute.financialStatus, dispute.category) }}</dd>
+                <dt>Review decision</dt><dd>{{ decisionLabel(dispute.decisionStatus) }}</dd>
+                <dt>Money update</dt><dd>{{ financialLabel(dispute.financialStatus) }}</dd>
               </dl>
               <div class="case-foot">
-                <span>Submitted <time [attr.datetime]="dispute.createdAt">{{ dispute.createdAt | date:'mediumDate':'UTC' }}</time></span>
+                <span>Submitted <time [attr.datetime]="dispute.createdAt">{{ dispute.createdAt | date:'mediumDate' }}</time></span>
                 <a [routerLink]="['/disputes', dispute.id]" [attr.aria-label]="'View timeline for ' + dispute.reference">View timeline <span aria-hidden="true">&rarr;</span></a>
               </div>
             </li>

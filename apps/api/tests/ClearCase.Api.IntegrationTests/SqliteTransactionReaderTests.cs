@@ -26,6 +26,9 @@ public sealed class SqliteTransactionReaderTests
 
             Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
             Assert.Equal(31, await context.Transactions.CountAsync());
+            var descriptions = await context.Transactions.Where(item => item.CustomerId == DemoCustomer)
+                .Select(item => item.Description).Distinct().CountAsync();
+            Assert.True(descriptions > 3, "The customer demo should contain more than three repeating descriptions.");
         }
 
         await using var restarted = database.CreateContext();

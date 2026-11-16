@@ -104,6 +104,7 @@ public sealed class TransactionEndpointsTests : IClassFixture<SqliteWebApplicati
         Assert.Contains("transactionType", names);
         Assert.Contains("fromDate", names);
         Assert.Contains("toDate", names);
+        Assert.Contains("search", names);
     }
 
     [Fact]
@@ -137,6 +138,42 @@ public sealed class TransactionEndpointsTests : IClassFixture<SqliteWebApplicati
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(expected, body.RootElement.GetProperty("totalCount").GetInt32());
         Assert.Equal(1, body.RootElement.GetProperty("items").GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData("search=%20txn-2026-000001%20", 1)]
+    [InlineData("search=TXN-2026-000001&transactionType=DebitOrder", 0)]
+    [InlineData("search=Other%20synthetic%20customer", 0)]
+    [InlineData("search=%25", 0)]
+    public async Task List_SearchesOwnedTransactionsBeforePagination(string query, int expected)
+    {
+        using var client = CreateClient();
+        using var response = await client.GetAsync("/api/v1/transactions?pageSize=1&" + query);
+        using var body = await ReadJson(response);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(expected, body.RootElement.GetProperty("totalCount").GetInt32());
+        Assert.Equal(expected, body.RootElement.GetProperty("items").GetArrayLength());
+        if (expected > 0)
+            Assert.Equal("00000000-0000-0000-0000-000000000001",
+                body.RootElement.GetProperty("items")[0].GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task List_RejectsOversizedSearchAndDoesNotOfferPendingTransactionsForDispute()
+    {
+        using var client = CreateClient();
+        using var invalid = await client.GetAsync("/api/v1/transactions?search=" + new string('x', 101));
+        using var problem = await ReadJson(invalid);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("/search", problem.RootElement.GetProperty("errors")[0].GetProperty("pointer").GetString());
+
+        using var response = await client.GetAsync("/api/v1/transactions?pageSize=100");
+        using var body = await ReadJson(response);
+        var pending = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray(),
+            item => item.GetProperty("status").GetString() == "PendingAuthorization");
+        Assert.False(pending.GetProperty("isDisputable").GetBoolean());
+        Assert.False(pending.TryGetProperty("activeDisputeId", out _));
     }
 
     [Theory]

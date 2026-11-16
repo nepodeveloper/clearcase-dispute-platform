@@ -25,7 +25,10 @@
     <app-dispute-details [dispute]="current.dispute" />
     <div class="panel-footer">
       <button class="cc-button cc-button--secondary" type="button" data-testid="refresh-dispute"
-              [disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>
+              [attr.aria-disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>
+      @if (current.dispute.caseStatus !== 'Closed') {
+        <span>Updates automatically every 30 seconds while this page is visible.</span>
+      }
       @if (current.error; as error) {
         <p class="state-message" role="alert">{{ error.message }} Showing the last loaded case.</p>
       }

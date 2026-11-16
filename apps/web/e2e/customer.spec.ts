@@ -30,9 +30,14 @@ test('customer completes the persisted journey for all categories, with filterin
   page.on('pageerror', error => errors.push(error.message));
   const firstPage = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/transactions');
   await login(page);
+  await page.clock.install();
   const first: TransactionPage = await (await firstPage).json();
   await expect(page.locator('tbody tr')).toHaveCount(first.items.length);
   expect(first.totalCount).toBe(30);
+  expect(new Set(first.items.map(item => item.description)).size).toBeGreaterThan(3);
+  const pending = page.locator('tbody tr', { hasText: 'Pending card payment' });
+  await expect(pending.getByRole('link', { name: /^View details for/ })).toBeVisible();
+  await expect(pending.getByRole('link', { name: /^View and dispute/ })).toHaveCount(0);
   await capture(page, info, 'transactions');
   const secondPage = page.waitForResponse(response => new URL(response.url()).searchParams.get('pageNumber') === '2');
   await page.getByRole('button', { name: 'Next', exact: true }).click();
@@ -52,6 +57,16 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'
     && item.transactionDate.slice(0, 10) >= '2026-11-01' && item.transactionDate.slice(0, 10) <= '2026-11-10')).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
+
+  await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
+  const searchedResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('search') === 'ATM WITHDRAWAL');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  const searched: TransactionPage = await (await searchedResponse).json();
+  expect(searched.totalCount).toBe(1);
+  expect(searched.items[0].id).toBe(transactionId(6));
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.locator('tbody')).toContainText('ATM withdrawal fee');
+  await page.getByLabel('Search transactions', { exact: true }).fill('');
 
   await page.getByLabel('From date', { exact: true }).fill('2030-01-01');
   await page.getByLabel('To date', { exact: true }).fill('2030-01-02');
@@ -95,24 +110,56 @@ test('customer completes the persisted journey for all categories, with filterin
     await expect(page.getByText(description, { exact: true })).toBeVisible();
     await expect(page.getByRole('list', { name: 'Dispute timeline' }).locator('li p')).toHaveText(
       [...dispute.timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber).map(event => event.description));
-    await expect(page.getByLabel('Case summary')).toContainText('Financial status: Not initiated');
+    const summary = page.getByLabel('Case summary');
+    await expect(summary).toContainText(transaction.description);
+    const [units, cents] = transaction.amount.split('.');
+    await expect(summary).toContainText(`${transaction.currency} ${BigInt(units).toLocaleString('en-US')}.${cents}`);
+    await expect(summary).toContainText('Review decision: Awaiting a decision');
+    await expect(summary).toContainText('Money update: Not started');
+    await expect(page.getByRole('heading', { name: 'What happens next?' })).toBeVisible();
+    await expect(page.getByText('No completion date has been confirmed.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Times shown in your local time (Africa/Johannesburg).', { exact: true })).toBeVisible();
+    const firstEvent = [...dispute.timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber)[0];
+    const time = page.getByRole('list', { name: 'Dispute timeline' }).locator('time').first();
+    const timeParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(firstEvent.occurredAt));
+    const part = (type: Intl.DateTimeFormatPartTypes) => timeParts.find(item => item.type === type)!.value;
+    const expectedTime = `${part('day')} ${part('month')} ${part('year')}, ${part('hour')}:${part('minute')}`;
+    await expect(time).toHaveText(expectedTime);
+    await expect(time).toHaveAttribute('datetime', firstEvent.occurredAt);
     await capture(page, info, `timeline-${transaction.transactionType}`);
+    if (index === indexes[0]) {
+      const refreshButton = page.getByTestId('refresh-dispute');
+      await refreshButton.focus();
+      const refreshed = page.waitForResponse(result => result.url().endsWith(`/api/v1/disputes/${dispute.id}`)
+        && result.request().method() === 'GET');
+      await page.clock.fastForward(30_000);
+      expect((await refreshed).status()).toBe(200);
+      await expect(refreshButton).toBeFocused();
+    }
     await page.getByRole('link', { name: 'Back to my disputes' }).click();
     await expect(page.getByRole('link', { name: dispute.reference, exact: true })).toBeVisible();
+    await expect(page.locator('.case-card', { hasText: dispute.reference })).toContainText(transaction.description);
 
     await page.goto(`/transactions/${id}`);
-    await page.getByRole('combobox', { name: 'Dispute reason' }).selectOption(dispute.reasonCode);
-    await page.getByRole('textbox', { name: 'Describe the issue' }).fill(description);
-    const duplicate = page.waitForResponse(result => result.url().endsWith('/api/v1/disputes') && result.request().method() === 'POST');
-    await page.getByRole('button', { name: 'Submit dispute', exact: true }).click();
-    expect((await duplicate).status()).toBe(409);
-    await expect(page.getByRole('alert')).toContainText('already has an open dispute');
+    await expect(page.getByRole('button', { name: 'Submit dispute', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /View existing dispute/ })).toHaveAttribute('href', `/disputes/${dispute.id}`);
+    await page.getByRole('link', { name: /View existing dispute/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/disputes/${dispute.id}$`));
+    await page.goto('/');
+    await expect(page.locator('tbody tr', { hasText: transaction.description })
+      .getByRole('link', { name: `View dispute for ${transaction.description}`, exact: true })).toHaveAttribute('href', `/disputes/${dispute.id}`);
   }
 
   await page.goto(`/transactions/${transactionId(4)}`);
   await expect(page.getByRole('status')).toContainText('Currently ineligible');
   await expect(page.getByRole('button', { name: 'Submit dispute', exact: true })).toHaveCount(0);
+  const loggedOut = page.waitForResponse(response => response.url().endsWith('/api/v1/auth/logout')
+    && response.request().method() === 'POST' && response.status() === 204);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await loggedOut;
   await expect(page).toHaveURL(/\/login$/);
   expect((await page.request.get('/api/v1/disputes')).status()).toBe(401);
   expect(errors).toEqual([]);
@@ -160,6 +207,12 @@ test('My disputes consumes the opaque API cursor and recovers from an offline re
 
 test('customer navigation, session expiry and ownership remain enforced', async ({ page, context }, info) => {
   await login(page);
+  await page.goto('/unknown-customer-page');
+  await expect(page).toHaveURL(/\/unknown-customer-page$/);
+  await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Return to your workspace', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your transactions', exact: true })).toBeVisible();
   if (info.project.name === 'customer-mobile') {
     await page.getByRole('button', { name: 'Open navigation' }).tap();
     const navigation = page.getByRole('navigation', { name: 'Customer navigation', exact: true });

@@ -8,8 +8,13 @@
     @if (events().length === 0) {
       <p class="cc-empty">No timeline events yet.</p>
     } @else {
-      <cc-timeline [events]="events()" [complete]="finished()" />
+      <cc-timeline [events]="events()" [complete]="finished()" [timezone]="undefined" />
     }
+    <div class="soft-box">
+      <h3>What happens next?</h3>
+      <p>{{ nextStep() }}</p>
+      @if (!finished()) { <p>No completion date has been confirmed.</p> }
+    </div>
   </section>
 
   <div class="stack">
@@ -17,18 +22,24 @@
       <h2>Case summary</h2>
       <div class="case-facts">
         <p>Case reference <strong data-testid="dispute-reference">{{ current.reference }}</strong></p>
+        @if (current.transaction; as transaction) {
+          <p>Transaction <strong>{{ transaction.description }}</strong></p>
+          @if (transaction.merchantName) { <p>Merchant <strong>{{ transaction.merchantName }}</strong></p> }
+          <p>Amount <strong>{{ transaction.amount | decimalMoney:transaction.currency }}</strong></p>
+          <p>Transaction date <strong><time [attr.datetime]="transaction.transactionDate">{{ transaction.transactionDate | date:'mediumDate' }}</time></strong></p>
+        }
         <p>Category <strong>{{ typeLabel(current.category) }}</strong></p>
         <p>Case status <strong>{{ statusLabel(current.caseStatus) }}</strong></p>
-        <p>Decision: <strong>{{ current.decisionStatus }}</strong></p>
-        <p>Financial status: <strong>{{ financialLabel(current.financialStatus, current.category) }}</strong></p>
-        <p>Submitted: <strong><time [attr.datetime]="current.createdAt">{{ current.createdAt | date:'medium':'UTC' }} UTC</time></strong></p>
+        <p>Review decision: <strong>{{ decisionLabel(current.decisionStatus) }}</strong></p>
+        <p>Money update: <strong>{{ financialLabel(current.financialStatus) }}</strong></p>
+        <p>Submitted: <strong><time [attr.datetime]="current.createdAt">{{ current.createdAt | date:'medium' }}</time></strong></p>
       </div>
       <div class="soft-box"><small>Latest update</small><p>{{ current.statusDescription }}</p></div>
       <div class="soft-box"><small>Your description</small><p>{{ current.description }}</p></div>
       @if (current.chargeback; as chargeback) {
-        <div class="soft-box"><small>Card chargeback</small>
-          <p>Chargeback reference: {{ chargeback.reference }}</p>
-          <p>Chargeback status: {{ chargebackLabel(chargeback.status) }}</p>
+        <div class="soft-box"><small>Card payment review</small>
+          <p>Card review reference: {{ chargeback.reference }}</p>
+          <p>Progress: {{ chargebackLabel(chargeback.status) }}</p>
           @if (chargeback.lastOperationOutcome !== 'Succeeded') {
             <p>{{ chargeback.lastOperationOutcome === 'OutcomeUnknown'
               ? 'Network outcome unknown - investigation required.'

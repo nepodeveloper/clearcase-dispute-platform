@@ -57,6 +57,25 @@ describe('TransactionsPage', () => {
     expect(fixture.nativeElement.textContent).toContain('No transactions found');
   });
 
+  it('links an existing dispute and offers only details for a pending transaction', () => {
+    const fixture = render();
+    const disputeId = 'aaaaaaaa-1111-4222-8333-444455556666';
+    http.expectOne(request => request.url === '/api/v1/transactions').flush({
+      items: [
+        { ...item, activeDisputeId: disputeId },
+        { ...item, id: '00000000-0000-0000-0000-000000000004', status: 'PendingAuthorization', isDisputable: false },
+      ],
+      pageNumber: 1, pageSize: 20, totalCount: 2, totalPages: 1, hasNextPage: false,
+    });
+    fixture.detectChanges();
+    const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr');
+    expect(rows[0].querySelector(`a[href="/disputes/${disputeId}"]`)?.textContent).toContain('View dispute');
+    expect(rows[0].textContent).toContain('Dispute in progress');
+    expect(rows[1].querySelector('.row-action')?.textContent).toContain('View details');
+    expect(rows[1].textContent).not.toContain('View & dispute');
+    expect(rows[1].textContent).toContain('Pending card payment');
+  });
+
   it('preserves decimal cents beyond JavaScript number precision and makes the table keyboard scrollable', () => {
     const fixture = render();
     respond([{ ...item, amount: '90071992547409.91' }]);
@@ -174,6 +193,9 @@ describe('TransactionsPage', () => {
     const type = element.querySelector<HTMLSelectElement>('[name="transactionType"]')!;
     const from = element.querySelector<HTMLInputElement>('[name="fromDate"]')!;
     const to = element.querySelector<HTMLInputElement>('[name="toDate"]')!;
+    const search = element.querySelector<HTMLInputElement>('[name="search"]')!;
+    search.value = '  Woolworths  ';
+    search.dispatchEvent(new Event('input'));
     type.value = 'DebitOrder';
     type.dispatchEvent(new Event('change'));
     from.value = '2026-11-01';
@@ -186,6 +208,7 @@ describe('TransactionsPage', () => {
     expect(request.request.params.get('fromDate')).toBe('2026-11-01');
     expect(request.request.params.get('toDate')).toBe('2026-11-10');
     expect(request.request.params.get('pageNumber')).toBe('1');
+    expect(request.request.params.get('search')).toBe('Woolworths');
     request.flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
   });
 });

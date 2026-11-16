@@ -10,6 +10,7 @@ import { AgentQueuePage } from './operations/agent-queue-page';
 import { InvestigationPage } from './operations/investigation-page';
 import { SupervisorQueuePage } from './operations/supervisor-queue-page';
 import { SupervisorDetailPage } from './operations/supervisor-detail-page';
+import { NotFoundPage } from './not-found-page';
 
 export const routes: Routes = [
   { path: 'login', title: 'Sign in | ClearCase', component: LoginPage, canActivate: [loginGuard],
@@ -32,5 +33,5 @@ export const routes: Routes = [
     canActivate: [authGuard], data: { role: 'Supervisor', label: 'Supervisor review', section: 'supervisor' } },
   { path: 'unauthorized', title: 'Access denied | ClearCase', component: WorkspacePage, canActivate: [authGuard],
     data: { denied: true, label: 'Access denied' } },
-  { path: '**', redirectTo: 'unauthorized' },
+  { path: '**', title: 'Page not found | ClearCase', component: NotFoundPage, data: { label: 'Page not found' } },
 ];

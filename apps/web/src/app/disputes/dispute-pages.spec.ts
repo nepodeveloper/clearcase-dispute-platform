@@ -1,4 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
+import { DATE_PIPE_DEFAULT_OPTIONS } from '@angular/common';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
@@ -19,6 +20,11 @@ describe('Dispute tracking pages', () => {
     financialStatus: 'Requested',
     statusDescription: 'A simulated adjustment was requested; funds are not confirmed.',
     createdAt: '2026-11-12T10:00:00Z',
+    transaction: {
+      description: ['Woolworths groceries', 'Monthly insurance', 'Account service fee'][index],
+      merchantName: index === 2 ? undefined : ['Woolworths', 'Insurance provider'][index],
+      amount: '750.00', currency: 'ZAR', transactionDate: '2026-11-10T23:30:00Z',
+    },
     timeline: [
       { id: 'event-1', sequenceNumber: 1, eventType: 'DisputeSubmitted', caseStatus: 'Submitted',
         description: 'Your dispute was received.', occurredAt: '2026-11-12T10:00:00Z' },
@@ -30,7 +36,8 @@ describe('Dispute tracking pages', () => {
 
   beforeEach(async () => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter(routes)],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter(routes),
+        { provide: DATE_PIPE_DEFAULT_OPTIONS, useValue: { timezone: '+0200' } }],
     });
     http = TestBed.inject(HttpTestingController);
     const restored = TestBed.inject(AuthService).restore();
@@ -68,7 +75,7 @@ describe('Dispute tracking pages', () => {
     expect(TestBed.inject(Router).url).toBe(`/disputes/${cases[2].id}`);
     http.expectOne(`/api/v1/disputes/${cases[2].id}`).flush(cases[2]);
     harness.detectChanges();
-    expect(harness.routeNativeElement?.textContent).toContain('Decision: Approved');
+    expect(harness.routeNativeElement?.textContent).toContain('Review decision: Approved after review');
     expect(harness.routeNativeElement?.textContent).toContain('Requested - not confirmed');
     const timeline = harness.routeNativeElement?.querySelector('ol[aria-label="Dispute timeline"]');
     expect(timeline?.querySelectorAll('li')).toHaveLength(2);
@@ -104,6 +111,130 @@ describe('Dispute tracking pages', () => {
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain(cases[1].reference);
     expect(harness.routeNativeElement?.querySelector('[data-testid="more-disputes"]')).toBeNull();
+  });
+
+  it('identifies a case by its transaction in both the list and details', async () => {
+    const harness = await RouterTestingHarness.create('/disputes');
+    http.expectOne(request => request.url === '/api/v1/disputes')
+      .flush({ items: [cases[0]], pageInfo: { hasNextPage: false } });
+    harness.detectChanges();
+    const card = harness.routeNativeElement!.querySelector('.case-card')!;
+    expect(card.textContent).toContain('Woolworths groceries');
+    expect(card.textContent).toContain('ZAR 750.00');
+    expect(card.textContent).toContain('Nov 11, 2026');
+
+    await harness.navigateByUrl(`/disputes/${cases[0].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush(cases[0]);
+    harness.detectChanges();
+    const summary = harness.routeNativeElement!.querySelector('[aria-label="Case summary"]')!;
+    expect(summary.textContent).toContain('Woolworths groceries');
+    expect(summary.textContent).toContain('ZAR 750.00');
+    expect(summary.textContent).toContain('Nov 11, 2026');
+  });
+
+  it('uses event-specific milestones, honest next steps and local time', async () => {
+    const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+    http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush({
+      ...cases[0], decisionStatus: 'Pending', financialStatus: 'NotInitiated',
+      chargeback: { reference: 'MOCK-CB-test', reasonCode: 'duplicateCharge',
+        status: 'MerchantContested', lastOperationOutcome: 'Succeeded' },
+      timeline: [
+        { ...cases[0].timeline[0], occurredAt: '2026-11-12T23:30:00Z' },
+        { ...cases[0].timeline[1], eventType: 'ChargebackForwardToAcquirer' },
+        { ...cases[0].timeline[1], id: 'event-3', sequenceNumber: 3, eventType: 'ChargebackMerchantContest' },
+      ],
+    });
+    harness.detectChanges();
+    const element = harness.routeNativeElement!;
+    expect(Array.from(element.querySelectorAll('ol li h3'), heading => heading.textContent?.trim()))
+      .toEqual(['Dispute received', 'Sent to the merchant', 'Merchant challenged the dispute']);
+    expect(element.querySelector('ol time')?.textContent).toContain('13 Nov 2026, 01:30');
+    expect(element.querySelector('ol time')?.getAttribute('datetime')).toBe('2026-11-12T23:30:00Z');
+    expect(element.textContent).toContain('What happens next?');
+    expect(element.textContent).toContain('No completion date has been confirmed.');
+    expect(element.textContent).toContain('Awaiting a decision');
+    expect(element.textContent).not.toContain('Financial status: Not initiated');
+  });
+
+  it('refreshes automatically only while visible, preserves focus, and stops on navigation', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+      http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush(cases[0]);
+      harness.detectChanges();
+      const heading = harness.routeNativeElement!.querySelector<HTMLHeadingElement>('h1')!;
+      const focus = vi.spyOn(heading, 'focus');
+      const refreshButton = harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!;
+      refreshButton.focus();
+      vi.advanceTimersByTime(29_999);
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+      vi.advanceTimersByTime(1);
+      const refresh = http.expectOne(`/api/v1/disputes/${cases[0].id}`);
+      harness.detectChanges();
+      expect(refreshButton.disabled).toBe(false);
+      expect(refreshButton.getAttribute('aria-disabled')).toBe('true');
+      refreshButton.click();
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+      vi.advanceTimersByTime(30_000);
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+      refresh.flush({ ...cases[0], financialStatus: 'OutcomeUnknown' });
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.textContent).toContain('Outcome unknown - not confirmed');
+      expect(focus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(refreshButton);
+
+      visibility.mockReturnValue('hidden');
+      vi.advanceTimersByTime(30_000);
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+      visibility.mockReturnValue('visible');
+      vi.advanceTimersByTime(30_000);
+      http.expectOne(`/api/v1/disputes/${cases[0].id}`)
+        .flush({}, { status: 503, statusText: 'Unavailable' });
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.textContent).toContain(cases[0].reference);
+      expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain('last loaded case');
+
+      await harness.navigateByUrl('/disputes');
+      http.expectOne(request => request.url === '/api/v1/disputes')
+        .flush({ items: [], pageInfo: { hasNextPage: false } });
+      vi.advanceTimersByTime(30_000);
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+    } finally {
+      visibility.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps decided cases in progress until closure, then stops automatic checks', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      const harness = await RouterTestingHarness.create('/disputes');
+      http.expectOne(request => request.url === '/api/v1/disputes').flush({
+        items: cases.map((item, index) => ({ ...item, caseStatus: ['Rejected', 'ReversalConfirmed', 'Closed'][index] })),
+        pageInfo: { hasNextPage: false },
+      });
+      harness.detectChanges();
+      expect(harness.routeNativeElement!.querySelector('cc-stat[label="In progress"]')?.textContent).toContain('2');
+      expect(harness.routeNativeElement!.querySelector('cc-stat[label="Closed cases"]')?.textContent).toContain('1');
+      await harness.navigateByUrl(`/disputes/${cases[0].id}`);
+      http.expectOne(`/api/v1/disputes/${cases[0].id}`)
+        .flush({ ...cases[0], caseStatus: 'Rejected', decisionStatus: 'Rejected', financialStatus: 'NotInitiated' });
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.textContent).toContain('awaiting closure');
+      vi.advanceTimersByTime(30_000);
+      http.expectOne(`/api/v1/disputes/${cases[0].id}`)
+        .flush({ ...cases[0], caseStatus: 'Closed', decisionStatus: 'Rejected', financialStatus: 'NotInitiated' });
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.textContent).toContain('This case is closed');
+      expect(harness.routeNativeElement?.textContent).not.toContain('No completion date has been confirmed');
+      vi.advanceTimersByTime(60_000);
+      http.expectNone(`/api/v1/disputes/${cases[0].id}`);
+    } finally {
+      visibility.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it('cancels an old detail request when navigating to a different case', async () => {
@@ -148,8 +279,8 @@ describe('Dispute tracking pages', () => {
     request.flush({ ...cases[1], caseStatus: 'ReversalRequested', financialStatus: 'OutcomeUnknown' });
     harness.detectChanges();
 
-    expect(harness.routeNativeElement?.textContent).toContain('Reversal requested');
-    expect(harness.routeNativeElement?.textContent).toContain('Decision: Approved');
+    expect(harness.routeNativeElement?.textContent).toContain('Refund requested');
+    expect(harness.routeNativeElement?.textContent).toContain('Review decision: Approved after review');
     expect(harness.routeNativeElement?.textContent).toContain('Outcome unknown - not confirmed');
     expect(harness.routeNativeElement?.querySelectorAll('ol li')).toHaveLength(2);
     http.expectNone(req => req.url.includes('simulations'));
@@ -180,13 +311,13 @@ describe('Dispute tracking pages', () => {
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain('MOCK-CB-test');
     expect(harness.routeNativeElement?.textContent).toContain('Merchant accepted');
-    expect(harness.routeNativeElement?.textContent).toContain('Decision: Approved');
-    expect(harness.routeNativeElement?.textContent).toContain('Financial status: Not initiated');
-    expect(harness.routeNativeElement?.textContent).not.toContain('settlement confirmed');
+    expect(harness.routeNativeElement?.textContent).toContain('Review decision: Approved after review');
+    expect(harness.routeNativeElement?.textContent).toContain('Money update: Not started');
+    expect(harness.routeNativeElement?.textContent).not.toContain('refund confirmed');
     harness.routeNativeElement!.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
     http.expectOne(`/api/v1/disputes/${cases[0].id}`).flush({ ...accepted, financialStatus: 'Confirmed' });
     harness.detectChanges();
-    expect(harness.routeNativeElement?.textContent).toContain('Simulated settlement confirmed - no real money moved');
+    expect(harness.routeNativeElement?.textContent).toContain('Demo refund confirmed - no real money moved');
     expect(harness.routeNativeElement?.textContent).not.toContain('reversal confirmed');
     http.expectNone(req => req.url.includes('simulations'));
   });

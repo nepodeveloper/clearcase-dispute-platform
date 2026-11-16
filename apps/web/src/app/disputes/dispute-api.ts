@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { TransactionType } from '../transactions/transaction-api';
+import { TransactionDetails, TransactionType } from '../transactions/transaction-api';
 
 export type DisputeCaseStatus = 'Submitted' | 'ManualReview' | 'Closed'
   | 'UnderReview' | 'MandateVerified' | 'ReversalRequested' | 'ReversalConfirmed' | 'Rejected';
@@ -40,16 +40,17 @@ export interface Dispute {
   reasonCode: string;
   description: string;
   caseStatus: DisputeCaseStatus;
-  decisionStatus: string;
-  financialStatus: string;
+  decisionStatus: 'Pending' | 'Approved' | 'Rejected';
+  financialStatus: 'NotInitiated' | 'Requested' | 'OutcomeUnknown' | 'Failed' | 'Confirmed';
   statusDescription: string;
   createdAt: string;
   timeline: DisputeTimelineEvent[];
   chargeback?: Chargeback;
+  transaction?: Pick<TransactionDetails, 'description' | 'merchantName' | 'amount' | 'currency' | 'transactionDate'>;
 }
 
 export type DisputeSummary = Pick<Dispute, 'id' | 'reference' | 'transactionId' | 'category'
-  | 'caseStatus' | 'decisionStatus' | 'financialStatus' | 'createdAt' | 'statusDescription'>;
+  | 'caseStatus' | 'decisionStatus' | 'financialStatus' | 'createdAt' | 'statusDescription' | 'transaction'>;
 
 export interface DisputePage {
   items: DisputeSummary[];

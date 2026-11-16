@@ -23,6 +23,10 @@
       }
     </div>
     <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filter-bar">
+      <label class="cc-field search-field"><span>Search transactions</span>
+        <input class="cc-control" name="search" type="search" formControlName="search" maxlength="100"
+          placeholder="Merchant, description or reference">
+      </label>
       <label class="cc-field"><span>Transaction type</span>
         <select class="cc-control" name="transactionType" formControlName="transactionType">
           <option value="">All types</option>
@@ -43,6 +47,7 @@
         <p class="cc-form-error" id="date-range-error" role="alert">{{ message }}</p>
       }
     </form>
+    <p class="muted">Dates are shown in your local time. Date filters use UTC calendar days.</p>
 
     @let view = state();
     @if (view.kind === 'loading') {
@@ -79,14 +84,24 @@
           <tbody>
             @for (transaction of view.page.items; track transaction.id) {
               <tr>
-                <td><time [attr.datetime]="transaction.transactionDate">{{ transaction.transactionDate | date:'mediumDate':'UTC' }}</time></td>
-                <td><a data-testid="transaction-link" [routerLink]="['/transactions', transaction.id]"><strong>{{ transaction.description }}</strong></a></td>
+                <td><time [attr.datetime]="transaction.transactionDate">{{ transaction.transactionDate | date:'mediumDate' }}</time></td>
+                <td><a data-testid="transaction-link" [routerLink]="['/transactions', transaction.id]"><strong>{{ transaction.description }}</strong></a>
+                  @if (transaction.activeDisputeId) { <small>Dispute in progress</small> }
+                </td>
                 <td><span class="tag" [class.tag-cyan]="transaction.transactionType === 'DebitOrder'"
                   [class.tag-violet]="transaction.transactionType === 'BankCharge'">{{ typeLabel(transaction.transactionType) }}</span></td>
                 <td class="money">{{ transaction.amount | decimalMoney:transaction.currency }}</td>
-                <td><cc-status-badge [label]="transaction.status" /></td>
-                <td><a class="row-action" [routerLink]="['/transactions', transaction.id]"
-                  [attr.aria-label]="'View and dispute ' + transaction.description">View &amp; dispute &rarr;</a></td>
+                <td><cc-status-badge [label]="statusLabel(transaction.status)" [status]="transaction.status" /></td>
+                <td>
+                  @if (transaction.activeDisputeId; as disputeId) {
+                    <a class="row-action" [routerLink]="['/disputes', disputeId]"
+                      [attr.aria-label]="'View dispute for ' + transaction.description">View dispute &rarr;</a>
+                  } @else {
+                    <a class="row-action" [routerLink]="['/transactions', transaction.id]"
+                      [attr.aria-label]="(transaction.isDisputable ? 'View and dispute ' : 'View details for ') + transaction.description">
+                      {{ transaction.isDisputable ? 'View & dispute' : 'View details' }} &rarr;</a>
+                  }
+                </td>
               </tr>
             }
           </tbody>

@@ -20,9 +20,10 @@ export default defineConfig({
   },
   projects: [
     { name: 'authentication', testMatch: 'auth.spec.ts', use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'customer-desktop', testMatch: 'customer.spec.ts', use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'customer-desktop', testMatch: 'customer.spec.ts',
+      use: { viewport: { width: 1440, height: 1000 }, timezoneId: 'Africa/Johannesburg' } },
     { name: 'customer-mobile', testMatch: 'customer.spec.ts',
-      use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+      use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'Africa/Johannesburg' } },
     { name: 'agent-desktop', testMatch: 'agent.spec.ts', use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'agent-mobile', testMatch: 'agent.spec.ts',
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },

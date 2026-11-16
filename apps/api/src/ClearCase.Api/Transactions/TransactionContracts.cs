@@ -12,6 +12,7 @@ public sealed record TransactionListRequest
     [FromQuery(Name = "transactionType")] public string? TransactionType { get; init; }
     [FromQuery(Name = "fromDate")] public string? FromDate { get; init; }
     [FromQuery(Name = "toDate")] public string? ToDate { get; init; }
+    [FromQuery(Name = "search")] public string? Search { get; init; }
 }
 
 /// <summary>Identifies one invalid query parameter.</summary>
@@ -28,7 +29,8 @@ public sealed record TransactionDetailsResponse(
     DateTimeOffset TransactionDate,
     string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reference,
-    bool IsDisputable);
+    bool IsDisputable,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ActiveDisputeId = null);
 
 /// <summary>Eligibility assessment for a transaction, without initiating a dispute or financial operation.</summary>
 public sealed record TransactionDisputeEligibilityResponse(

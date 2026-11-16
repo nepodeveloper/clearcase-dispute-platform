@@ -17,9 +17,16 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
         if (query.After is { } cursor)
             matching = matching.Where(item => item.CreatedAt < cursor.CreatedAt
                 || (item.CreatedAt == cursor.CreatedAt && string.Compare(item.Reference, cursor.Reference) > 0));
-        var items = await matching.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Reference)
-            .Select(item => new DisputeListItem(item.Id, item.Reference, item.TransactionId, item.Category,
-                item.CaseStatus, item.DecisionStatus, item.FinancialStatus, item.CreatedAt))
+        var items = await matching
+            .Join(context.Transactions.AsNoTracking().Where(item => item.CustomerId == customerId),
+                dispute => dispute.TransactionId, transaction => transaction.Id,
+                (dispute, transaction) => new { Dispute = dispute, Transaction = transaction })
+            .OrderByDescending(row => row.Dispute.CreatedAt).ThenBy(row => row.Dispute.Reference)
+            .Select(row => new DisputeListItem(row.Dispute.Id, row.Dispute.Reference,
+                row.Dispute.TransactionId, row.Dispute.Category, row.Dispute.CaseStatus,
+                row.Dispute.DecisionStatus, row.Dispute.FinancialStatus, row.Dispute.CreatedAt,
+                new DisputeTransactionView(row.Transaction.Description, row.Transaction.MerchantName,
+                    row.Transaction.AmountMinorUnits, row.Transaction.Currency, row.Transaction.TransactionDate)))
             .Take(query.PageSize + 1).ToArrayAsync(cancellationToken);
         return new(items.Take(query.PageSize).ToArray(), items.Length > query.PageSize);
     }
@@ -109,13 +116,19 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             .Include(dispute => dispute.Chargeback)
             .SingleOrDefaultAsync(dispute => dispute.Id == disputeId && dispute.CustomerId == customerId,
                 cancellationToken);
-        return item is null ? null : new DisputeView(
+        if (item is null) return null;
+        var transaction = await context.Transactions.AsNoTracking()
+            .Where(transaction => transaction.Id == item.TransactionId && transaction.CustomerId == customerId)
+            .Select(transaction => new DisputeTransactionView(transaction.Description, transaction.MerchantName,
+                transaction.AmountMinorUnits, transaction.Currency, transaction.TransactionDate))
+            .SingleAsync(cancellationToken);
+        return new DisputeView(
             item.Id, item.Reference, item.TransactionId, item.Category, item.ReasonCode, item.Description,
             item.CaseStatus, item.DecisionStatus, item.FinancialStatus, item.CreatedAt,
             item.Events.OrderBy(entry => entry.SequenceNumber)
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
-                .ToArray(), item.ReversalOperationReference, item.Chargeback?.ToDomain(),
+                .ToArray(), transaction, item.ReversalOperationReference, item.Chargeback?.ToDomain(),
             item.BankChargeAdjustmentReference, item.Version);
     }
 

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, input, signal } from '@angular/core';
+import { Component, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -23,6 +23,7 @@ export const descriptionMaxLength = 2000;
 export class DisputeForm {
   readonly transactionId = input.required<string>();
   readonly reasons = input.required<DisputeReason[]>();
+  readonly activeDisputeExists = output<void>();
 
   private readonly api = inject(DisputeApi);
   private readonly router = inject(Router);
@@ -68,6 +69,8 @@ export class DisputeForm {
           }
           this.readFieldErrors(error);
           this.state.set({ kind: 'error', message: this.errorMessage(error) });
+          if (error instanceof HttpErrorResponse && error.status === 409 && error.error?.code === 'dispute.activeCaseExists')
+            this.activeDisputeExists.emit();
         },
       });
   }

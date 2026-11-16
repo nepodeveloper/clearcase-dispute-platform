@@ -7,7 +7,8 @@ namespace ClearCase.Application.Disputes;
 public sealed record DisputeCursor(DateTimeOffset CreatedAt, string Reference);
 public sealed record ListDisputesQuery(int PageSize, DisputeCursor? After);
 public sealed record DisputeListItem(Guid Id, string Reference, Guid TransactionId, TransactionCategory Category,
-    DisputeCaseStatus CaseStatus, DisputeDecisionStatus DecisionStatus, DisputeFinancialStatus FinancialStatus, DateTimeOffset CreatedAt);
+    DisputeCaseStatus CaseStatus, DisputeDecisionStatus DecisionStatus, DisputeFinancialStatus FinancialStatus,
+    DateTimeOffset CreatedAt, DisputeTransactionView Transaction);
 public sealed record DisputeListPage(IReadOnlyList<DisputeListItem> Items, bool HasNextPage);
 
 public interface IListDisputesHandler

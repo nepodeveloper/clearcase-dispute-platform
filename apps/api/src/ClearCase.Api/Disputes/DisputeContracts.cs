@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Chargebacks;
@@ -23,6 +24,7 @@ public sealed record DisputeResponse(
     long Version,
     string StatusDescription,
     IReadOnlyList<DisputeTimelineEventResponse> Timeline,
+    DisputedTransactionResponse Transaction,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ChargebackResponse? Chargeback = null)
 {
     public static DisputeResponse From(DisputeView view) =>
@@ -31,26 +33,39 @@ public sealed record DisputeResponse(
             view.FinancialStatus.ToString(), view.CreatedAt, view.Version,
             DescribeStatus(view.CaseStatus, view.DecisionStatus, view.FinancialStatus),
             view.Timeline.Select(DisputeTimelineEventResponse.From).ToArray(),
+            DisputedTransactionResponse.From(view.Transaction),
             view.Chargeback is { } chargeback ? ChargebackResponse.From(chargeback) : null);
 
     internal static string DescribeStatus(DisputeCaseStatus status, DisputeDecisionStatus decision, DisputeFinancialStatus financial) =>
         financial switch
         {
-            DisputeFinancialStatus.OutcomeUnknown => "The simulated financial outcome is unknown; funds are not confirmed.",
-            DisputeFinancialStatus.Failed => "The simulated adjustment failed. No funds are confirmed.",
-            DisputeFinancialStatus.Requested => "A simulated adjustment was requested; funds are not confirmed.",
-            DisputeFinancialStatus.Confirmed => "The simulated financial adjustment is confirmed. No real money moved.",
-            _ => decision == DisputeDecisionStatus.Approved ? "The case is approved. No financial adjustment has been initiated."
+            DisputeFinancialStatus.OutcomeUnknown => "The payment outcome still needs checking; funds are not confirmed.",
+            DisputeFinancialStatus.Failed => "The payment could not be completed. No funds are confirmed.",
+            DisputeFinancialStatus.Requested => "A payment adjustment was requested; funds are not confirmed.",
+            DisputeFinancialStatus.Confirmed => "The demo payment adjustment is complete. No real money moved.",
+            _ => decision == DisputeDecisionStatus.Approved ? "Your dispute is approved. A payment adjustment has not been started."
                 : status switch
                 {
                     DisputeCaseStatus.ManualReview => "Your case needs specialist investigation.",
                     DisputeCaseStatus.UnderReview => "Your case is being investigated.",
-                    DisputeCaseStatus.MandateVerified => "The mandate checks are complete. No reversal has been requested.",
-                    DisputeCaseStatus.Rejected => "Your dispute was rejected after review. No financial adjustment was made.",
-                    DisputeCaseStatus.Closed => "Your case is closed. No financial adjustment was made.",
+                    DisputeCaseStatus.MandateVerified => "Payment authorization checks are complete. No refund has been requested.",
+                    DisputeCaseStatus.Rejected => "Your dispute was not approved after review. No payment adjustment was made.",
+                    DisputeCaseStatus.Closed => "Your case is closed. No payment adjustment was made.",
                     _ => "Your dispute was received and is awaiting review."
                 }
         };
+}
+
+/// <summary>Owned transaction context for identifying a dispute; money remains an exact decimal string.</summary>
+public sealed record DisputedTransactionResponse(
+    string Description,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MerchantName,
+    string Amount, string Currency, DateTimeOffset TransactionDate)
+{
+    public static DisputedTransactionResponse From(DisputeTransactionView transaction) =>
+        new(transaction.Description, transaction.MerchantName,
+            (transaction.AmountMinorUnits / 100m).ToString("0.00", CultureInfo.InvariantCulture),
+            transaction.Currency, transaction.TransactionDate);
 }
 
 /// <summary>Customer-safe chargeback progress; approval and settlement remain separate dispute fields.</summary>

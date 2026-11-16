@@ -74,12 +74,13 @@ export class StatusBadge {
   selector: 'cc-timeline',
   imports: [DatePipe],
   template: `
+    @if (timezone() === undefined) { <p class="muted">Times shown in your local time ({{ localTimeZone }}).</p> }
     <ol class="timeline" [attr.aria-label]="label()">
       @for (event of events(); track event.id; let last = $last) {
         <li [class.complete]="!last || complete()" [class.active]="last && !complete()">
           <span class="time-point" aria-hidden="true">{{ !last || complete() ? '\u2713' : '\u2022' }}</span>
           <h3>{{ event.title }}</h3>
-          <time [attr.datetime]="event.occurredAt">{{ event.occurredAt | date:'dd MMM yyyy, HH:mm':'UTC' }} UTC</time>
+          <time [attr.datetime]="event.occurredAt">{{ event.occurredAt | date:'dd MMM yyyy, HH:mm':timezone() }}{{ timezone() === 'UTC' ? ' UTC' : '' }}</time>
           <p>{{ event.description }}</p>
         </li>
       }
@@ -95,6 +96,8 @@ export class Timeline {
   readonly events = input.required<readonly TimelineEvent[]>();
   readonly complete = input(false);
   readonly label = input('Dispute timeline');
+  readonly timezone = input<string | undefined>('UTC');
+  protected readonly localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   /** Leave empty to list recorded events only, without a placeholder for the next step. */
   readonly pendingTitle = input('');
   readonly pendingDescription = input('');

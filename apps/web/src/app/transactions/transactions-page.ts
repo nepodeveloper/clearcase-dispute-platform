@@ -7,7 +7,7 @@ import { RouterLink } from '@angular/router';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
 import { StatCard, StatusBadge } from '../ui/ui-components';
 import { TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
-import { transactionTypeLabel } from './transaction-type-label';
+import { transactionStatusLabel, transactionTypeLabel } from './transaction-type-label';
 import { DecimalMoney } from './decimal-money';
 
 type ViewState =
@@ -48,6 +48,7 @@ export class TransactionsPage implements OnInit {
   });
   protected readonly dateRangeError = signal<string | null>(null);
   protected readonly filters = new FormGroup({
+    search: new FormControl('', { nonNullable: true }),
     transactionType: new FormControl<TransactionType | ''>('', { nonNullable: true }),
     fromDate: new FormControl('', { nonNullable: true }),
     toDate: new FormControl('', { nonNullable: true }),
@@ -101,7 +102,7 @@ export class TransactionsPage implements OnInit {
     }
     this.dateRangeError.set(null);
     this.focusAfterPageChange = false;
-    this.query = { ...this.query, ...filters, pageNumber: 1 };
+    this.query = { ...this.query, ...filters, search: filters.search.trim(), pageNumber: 1 };
     this.load();
   }
 
@@ -116,4 +117,5 @@ export class TransactionsPage implements OnInit {
   }
 
   protected readonly typeLabel = transactionTypeLabel;
+  protected readonly statusLabel = transactionStatusLabel;
 }

@@ -3,7 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, provideRouter, Router, RouterStateSnapshot } from '@angular/router';
 import { authGuard, loginDestination } from './auth-guards';
-import { AuthSession } from './auth-service';
+import { AuthService, AuthSession } from './auth-service';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { routes } from '../app.routes';
 
 describe('authentication routing', () => {
   let http: HttpTestingController;
@@ -12,7 +14,7 @@ describe('authentication routing', () => {
   };
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [
-      provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
+      provideHttpClient(), provideHttpClientTesting(), provideRouter(routes),
     ] });
     http = TestBed.inject(HttpTestingController);
   });
@@ -46,6 +48,18 @@ describe('authentication routing', () => {
     http.expectOne('/api/v1/auth/me').flush(session);
     expect(TestBed.inject(Router).serializeUrl(await result as import('@angular/router').UrlTree))
       .toBe('/unauthorized');
+  });
+
+  it.each([true, false])('distinguishes an unknown URL from access denied (signed in: %s)', async signedIn => {
+    const restored = TestBed.inject(AuthService).restore();
+    http.expectOne('/api/v1/auth/me').flush(signedIn ? session : {},
+      signedIn ? undefined : { status: 401, statusText: 'Unauthorized' });
+    await restored;
+    const harness = await RouterTestingHarness.create('/missing-page');
+    expect(TestBed.inject(Router).url).toBe('/missing-page');
+    expect(harness.routeNativeElement?.textContent).toContain('Page not found');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Access denied');
+    expect(harness.routeNativeElement?.querySelector(`a[href="${signedIn ? '/' : '/login'}"]`)).not.toBeNull();
   });
 
   it('selects the backend role home and rejects external, unknown and unauthorized return URLs', () => {

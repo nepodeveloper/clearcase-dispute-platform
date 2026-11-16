@@ -12,11 +12,12 @@ import {
   TransactionDetails,
   TransactionDisputeEligibility,
 } from './transaction-api';
-import { transactionTypeLabel } from './transaction-type-label';
+import { transactionStatusLabel, transactionTypeLabel } from './transaction-type-label';
 import { DecimalMoney } from './decimal-money';
 
 type EligibilityState =
   | { kind: 'loading' }
+  | { kind: 'existing-case' }
   | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'loaded'; result: TransactionDisputeEligibility };
 
@@ -38,6 +39,7 @@ export class TransactionDetailsPage implements OnInit {
   private readonly retries = new Subject<void>();
   protected readonly state = signal<ViewState>({ kind: 'loading' });
   protected readonly typeLabel = transactionTypeLabel;
+  protected readonly statusLabel = transactionStatusLabel;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -47,7 +49,9 @@ export class TransactionDetailsPage implements OnInit {
         return this.retries.pipe(
           startWith(undefined),
           switchMap(() => this.api.getDetails(id).pipe(
-            switchMap((transaction) => this.api.getDisputeEligibility(id).pipe(
+            switchMap((transaction) => transaction.activeDisputeId !== undefined
+              ? of<ViewState>({ kind: 'loaded', transaction, eligibility: { kind: 'existing-case' } })
+              : this.api.getDisputeEligibility(id).pipe(
               map((result): ViewState => ({
                 kind: 'loaded',
                 transaction,

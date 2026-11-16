@@ -4,6 +4,9 @@ using ClearCase.Domain.Transactions;
 
 namespace ClearCase.Application.Disputes;
 
+public sealed record DisputeTransactionView(
+    string Description, string? MerchantName, long AmountMinorUnits, string Currency, DateTimeOffset TransactionDate);
+
 public sealed record DisputeView(
     Guid Id,
     string Reference,
@@ -16,16 +19,11 @@ public sealed record DisputeView(
     DisputeFinancialStatus FinancialStatus,
     DateTimeOffset CreatedAt,
     IReadOnlyList<DisputeEvent> Timeline,
+    DisputeTransactionView Transaction,
     string? ReversalOperationReference = null,
     Chargeback? Chargeback = null,
     string? BankChargeAdjustmentReference = null,
-    long Version = 1)
-{
-    public static DisputeView From(Dispute dispute) =>
-        new(dispute.Id, dispute.Reference, dispute.TransactionId, dispute.Category, dispute.ReasonCode,
-            dispute.Description, dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus,
-            dispute.CreatedAt, dispute.Timeline);
-}
+    long Version = 1);
 
 public enum DisputeAddResult
 {

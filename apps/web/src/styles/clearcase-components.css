@@ -9,9 +9,9 @@ a { color: var(--cc-brand-strong); text-underline-offset: .18em; }
 .cc-page-title { font-size: clamp(1.65rem, 2.4vw, 2.2rem); font-weight: 800; line-height: 1.2; margin: 0; color: var(--cc-ink-strong); }
 .cc-description { color: var(--cc-muted); margin: 7px 0 0; }
 .cc-button { min-height: var(--cc-control-height); padding: 0 18px; border: 1px solid transparent; border-radius: var(--cc-radius-sm); display: inline-flex; justify-content: center; align-items: center; gap: 8px; font-weight: 800; cursor: pointer; transition: background var(--cc-transition); text-decoration: none; }
-.cc-button:disabled { opacity: .58; cursor: not-allowed; }
+.cc-button:disabled, .cc-button[aria-disabled='true'] { opacity: .58; cursor: not-allowed; }
 .cc-button--primary { background: var(--cc-brand); color: #fff; }
-.cc-button--primary:hover:not(:disabled) { background: var(--cc-brand-hover); }
+.cc-button--primary:hover:not(:disabled):not([aria-disabled='true']) { background: var(--cc-brand-hover); }
 .cc-button--secondary { background: #fff; color: var(--cc-brand-strong); border-color: var(--cc-border-strong); }
 .cc-button--danger { background: var(--cc-red); color: #fff; }
 .cc-field { display: grid; gap: 6px; }

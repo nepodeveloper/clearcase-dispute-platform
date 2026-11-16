@@ -3,18 +3,17 @@ import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angula
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
+import { DecimalMoney } from '../transactions/decimal-money';
 import { StatCard, StatusBadge } from '../ui/ui-components';
-import { DisputeApi, DisputeCaseStatus, DisputePage, DisputeQueryError, disputeQueryError } from './dispute-api';
-import { disputeFinancialLabel, disputeStatusLabel } from './dispute-details';
+import { DisputeApi, DisputePage, DisputeQueryError, disputeQueryError } from './dispute-api';
+import { disputeDecisionLabel, disputeFinancialLabel, disputeStatusLabel } from './dispute-details';
 
 type ViewState = { kind: 'loading' } | ({ kind: 'error' } & DisputeQueryError)
   | { kind: 'loaded'; page: DisputePage; loadingMore: boolean; error?: DisputeQueryError };
 
-const finishedStatuses: readonly DisputeCaseStatus[] = ['Closed', 'Rejected', 'ReversalConfirmed'];
-
 @Component({
   selector: 'app-disputes-page',
-  imports: [DatePipe, RouterLink, StatCard, StatusBadge],
+  imports: [DatePipe, DecimalMoney, RouterLink, StatCard, StatusBadge],
   templateUrl: './disputes-page.html',
 })
 export class DisputesPage implements OnInit {
@@ -27,12 +26,13 @@ export class DisputesPage implements OnInit {
   });
   protected readonly shown = computed(() => this.loadedItems()?.length);
   protected readonly finished = computed(() =>
-    this.loadedItems()?.filter(item => finishedStatuses.includes(item.caseStatus)).length);
+    this.loadedItems()?.filter(item => item.caseStatus === 'Closed').length);
   protected readonly inProgress = computed(() =>
-    this.loadedItems()?.filter(item => !finishedStatuses.includes(item.caseStatus)).length);
+    this.loadedItems()?.filter(item => item.caseStatus !== 'Closed').length);
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
   protected readonly financialLabel = disputeFinancialLabel;
+  protected readonly decisionLabel = disputeDecisionLabel;
 
   ngOnInit(): void { this.load(); }
 

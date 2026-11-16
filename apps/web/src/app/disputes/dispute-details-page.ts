@@ -1,8 +1,9 @@
+import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { catchError, map, of, startWith, Subject, switchMap } from 'rxjs';
+import { catchError, filter, interval, map, merge, of, startWith, Subject, switchMap } from 'rxjs';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { StatusBadge } from '../ui/ui-components';
 import { Dispute, DisputeApi, DisputeQueryError, disputeQueryError } from './dispute-api';
@@ -21,8 +22,10 @@ export class DisputeDetailsPage implements OnInit {
   private readonly api = inject(DisputeApi);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly document = inject(DOCUMENT);
   private readonly refreshes = new Subject<void>();
   private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('heading');
+  private focusOnResponse = false;
   protected readonly state = signal<ViewState>({ kind: 'loading' });
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
@@ -32,7 +35,15 @@ export class DisputeDetailsPage implements OnInit {
       switchMap((params) => {
         const id = params.get('id');
         if (id === null) return of<ViewState>({ kind: 'not-found' });
-        return this.refreshes.pipe(startWith(undefined), switchMap(() => {
+        return merge(this.refreshes.pipe(map(() => true)), interval(30_000).pipe(
+          filter(() => {
+            const state = this.state();
+            return this.document.visibilityState === 'visible' && state.kind === 'loaded'
+              && !state.refreshing && state.dispute.caseStatus !== 'Closed';
+          }),
+          map(() => false),
+        )).pipe(startWith(true), switchMap(focus => {
+          this.focusOnResponse = focus;
           const current = this.state();
           const previous = current.kind === 'loaded' && current.dispute.id === id ? current : null;
           return this.api.get(id).pipe(
@@ -52,10 +63,15 @@ export class DisputeDetailsPage implements OnInit {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((state) => {
       this.state.set(state);
-      if (state.kind !== 'loading' && !(state.kind === 'loaded' && state.refreshing))
+      if (this.focusOnResponse && state.kind !== 'loading' && !(state.kind === 'loaded' && state.refreshing)) {
+        this.focusOnResponse = false;
         this.heading()?.nativeElement.focus();
+      }
     });
   }
 
-  protected refresh(): void { this.refreshes.next(); }
+  protected refresh(): void {
+    const state = this.state();
+    if (state.kind !== 'loaded' || !state.refreshing) this.refreshes.next();
+  }
 }
