@@ -7,7 +7,7 @@ import { homeUrl } from './auth-guards';
   selector: 'cc-workspace',
   imports: [RouterLink],
   template: `
-    <section class="cc-card cc-card__body" aria-labelledby="workspace-heading">
+    <section class="cc-empty" aria-labelledby="workspace-heading">
       <h1 id="workspace-heading" tabindex="-1">{{ denied ? 'Access denied' : title }}</h1>
       <p>{{ denied ? 'Your account does not have permission to access that workspace.'
         : 'You are securely signed in. This workspace is not available yet. No cases or financial actions can be processed here.' }}</p>

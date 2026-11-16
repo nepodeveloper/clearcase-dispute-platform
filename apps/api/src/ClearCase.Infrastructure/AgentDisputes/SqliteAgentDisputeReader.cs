@@ -4,6 +4,7 @@ using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Transactions;
+using ClearCase.Infrastructure.SupervisorEscalations;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.AgentDisputes;
@@ -129,6 +130,22 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
         var cardWorkflow = storedCardWorkflow is null ? null : new AgentCardWorkflow(
             storedCardWorkflow.Reference, storedCardWorkflow.ReasonCode,
             storedCardWorkflow.Status.ToString(), storedCardWorkflow.LastOperationOutcome.ToString());
+        var storedEscalation = await context.DisputeEscalations.AsNoTracking()
+            .Where(item => item.DisputeId == disputeId
+                && item.Status != DisputeEscalationStatus.Resolved)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new
+            {
+                item.Id,
+                item.Reference,
+                item.Reason,
+                item.Status,
+                item.CreatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        var activeEscalation = storedEscalation is null ? null : new AgentEscalationSummary(
+            storedEscalation.Id, storedEscalation.Reference, storedEscalation.Reason,
+            storedEscalation.Status.ToString(), storedEscalation.CreatedAt);
 
         return new AgentDisputeDetails(
             row.Id,
@@ -151,6 +168,7 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
             row.ReversalOperationReference,
             row.BankChargeAdjustmentReference,
             cardWorkflow,
+            activeEscalation,
             timeline,
             []);
     }
@@ -158,7 +176,7 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
     public Task<bool> ExistsAsync(Guid disputeId, CancellationToken cancellationToken) =>
         context.Disputes.AsNoTracking().AnyAsync(item => item.Id == disputeId, cancellationToken);
 
-    private static string CustomerReference(Guid customerId)
+    internal static string CustomerReference(Guid customerId)
     {
         var digest = SHA256.HashData(customerId.ToByteArray());
         return $"CUS-{Convert.ToHexString(digest.AsSpan(0, 6))}";

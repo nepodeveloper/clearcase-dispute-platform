@@ -215,6 +215,208 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
             .GetProperty("code").GetString());
     }
 
+    [Fact]
+    public async Task AgentEscalationIsIdempotentAndPublishesOnlySafeProgress()
+    {
+        var caseId = await AddDisputeAsync(TransactionType.CardPurchase, "DSP-ESCALATION-CREATE");
+        const string privateNote = "Standard checks were inconclusive; specialist review is required.";
+        const string idempotencyKey = "agent-escalation-create-1";
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+
+        using var firstResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, idempotencyKey, "Additional investigation required", privateNote));
+        using var first = await ReadJson(firstResponse);
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        var escalationId = first.RootElement.GetProperty("id").GetGuid();
+        Assert.False(string.IsNullOrWhiteSpace(firstResponse.Headers.Location?.ToString()));
+        Assert.Equal("Open", first.RootElement.GetProperty("status").GetString());
+        Assert.Equal(privateNote, first.RootElement.GetProperty("note").GetString());
+
+        using var agentCaseResponse = await agent.GetAsync($"/api/v1/agent/disputes/{caseId}");
+        using var agentCase = await ReadJson(agentCaseResponse);
+        Assert.Equal(escalationId,
+            agentCase.RootElement.GetProperty("activeEscalation").GetProperty("id").GetGuid());
+
+        using var replayResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, idempotencyKey, "Additional investigation required", privateNote));
+        using var replay = await ReadJson(replayResponse);
+        Assert.Equal(HttpStatusCode.Created, replayResponse.StatusCode);
+        Assert.Equal(escalationId, replay.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal("true", replayResponse.Headers.GetValues("Idempotent-Replayed").Single());
+
+        using var changedResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, idempotencyKey, "Additional investigation required",
+            "The same key cannot carry a different internal investigation note."));
+        Assert.Equal(HttpStatusCode.Conflict, changedResponse.StatusCode);
+
+        using var duplicateResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "agent-escalation-create-2", "Additional investigation required",
+            "A second active escalation must not be created for this case."));
+        Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+            var dispute = await database.Disputes.SingleAsync(item => item.Id == caseId);
+            Assert.Equal(DisputeCaseStatus.ManualReview, dispute.CaseStatus);
+            Assert.Equal(DisputeDecisionStatus.Pending, dispute.DecisionStatus);
+            Assert.Equal(DisputeFinancialStatus.NotInitiated, dispute.FinancialStatus);
+            Assert.Equal(2, dispute.Version);
+            var publicEvent = await database.DisputeEvents.SingleAsync(
+                item => item.DisputeId == caseId && item.SequenceNumber == 2);
+            Assert.Equal("SpecialistReview", publicEvent.EventType);
+            Assert.Contains("additional review", publicEvent.PublicDescription, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(privateNote, publicEvent.PublicDescription, StringComparison.Ordinal);
+            var outboxPayload = await database.OutboxMessages
+                .Where(item => item.AggregateId == caseId)
+                .Select(item => item.Payload).SingleAsync();
+            Assert.DoesNotContain(privateNote, outboxPayload, StringComparison.Ordinal);
+        }
+
+        using var customer = await CreateSignedInClientAsync("customer.demo");
+        using var customerResponse = await customer.GetAsync($"/api/v1/disputes/{caseId}");
+        using var customerBody = await ReadJson(customerResponse);
+        Assert.Equal(HttpStatusCode.OK, customerResponse.StatusCode);
+        Assert.Equal("ManualReview", customerBody.RootElement.GetProperty("caseStatus").GetString());
+        Assert.Contains("additional review", customerBody.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(privateNote, customerBody.RootElement.GetRawText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SupervisorMustAcknowledgeBeforeResolvingAndCannotChangeFinancialStatus()
+    {
+        var caseId = await AddDisputeAsync(TransactionType.CardPurchase, "DSP-ESCALATION-REVIEW");
+        const string privateNote = "The initial review needs an independent supervisor assessment.";
+        const string resolutionNote = "Additional checks are complete; the investigation may continue.";
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+        using var createResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "agent-escalation-review-1", "Policy exception review", privateNote));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        using var created = await ReadJson(createResponse);
+        var escalationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var agentQueueDenied = await agent.GetAsync("/api/v1/supervisor/escalations");
+        Assert.Equal(HttpStatusCode.Forbidden, agentQueueDenied.StatusCode);
+        using var customer = await CreateSignedInClientAsync("customer.demo");
+        using var customerQueueDenied = await customer.GetAsync("/api/v1/supervisor/escalations");
+        Assert.Equal(HttpStatusCode.Forbidden, customerQueueDenied.StatusCode);
+        using var anonymous = CreateUnauthenticatedClient();
+        using var anonymousQueueDenied = await anonymous.GetAsync("/api/v1/supervisor/escalations");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousQueueDenied.StatusCode);
+
+        using var supervisor = await CreateSignedInClientAsync("supervisor.demo");
+        using var queueResponse = await supervisor.GetAsync(
+            "/api/v1/supervisor/escalations?search=DSP-ESCALATION-REVIEW&pageSize=10");
+        using var queue = await ReadJson(queueResponse);
+        Assert.Equal(HttpStatusCode.OK, queueResponse.StatusCode);
+        Assert.Equal(escalationId, Assert.Single(queue.RootElement.GetProperty("items").EnumerateArray())
+            .GetProperty("id").GetGuid());
+
+        using var supervisorDetailResponse = await supervisor.GetAsync(
+            $"/api/v1/supervisor/escalations/{escalationId}");
+        using var supervisorDetail = await ReadJson(supervisorDetailResponse);
+        Assert.Equal(HttpStatusCode.OK, supervisorDetailResponse.StatusCode);
+        Assert.Equal(privateNote, supervisorDetail.RootElement.GetProperty("note").GetString());
+
+        using var prematureResolution = await supervisor.SendAsync(CreateResolutionRequest(
+            escalationId, "supervisor-escalation-resolve-early",
+            "The supervisor must acknowledge before recording a resolution."));
+        Assert.Equal(HttpStatusCode.Conflict, prematureResolution.StatusCode);
+
+        using var acknowledgement = CreateAcknowledgementRequest(escalationId, "supervisor-escalation-ack-1");
+        using var acknowledgementResponse = await supervisor.SendAsync(acknowledgement);
+        using var acknowledged = await ReadJson(acknowledgementResponse);
+        Assert.True(acknowledgementResponse.StatusCode == HttpStatusCode.OK,
+            await acknowledgementResponse.Content.ReadAsStringAsync());
+        Assert.Equal("Acknowledged", acknowledged.RootElement.GetProperty("status").GetString());
+        Assert.Equal("33333333-3333-3333-3333-333333333334",
+            acknowledged.RootElement.GetProperty("history")[1].GetProperty("employeeId").GetString());
+        using var acknowledgementReplay = CreateAcknowledgementRequest(escalationId, "supervisor-escalation-ack-1");
+        using var acknowledgementReplayResponse = await supervisor.SendAsync(acknowledgementReplay);
+        Assert.Equal(HttpStatusCode.OK, acknowledgementReplayResponse.StatusCode);
+        Assert.Equal("true", acknowledgementReplayResponse.Headers.GetValues("Idempotent-Replayed").Single());
+
+        using var resolutionResponse = await supervisor.SendAsync(CreateResolutionRequest(
+            escalationId, "supervisor-escalation-resolve-1", resolutionNote));
+        using var resolved = await ReadJson(resolutionResponse);
+        Assert.Equal(HttpStatusCode.OK, resolutionResponse.StatusCode);
+        Assert.Equal("Resolved", resolved.RootElement.GetProperty("status").GetString());
+        Assert.Equal(resolutionNote, resolved.RootElement.GetProperty("history")[2]
+            .GetProperty("privateNote").GetString());
+        Assert.Equal("33333333-3333-3333-3333-333333333334",
+            resolved.RootElement.GetProperty("history")[2].GetProperty("employeeId").GetString());
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+            var dispute = await database.Disputes.SingleAsync(item => item.Id == caseId);
+            Assert.Equal(DisputeCaseStatus.UnderReview, dispute.CaseStatus);
+            Assert.Equal(DisputeDecisionStatus.Pending, dispute.DecisionStatus);
+            Assert.Equal(DisputeFinancialStatus.NotInitiated, dispute.FinancialStatus);
+            Assert.Equal(3, dispute.Version);
+            var timeline = await database.DisputeEvents.AsNoTracking()
+                .Where(item => item.DisputeId == caseId)
+                .OrderBy(item => item.SequenceNumber).ToArrayAsync();
+            Assert.Equal(3, timeline.Length);
+            Assert.Equal("SpecialistReviewComplete", timeline[2].EventType);
+            Assert.DoesNotContain(privateNote, timeline[2].PublicDescription, StringComparison.Ordinal);
+            Assert.DoesNotContain(resolutionNote, timeline[2].PublicDescription, StringComparison.Ordinal);
+            var outboxPayloads = await database.OutboxMessages.AsNoTracking()
+                .Where(item => item.AggregateId == caseId)
+                .Select(item => item.Payload).ToArrayAsync();
+            Assert.Equal(2, outboxPayloads.Length);
+            Assert.DoesNotContain(outboxPayloads, value => value.Contains(privateNote, StringComparison.Ordinal));
+            Assert.DoesNotContain(outboxPayloads, value => value.Contains(resolutionNote, StringComparison.Ordinal));
+            var lastAuditEventId = resolved.RootElement.GetProperty("history")[2]
+                .GetProperty("id").GetGuid();
+            await Assert.ThrowsAsync<SqliteException>(() => database.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE \"DisputeEscalationAuditEvents\" SET \"PrivateNote\" = 'changed' WHERE \"Id\" = {lastAuditEventId}"));
+            await Assert.ThrowsAsync<SqliteException>(() => database.Database.ExecuteSqlInterpolatedAsync(
+                $"DELETE FROM \"DisputeEscalationAuditEvents\" WHERE \"Id\" = {lastAuditEventId}"));
+        }
+
+        using var customerCaseResponse = await customer.GetAsync($"/api/v1/disputes/{caseId}");
+        using var customerCase = await ReadJson(customerCaseResponse);
+        Assert.Equal("UnderReview", customerCase.RootElement.GetProperty("caseStatus").GetString());
+        Assert.Equal("Pending", customerCase.RootElement.GetProperty("decisionStatus").GetString());
+        Assert.Equal("NotInitiated", customerCase.RootElement.GetProperty("financialStatus").GetString());
+        Assert.Contains("Additional review is complete", customerCase.RootElement.GetRawText(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(privateNote, customerCase.RootElement.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain(resolutionNote, customerCase.RootElement.GetRawText(), StringComparison.Ordinal);
+    }
+
+    private static HttpRequestMessage CreateEscalationRequest(
+        Guid caseId, string idempotencyKey, string reason, string note)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/v1/agent/disputes/{caseId}/escalations")
+        {
+            Content = JsonContent.Create(new { reason, note })
+        };
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return request;
+    }
+
+    private static HttpRequestMessage CreateAcknowledgementRequest(Guid escalationId, string idempotencyKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/v1/supervisor/escalations/{escalationId}/acknowledgements");
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return request;
+    }
+
+    private static HttpRequestMessage CreateResolutionRequest(Guid escalationId, string idempotencyKey, string note)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/v1/supervisor/escalations/{escalationId}/resolutions")
+        {
+            Content = JsonContent.Create(new { note })
+        };
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return request;
+    }
+
     private async Task<Guid> AddDisputeAsync(
         TransactionType type, string reference, string customerId = CustomerId)
     {

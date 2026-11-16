@@ -57,6 +57,13 @@ public sealed record AgentCardWorkflow(
     string Status,
     string LastOperationOutcome);
 
+public sealed record AgentEscalationSummary(
+    Guid Id,
+    string Reference,
+    string Reason,
+    string Status,
+    DateTimeOffset CreatedAt);
+
 public sealed record AgentDisputeDetails(
     Guid Id,
     string Reference,
@@ -75,6 +82,7 @@ public sealed record AgentDisputeDetails(
     string? ReversalOperationReference,
     string? BankChargeAdjustmentReference,
     AgentCardWorkflow? CardWorkflow,
+    AgentEscalationSummary? ActiveEscalation,
     IReadOnlyList<AgentTimelineEvent> Timeline,
     IReadOnlyList<InvestigationNote> Notes);
 

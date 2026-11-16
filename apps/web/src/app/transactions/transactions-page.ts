@@ -1,10 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, computed, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
+import { StatCard, StatusBadge } from '../ui/ui-components';
 import { TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
 import { transactionTypeLabel } from './transaction-type-label';
 import { DecimalMoney } from './decimal-money';
@@ -28,9 +29,8 @@ function validationMessages(error: HttpErrorResponse): string[] {
 
 @Component({
   selector: 'app-transactions-page',
-  imports: [ReactiveFormsModule, DecimalMoney, DatePipe, RouterLink],
+  imports: [ReactiveFormsModule, DecimalMoney, DatePipe, RouterLink, StatCard, StatusBadge],
   templateUrl: './transactions-page.html',
-  styleUrl: './transactions-page.css',
 })
 export class TransactionsPage implements OnInit {
   private readonly api = inject(TransactionApi);
@@ -38,6 +38,14 @@ export class TransactionsPage implements OnInit {
   private readonly requests = new Subject<TransactionQuery>();
   @ViewChild('transactionsHeading') private transactionsHeading?: ElementRef<HTMLHeadingElement>;
   protected readonly state = signal<ViewState>({ kind: 'loading' });
+  // Keeps the summary cards steady while the next page or filter result is loading.
+  private readonly lastPage = signal<TransactionPage | null>(null);
+  protected readonly totalCount = computed(() => this.lastPage()?.totalCount ?? '\u2013');
+  protected readonly shownCount = computed(() => this.lastPage()?.items.length ?? '\u2013');
+  protected readonly pageSummary = computed(() => {
+    const page = this.lastPage();
+    return page === null ? 'Loading' : `Page ${page.pageNumber} of ${Math.max(page.totalPages, 1)}`;
+  });
   protected readonly dateRangeError = signal<string | null>(null);
   protected readonly filters = new FormGroup({
     transactionType: new FormControl<TransactionType | ''>('', { nonNullable: true }),
@@ -76,6 +84,7 @@ export class TransactionsPage implements OnInit {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((state) => {
       this.state.set(state);
+      if (state.kind === 'loaded') this.lastPage.set(state.page);
       if (this.focusAfterPageChange && state.kind !== 'loading') {
         this.focusAfterPageChange = false;
         this.transactionsHeading?.nativeElement.focus();

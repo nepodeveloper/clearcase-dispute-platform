@@ -32,4 +32,6 @@ a { color: var(--cc-brand-strong); text-underline-offset: .18em; }
 .cc-status--error { color: var(--cc-danger); background: var(--cc-danger-bg); }
 .cc-empty { padding: 36px 22px; text-align: center; border: 1px dashed var(--cc-border-strong); border-radius: var(--cc-radius-lg); background: var(--cc-surface); color: var(--cc-muted); }
 .cc-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+/* Zero, not a tiny duration: any non-zero value makes every property transition, so an element revealed with
+   `visibility` stays unfocusable for a frame or two after it appears. */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: 0s !important; } }

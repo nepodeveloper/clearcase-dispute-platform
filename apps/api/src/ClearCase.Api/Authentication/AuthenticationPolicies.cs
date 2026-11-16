@@ -6,6 +6,7 @@ public static class AuthenticationPolicies
 {
     public const string CustomerAccess = "customer-access";
     public const string BankEmployeeAccess = "bank-employee-access";
+    public const string AgentAccess = "agent-access";
     public const string SupervisorAccess = "supervisor-access";
 
     public static IServiceCollection AddClearCaseAuthorization(this IServiceCollection services)
@@ -24,6 +25,13 @@ public static class AuthenticationPolicies
                     SyntheticIdentitySeeder.ActorTypeClaimType,
                     SyntheticIdentitySeeder.ActorTypeBankEmployee)
                 .RequireRole(SyntheticIdentitySeeder.AgentRole, SyntheticIdentitySeeder.SupervisorRole));
+
+            options.AddPolicy(AgentAccess, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireClaim(
+                    SyntheticIdentitySeeder.ActorTypeClaimType,
+                    SyntheticIdentitySeeder.ActorTypeBankEmployee)
+                .RequireRole(SyntheticIdentitySeeder.AgentRole));
 
             options.AddPolicy(SupervisorAccess, policy => policy
                 .RequireAuthenticatedUser()

@@ -54,7 +54,24 @@ components:
         occurredAt: { type: string, format: date-time }
         correlationId: { type: string }
         causationId: { type: string }
-        payload: { type: object }
+        payload:
+          type: object
+          description: For specialist review commands, payload conforms to SpecialistReviewProgress.
+    CaseStatus:
+      type: string
+      enum: [Submitted, ManualReview, Closed, UnderReview, MandateVerified, ReversalRequested, ReversalConfirmed, Rejected]
+    SpecialistReviewProgress:
+      type: object
+      required: [disputeId, command, caseStatus, decisionStatus, financialStatus]
+      additionalProperties: false
+      properties:
+        disputeId: { type: string, format: uuid }
+        command:
+          type: string
+          enum: [SpecialistReview, SpecialistReviewComplete]
+        caseStatus: { $ref: '#/components/schemas/CaseStatus' }
+        decisionStatus: { type: string }
+        financialStatus: { type: string }
   messages:
     DisputeSubmitted:
       name: DisputeSubmitted
@@ -65,6 +82,10 @@ components:
     DisputeTransitioned:
       name: DisputeTransitioned
       title: Dispute case state transitioned
+      description: >-
+        SpecialistReview and SpecialistReviewComplete transitions publish only dispute ID,
+        command, and case/decision/financial statuses. Private Agent and Supervisor notes are
+        excluded from the customer timeline and event payload.
       contentType: application/json
       payload:
         $ref: '#/components/schemas/EventEnvelope'

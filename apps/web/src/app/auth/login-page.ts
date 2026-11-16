@@ -19,8 +19,9 @@ import { loginDestination } from './auth-guards';
       <form class="auth-form" [formGroup]="form" (ngSubmit)="submit()" novalidate
         aria-describedby="login-notice" [attr.aria-busy]="auth.loading()">
         <div class="small-mark"><span class="brand-mark" aria-hidden="true">C</span><strong>ClearCase</strong></div>
+        <span class="eyebrow">Welcome back</span>
         <h2 id="login-heading">Sign in to ClearCase</h2>
-        <p>Your workspace is assigned by your authenticated account.</p>
+        <p class="muted">Your workspace is assigned by your authenticated account.</p>
         <div class="cc-field">
           <label for="username">Username</label>
           <input id="username" class="cc-control" formControlName="username" autocomplete="username" required
@@ -33,13 +34,13 @@ import { loginDestination } from './auth-guards';
             formControlName="password" autocomplete="current-password" required
             [attr.aria-invalid]="invalid('password')" [attr.aria-describedby]="invalid('password') ? 'password-error' : null">
           @if (invalid('password')) { <span id="password-error" class="cc-form-error">Enter your password.</span> }
-          <button class="cc-button cc-button--secondary" type="button" aria-controls="password"
+          <button class="cc-button cc-button--secondary password-toggle" type="button" aria-controls="password"
             [attr.aria-pressed]="showPassword()" (click)="showPassword.set(!showPassword())">
             {{ showPassword() ? 'Hide password' : 'Show password' }}
           </button>
         </div>
         @if (auth.error()) { <p class="cc-form-error" role="alert">{{ auth.error() }}</p> }
-        <button class="cc-button cc-button--primary" type="submit" [disabled]="auth.loading()">
+        <button class="cc-button cc-button--primary full" type="submit" [disabled]="auth.loading()">
           {{ auth.loading() ? 'Signing in...' : 'Sign in' }}
         </button>
         <div class="security-copy" id="login-notice">Local assessment accounts only. No real banking access or money movement.

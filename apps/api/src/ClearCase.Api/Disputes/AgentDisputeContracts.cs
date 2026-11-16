@@ -54,6 +54,7 @@ public sealed record AgentDisputeDetailResponse(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReversalOperationReference,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BankChargeAdjustmentReference,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentCardWorkflowResponse? CardWorkflow,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentEscalationResponse? ActiveEscalation,
     IReadOnlyList<AgentTimelineEventResponse> Timeline,
     IReadOnlyList<InvestigationNoteResponse> Notes)
 {
@@ -65,8 +66,20 @@ public sealed record AgentDisputeDetailResponse(
             AgentTransactionResponse.From(detail.Transaction), detail.ReversalOperationReference,
             detail.BankChargeAdjustmentReference,
             detail.CardWorkflow is { } workflow ? AgentCardWorkflowResponse.From(workflow) : null,
+            detail.ActiveEscalation is { } escalation ? AgentEscalationResponse.From(escalation) : null,
             detail.Timeline.Select(AgentTimelineEventResponse.From).ToArray(),
             detail.Notes.Select(InvestigationNoteResponse.From).ToArray());
+}
+
+public sealed record AgentEscalationResponse(
+    Guid Id,
+    string Reference,
+    string Reason,
+    string Status,
+    DateTimeOffset CreatedAt)
+{
+    public static AgentEscalationResponse From(AgentEscalationSummary escalation) =>
+        new(escalation.Id, escalation.Reference, escalation.Reason, escalation.Status, escalation.CreatedAt);
 }
 
 public sealed record AgentTransactionResponse(
