@@ -47,6 +47,8 @@ class ReleaseSimulatorTests(unittest.TestCase):
         self.assertEqual(BASELINE, state["production"]["currentDigest"])
         self.assertEqual(0, state["production"]["trafficPercentNew"])
         self.assertEqual("telemetry", state["alerts"][0]["reason"])
+        readings = state["measurements"]["prod"]
+        self.assertGreater(readings["metrics"]["http5xxPercent"], readings["limits"]["http5xxPercent"])
         self.assertTrue(any(e["event"] == "traffic_rolled_back" for e in state["events"]))
 
     def test_earlier_stage_failure_blocks_promotion(self):
