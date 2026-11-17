@@ -30,8 +30,8 @@ public static class DisputeEscalationRules
         DisputeCaseStatus caseStatus,
         DisputeDecisionStatus decisionStatus,
         DisputeFinancialStatus financialStatus) =>
-        caseStatus is not (DisputeCaseStatus.Closed or DisputeCaseStatus.Rejected
-            or DisputeCaseStatus.ReversalConfirmed)
+        DisputeCaseRules.IsOpen(caseStatus)
+        && caseStatus is not (DisputeCaseStatus.Rejected or DisputeCaseStatus.ReversalConfirmed)
         && decisionStatus == DisputeDecisionStatus.Pending
         && financialStatus == DisputeFinancialStatus.NotInitiated;
 
