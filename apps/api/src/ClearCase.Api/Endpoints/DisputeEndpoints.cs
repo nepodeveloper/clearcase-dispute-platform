@@ -105,8 +105,11 @@ public static class DisputeEndpoints
         context.Response.Headers.CacheControl = "private, no-store";
         var errors = new List<QueryError>();
         if (!context.Request.Headers.TryGetValue(IdempotencyKeyHeader, out var keyValues)
-            || keyValues.Count != 1 || !IsValidIdempotencyKey(keyValues[0]))
+            || keyValues.Count == 0)
             errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.required",
+                "Send an Idempotency-Key header to safely retry this submission."));
+        else if (keyValues.Count != 1 || !IsValidIdempotencyKey(keyValues[0]))
+            errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.invalid",
                 $"Send exactly one Idempotency-Key of 1 to {IdempotencyKeyMaxLength} visible ASCII characters."));
         if (!Guid.TryParse(request.TransactionId, out var transactionId))
             errors.Add(new("/transactionId", "transactionId.invalid", "Enter a valid transaction ID."));
