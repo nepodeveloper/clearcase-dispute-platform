@@ -145,6 +145,10 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
         if (current is null) return null;
         if (expectedVersion is { } expected && current.Version != expected)
             throw new DisputeConcurrencyConflictException();
+        if (!DisputeEscalationRules.CanProcess(!await context.DisputeEscalations
+                .AnyAsync(item => item.DisputeId == disputeId
+                    && item.Status != DisputeEscalationStatus.Resolved, cancellationToken)))
+            throw new ActiveDisputeEscalationException();
         var next = await transition(current);
         var item = await context.Disputes.SingleAsync(
             item => item.Id == disputeId && item.CustomerId == customerId, cancellationToken);
