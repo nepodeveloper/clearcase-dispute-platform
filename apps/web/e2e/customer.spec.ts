@@ -55,8 +55,11 @@ test('customer completes the persisted journey for all categories, with filterin
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
-  expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe('2026-11-01');
-  await expect(page.getByLabel('From date', { exact: true })).toHaveValue('01 Nov 2026');
+  expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe(fromDate);
+  const expectedFromDate = new Date(`${fromDate}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+  await expect(page.getByLabel('From date', { exact: true })).toHaveValue(expectedFromDate);
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'

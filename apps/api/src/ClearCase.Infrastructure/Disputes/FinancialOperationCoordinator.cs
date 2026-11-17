@@ -64,9 +64,7 @@ public sealed class SqliteFinancialOperationCoordinator(
     IDebitOrderProcessingStore debitOrders,
     IBankChargeProcessingStore bankCharges,
     IChargebackProcessingStore chargebacks,
-    IDebitOrderProcessingGateway debitGateway,
-    IBankChargeAdjustmentGateway bankGateway,
-    ICardNetworkGateway cardGateway,
+    IEnumerable<IFinancialOperationStrategy> strategies,
     TimeProvider clock,
     ILogger<SqliteFinancialOperationCoordinator> logger) : IFinancialOperationCoordinator
 {
@@ -84,16 +82,8 @@ public sealed class SqliteFinancialOperationCoordinator(
     public async Task<Guid?> ScheduleAsync(
         FinancialOperationRequest request, CancellationToken cancellationToken)
     {
-        // No production adapter has been integrated. A missing adapter is 503, not an
-        // operation that pretends to be submitted or financially confirmed.
-        if (request.Kind == FinancialOperationKind.DebitReversal
-                && debitGateway is UnavailableDisputeProcessingGateway
-            || request.Kind == FinancialOperationKind.BankChargeAdjustment
-                && bankGateway is UnavailableDisputeProcessingGateway
-            || (request.Kind is FinancialOperationKind.CardNetworkInitiate
-                or FinancialOperationKind.CardNetworkForwardToAcquirer
-                or FinancialOperationKind.CardNetworkSettlement)
-                && cardGateway is UnavailableDisputeProcessingGateway)
+        // Fail closed before persisting an intent when the provider is unavailable.
+        if (!ResolveStrategy(request.Kind).IsAvailable)
             throw new DisputeProcessingUnavailableException();
 
         await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
@@ -192,7 +182,9 @@ public sealed class SqliteFinancialOperationCoordinator(
             try
             {
                 // No database transaction is active during the external call.
-                outcome = await ExecuteAdapterAsync(current, cancellationToken);
+                outcome = await ResolveStrategy(current.Kind).ExecuteAsync(
+                    new FinancialOperationExecution(current.DisputeId, current.Kind, current.OperationReference),
+                    cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -234,23 +226,9 @@ public sealed class SqliteFinancialOperationCoordinator(
                 .SetProperty(item => item.LeaseUntilAt, (DateTimeOffset?)null), cancellationToken);
     }
 
-    private async Task<string> ExecuteAdapterAsync(
-        PersistedFinancialOperation intent, CancellationToken cancellationToken) =>
-        intent.Kind switch
-        {
-            FinancialOperationKind.DebitReversal =>
-                (await debitGateway.ReverseAsync(intent.OperationReference, cancellationToken)).ToString(),
-            FinancialOperationKind.BankChargeAdjustment =>
-                (await bankGateway.AdjustAsync(intent.OperationReference, cancellationToken)).ToString(),
-            FinancialOperationKind.CardNetworkInitiate or
-                FinancialOperationKind.CardNetworkForwardToAcquirer or
-                FinancialOperationKind.CardNetworkSettlement =>
-                (await cardGateway.ExecuteAsync(
-                    new CardNetworkRequest(intent.OperationReference,
-                        $"MOCK-CB-{intent.DisputeId:N}", CardCommand(intent.Kind)),
-                    cancellationToken)).ToString(),
-            _ => throw new InvalidOperationException("Unrecognised financial operation kind.")
-        };
+    private IFinancialOperationStrategy ResolveStrategy(FinancialOperationKind kind) =>
+        strategies.SingleOrDefault(strategy => strategy.Supports(kind))
+        ?? throw new DisputeProcessingUnavailableException();
 
     private async Task ApplyRecordedResultAsync(
         PersistedFinancialOperation intent, string outcome, CancellationToken cancellationToken)

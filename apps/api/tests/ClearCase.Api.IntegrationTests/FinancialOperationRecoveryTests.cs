@@ -118,7 +118,12 @@ public sealed class FinancialOperationRecoveryTests
         return new SqliteFinancialOperationCoordinator(context, disputes, disputes,
             new SqliteBankChargeProcessingStore(context, disputes),
             new SqliteChargebackProcessingStore(context, disputes),
-            gateway, new MockBankChargeAdjustmentGateway(), new MockCardNetworkGateway(),
+            new IFinancialOperationStrategy[]
+            {
+                new DebitReversalStrategy(gateway),
+                new BankChargeAdjustmentStrategy(new MockBankChargeAdjustmentGateway()),
+                new CardNetworkStrategy(new MockCardNetworkGateway())
+            },
             TimeProvider.System, NullLogger<SqliteFinancialOperationCoordinator>.Instance);
     }
 
