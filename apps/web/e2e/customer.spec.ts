@@ -177,7 +177,7 @@ test('My disputes consumes the opaque API cursor and recovers from an offline re
     const eligibility: TransactionDisputeEligibility = await (await page.request.get(`/api/v1/transactions/${transaction.id}/dispute-eligibility`)).json();
     if (eligibility.outcome === 'Ineligible') continue;
     const created = await page.request.post('/api/v1/disputes', {
-      headers: { 'X-CSRF-TOKEN': session.csrfToken },
+      headers: { 'X-CSRF-TOKEN': session.csrfToken, 'Idempotency-Key': `e2e-cursor-${transaction.id}` },
       data: { transactionId: transaction.id, reasonCode: eligibility.availableReasons[0].code, description },
     });
     expect(created.status()).toBe(201);
@@ -230,7 +230,7 @@ test('customer navigation, session expiry and ownership remain enforced', async 
     const session: AuthSession = await (await page.request.get('/api/v1/auth/me')).json();
     const eligibility: TransactionDisputeEligibility = await (await page.request.get(`/api/v1/transactions/${transactionId(12)}/dispute-eligibility`)).json();
     const response = await page.request.post('/api/v1/disputes', {
-      headers: { 'X-CSRF-TOKEN': session.csrfToken },
+      headers: { 'X-CSRF-TOKEN': session.csrfToken, 'Idempotency-Key': 'e2e-ownership-case' },
       data: { transactionId: transactionId(12), reasonCode: eligibility.availableReasons[0].code, description },
     });
     expect(response.status()).toBe(201);
@@ -250,11 +250,12 @@ test('customer navigation, session expiry and ownership remain enforced', async 
   expect((await page.request.get(`/api/v1/transactions/${owned.transactionId}/dispute-eligibility`)).status()).toBe(404);
   const other: AuthSession = await (await page.request.get('/api/v1/auth/me')).json();
   const crossCustomer = await page.request.post('/api/v1/disputes', {
-    headers: { 'X-CSRF-TOKEN': other.csrfToken },
+    headers: { 'X-CSRF-TOKEN': other.csrfToken, 'Idempotency-Key': 'e2e-ownership-cross-customer' },
     data: { transactionId: owned.transactionId, reasonCode: 'duplicateCharge', description },
   });
   expect(crossCustomer.status()).toBe(422);
   const withoutCsrf = await page.request.post('/api/v1/disputes', {
+    headers: { 'Idempotency-Key': 'e2e-no-csrf-rejection' },
     data: { transactionId: transactionId(99), reasonCode: 'duplicateCharge', description },
   });
   expect(withoutCsrf.status()).toBe(400);
