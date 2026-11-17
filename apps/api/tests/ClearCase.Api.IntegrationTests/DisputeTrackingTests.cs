@@ -453,7 +453,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
 
     private static async Task<JsonElement> Submit(HttpClient client, int transaction, string reason)
     {
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = $"00000000-0000-0000-0000-{transaction:D12}", reasonCode = reason,
             description = "Please investigate this transaction and explain the charge."
