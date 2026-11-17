@@ -1,6 +1,8 @@
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Chargebacks;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Chargebacks;
+using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +23,11 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
         if (current is null) return null;
         if (command.ExpectedVersion is { } expected && current.Version != expected)
             throw new DisputeConcurrencyConflictException();
+        var hasActiveEscalation = await context.DisputeEscalations.AnyAsync(
+            item => item.DisputeId == command.DisputeId
+                && item.Status != DisputeEscalationStatus.Resolved, cancellationToken);
+        if (!DisputeEscalationRules.CanProcess(hasActiveEscalation))
+            throw new ActiveDisputeEscalationException();
         var next = await transition(current);
         var item = await context.Disputes.Include(item => item.Chargeback).SingleAsync(
             item => item.Id == command.DisputeId && item.CustomerId == customerId, cancellationToken);

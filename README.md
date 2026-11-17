@@ -208,6 +208,19 @@ Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview
 
 For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
 
+## Escalation consistency across every processing path (PR-31 follow-up)
+
+All three persisted processing paths now reject mutations while an escalation is Open or
+Acknowledged. The check occurs inside the SQLite write transaction, before invoking the
+workflow transition or writing timeline, audit or outbox records. It applies to staff
+commands **and** Development/Testing-only local simulation endpoints, which return
+`409 dispute.activeEscalation` instead of bypassing the Agent-level guard.
+
+Resolution remains governed by `DisputeEscalationRules.CanResolve`, including a pending
+decision and financially untouched `ManualReview` case. New integration tests verify
+blocking across workflows, racing Supervisor resolutions, and a Supervisor resolution
+contending with a legacy case-closure writer. No database migration is needed.
+
 ## Supervisor escalation hardening (PR-30)
 
 Agent creation and idempotent replay return an Agent-safe escalation DTO. It contains the
