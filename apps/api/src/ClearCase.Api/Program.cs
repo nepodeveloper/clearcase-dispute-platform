@@ -128,6 +128,9 @@ builder.Services.AddTransactionPersistence(
     builder.Environment.IsDevelopment());
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<OutboxPublisherBackgroundService>();
+if (!builder.Environment.IsEnvironment("Testing")
+    && builder.Configuration.GetValue<bool>("FinancialOperations:WorkerEnabled"))
+    builder.Services.AddHostedService<FinancialOperationBackgroundService>();
 if (builder.Configuration.GetValue<bool>("Messaging:Kafka:Enabled"))
 {
     builder.Services.AddKafkaOutbox(builder.Configuration);
