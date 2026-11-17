@@ -174,6 +174,11 @@ export class InvestigationPage {
     void this.loadDispute();
   }
 
+  protected async commandCompleted(label: string): Promise<void> {
+    this.confirmation.set(`${label} recorded. The customer's public timeline will reflect the authoritative case transition; no real funds moved.`);
+    await this.loadDispute();
+  }
+
   protected async addNote(event: Event): Promise<void> {
     event.preventDefault();
     if (this.notePending()) return;
