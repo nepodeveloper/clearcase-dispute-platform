@@ -96,6 +96,85 @@ public sealed class OutboxDispatchTests
         Assert.NotNull((await restartedContext.OutboxMessages.AsNoTracking().SingleAsync()).PublishedAt);
     }
 
+    [Fact]
+    public async Task ExhaustedMessageIsParkedAndCanBeAuditedRequeuedWithoutChangingEventIdentity()
+    {
+        await using var database = await SeedAsync();
+        var clock = new MutableTimeProvider(OccurredAt.AddMinutes(1));
+        await using var context = database.CreateContext();
+        var store = new SqliteOutboxStore(context);
+        var failed = new AlwaysFailPublisher();
+        var dispatcher = new OutboxDispatcher(store, failed, clock, NullLogger<OutboxDispatcher>.Instance);
+        var eventId = (await context.OutboxMessages.AsNoTracking().SingleAsync()).EventId;
+
+        for (var attempt = 1; attempt <= OutboxDispatcher.MaximumDeliveryAttempts; attempt++)
+        {
+            Assert.False(await dispatcher.DispatchNextAsync(default));
+            clock.Advance(TimeSpan.FromMinutes(6));
+        }
+        Assert.Equal(OutboxDispatcher.MaximumDeliveryAttempts, failed.Attempts);
+        var parked = await context.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(eventId, parked.EventId);
+        Assert.NotNull(parked.ParkedAt);
+        Assert.Equal("delivery.attemptsExhausted", parked.ParkReasonCode);
+        Assert.Null(parked.PublishedAt);
+        Assert.Null(parked.LeaseId);
+        Assert.Null(parked.NextAttemptAt);
+        Assert.False(await dispatcher.DispatchNextAsync(default));
+        Assert.Single(await store.ListParkedAsync(50, default));
+
+        var employee = Guid.NewGuid();
+        Assert.Equal(OutboxRequeueOutcome.Requeued, await store.RequeueAsync(
+            eventId, employee, "Reviewed broker state; safe to replay this mock event.",
+            clock.GetUtcNow(), default));
+        Assert.Equal(OutboxRequeueOutcome.NotParked, await store.RequeueAsync(
+            eventId, employee, "Duplicate operational recovery must be blocked.",
+            clock.GetUtcNow(), default));
+        var audit = await context.Set<PersistedOutboxRecoveryAudit>().AsNoTracking().SingleAsync();
+        Assert.Equal(employee, audit.EmployeeId);
+        Assert.Equal(eventId, audit.EventId);
+        Assert.Equal(0, (await context.OutboxMessages.AsNoTracking().SingleAsync()).Attempts);
+        Assert.Empty(await store.ListParkedAsync(50, default));
+
+        var recovered = new OutboxDispatcher(store,
+            new LocalOutboxPublisher(NullLogger<LocalOutboxPublisher>.Instance),
+            clock, NullLogger<OutboxDispatcher>.Instance);
+        Assert.True(await recovered.DispatchNextAsync(default));
+        var finished = await context.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(eventId, finished.EventId);
+        Assert.Equal(1, finished.Attempts);
+        Assert.NotNull(finished.PublishedAt);
+        Assert.Single(await context.Set<PersistedOutboxRecoveryAudit>().ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ParkingRequiresCurrentLeaseAndFencesStaleAcknowledgments()
+    {
+        await using var database = await SeedAsync();
+        await using var context = database.CreateContext();
+        var store = new SqliteOutboxStore(context);
+        var now = OccurredAt.AddMinutes(1);
+        var claim = (await store.ClaimNextAsync(now, TimeSpan.FromMinutes(2), default))!;
+        Assert.NotNull(claim);
+        Assert.False(await store.ParkAsync(claim.Message.EventId, Guid.NewGuid(),
+            now, "delivery.attemptsExhausted", default));
+        Assert.True(await store.ParkAsync(claim.Message.EventId, claim.LeaseId,
+            now, "delivery.attemptsExhausted", default));
+        Assert.False(await store.MarkPublishedAsync(claim.Message.EventId,
+            claim.LeaseId, now, default));
+        Assert.Null(await store.ClaimNextAsync(now.AddDays(1), TimeSpan.FromMinutes(2), default));
+    }
+
+    private sealed class AlwaysFailPublisher : IOutboxPublisher
+    {
+        public int Attempts { get; private set; }
+        public Task PublishAsync(OutboxEvent message, CancellationToken cancellationToken)
+        {
+            Attempts++;
+            throw new InvalidOperationException("Synthetic local outbox failure.");
+        }
+    }
+
     private static async Task<TemporaryDatabase> SeedAsync()
     {
         var database = new TemporaryDatabase();
