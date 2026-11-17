@@ -22,12 +22,28 @@ internal static class OutboxPersistenceModel
         message.Property(item => item.NextAttemptAt).HasConversion(
             value => value.HasValue ? value.Value.UtcTicks : (long?)null,
             value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
+        message.Property(item => item.ParkedAt).HasConversion(
+            value => value.HasValue ? value.Value.UtcTicks : (long?)null,
+            value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
+        message.Property(item => item.ParkReasonCode).HasMaxLength(64);
         message.Property(item => item.PublishedAt).HasConversion(
             value => value.HasValue ? value.Value.UtcTicks : (long?)null,
             value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
         message.HasIndex(item => new { item.PublishedAt, item.OccurredAt });
         message.HasIndex(item => new { item.PublishedAt, item.NextAttemptAt, item.LeaseUntilAt, item.OccurredAt });
         message.HasIndex(item => new { item.AggregateId, item.AggregateVersion }).IsUnique();
+        message.HasIndex(item => new { item.ParkedAt, item.OccurredAt });
+
+        var recovery = modelBuilder.Entity<PersistedOutboxRecoveryAudit>();
+        recovery.ToTable("OutboxRecoveryAudits");
+        recovery.HasKey(item => item.Id);
+        recovery.Property(item => item.Reason).HasMaxLength(500).IsRequired();
+        recovery.Property(item => item.OccurredAt).HasConversion(
+            value => value.UtcTicks,
+            value => new DateTimeOffset(value, TimeSpan.Zero));
+        recovery.HasIndex(item => new { item.EventId, item.OccurredAt });
+        recovery.HasOne<PersistedOutboxMessage>().WithMany()
+            .HasForeignKey(item => item.EventId).OnDelete(DeleteBehavior.Restrict);
         message.HasOne<PersistedDispute>().WithMany()
             .HasForeignKey(item => item.AggregateId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -49,6 +65,8 @@ public sealed class PersistedOutboxMessage
     public Guid? LeaseId { get; set; }
     public DateTimeOffset? LeaseUntilAt { get; set; }
     public DateTimeOffset? NextAttemptAt { get; set; }
+    public DateTimeOffset? ParkedAt { get; set; }
+    public string? ParkReasonCode { get; set; }
 
     public static PersistedOutboxMessage Submitted(PersistedDispute dispute, string correlationId) => Create(
         dispute, "dispute.submitted.v1", dispute.CreatedAt, correlationId, new
@@ -83,4 +101,12 @@ public sealed class PersistedOutboxMessage
         Payload = JsonSerializer.Serialize(payload),
         OccurredAt = occurredAt
     };
+}
+public sealed class PersistedOutboxRecoveryAudit
+{
+    public Guid Id { get; set; }
+    public Guid EventId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public DateTimeOffset OccurredAt { get; set; }
 }
