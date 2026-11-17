@@ -60,6 +60,26 @@ public sealed class DisputeLifecycleTests
     }
 
     [Fact]
+    public void SpecialistReferralAndResolutionUseCanonicalSafeEvents()
+    {
+        var original = new DisputeLifecycle(Guid.NewGuid(), DisputeCaseStatus.Submitted,
+            DisputeDecisionStatus.Pending, DisputeFinancialStatus.NotInitiated, 1, 1);
+        var referral = original.ReferForSpecialistReview(OccurredAt, Guid.NewGuid());
+        Assert.Equal("SpecialistReview", referral.Event.EventType);
+        Assert.Equal("dispute.specialist-review.v1", referral.EnvelopeEventType);
+        Assert.Equal(DisputeCaseStatus.ManualReview, referral.Next.CaseStatus);
+        var completed = referral.Next.ResumeAfterSpecialistReview(OccurredAt.AddMinutes(1), Guid.NewGuid());
+        Assert.Equal("SpecialistReviewComplete", completed.Event.EventType);
+        Assert.Equal("dispute.specialist-review-complete.v1", completed.EnvelopeEventType);
+        Assert.Equal(DisputeCaseStatus.UnderReview, completed.Next.CaseStatus);
+        Assert.Equal(3, completed.Next.Version);
+        Assert.Equal(3, completed.Event.SequenceNumber);
+
+        Assert.Throws<InvalidDisputeLifecycleTransitionException>(() =>
+            original.ResumeAfterSpecialistReview(OccurredAt, Guid.NewGuid()));
+    }
+
+    [Fact]
     public void ClosingARejectedDisputePreservesDecisionAndFinancialTruth()
     {
         var aggregate = new DisputeLifecycle(Guid.NewGuid(), DisputeCaseStatus.Rejected,
