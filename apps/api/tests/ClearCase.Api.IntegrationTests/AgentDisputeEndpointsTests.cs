@@ -15,6 +15,7 @@ using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
