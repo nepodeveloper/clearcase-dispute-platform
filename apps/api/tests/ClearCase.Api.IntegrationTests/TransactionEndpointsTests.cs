@@ -226,7 +226,10 @@ public sealed class TransactionEndpointsTests : IClassFixture<SqliteWebApplicati
             builder.UseEnvironment("Production");
             builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
                 new Dictionary<string, string?> { ["Demo:CustomerId"] = "11111111-1111-1111-1111-111111111111" }));
-        }).CreateClient();
+        }).CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Add("X-Customer-ID", "demo");
         using var response = await client.SendAsync(request);
