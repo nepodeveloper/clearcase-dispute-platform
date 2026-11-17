@@ -19,6 +19,9 @@ stages:
     - checkout: self
     - bash: |
         set -euo pipefail
+        test "$(Build.SourceBranch)" = "refs/heads/main"
+        python3 scripts/ci/repository_policy.py
+        python3 -m unittest discover -s scripts/ci -p 'test_*.py'
         python3 scripts/ci/release_simulator.py prepare --state "$(Build.ArtifactStagingDirectory)/release.json" --commit "$(Build.SourceVersion)"
       displayName: Prepare immutable synthetic candidate
     - publish: $(Build.ArtifactStagingDirectory)/release.json
