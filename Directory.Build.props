@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditLevel>high</NuGetAuditLevel>
+    <!-- Nullable dereferences and uninitialized reference properties block releases. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS8602;CS8618</WarningsAsErrors>
+  </PropertyGroup>
+</Project>
