@@ -99,6 +99,16 @@ See [release evidence and rollback checklist](docs/implementation/RELEASE_EVIDEN
 for exact commands, evidence artifacts and the distinctions between implemented
 simulation capabilities and missing production banking controls.
 
+## Time-relative synthetic demo fixtures (PR-38)
+
+New Development/Testing demo databases seed transactions relative to the current
+UTC clock (yesterday through the preceding month) rather than a hardcoded 2026 date.
+The three dispute categories retain deterministic fixture IDs, explicit eligibility
+exceptions and a repeatable customer/Agent mock-outcome journey. All records are
+insert-only; retained databases are **not** silently rewritten. Use a fresh,
+explicitly disposable demo database to re-seed historical fixtures.
+See [demo scenarios](docs/implementation/DEMO_SCENARIOS.md).
+
 ## Prerequisites
 
 - .NET 10 SDK
