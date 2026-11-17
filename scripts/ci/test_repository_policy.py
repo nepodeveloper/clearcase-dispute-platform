@@ -19,7 +19,7 @@ class RepositoryPolicyTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("NuGetAuditLevel=high npm audit --omit=dev --audit-level=high test:e2e Migration coverage.cobertura.xml")
             config = root / ".ai/ai-review.config.json"
-            config.parent.mkdir(parents=True)
+            config.parent.mkdir(parents=True, exist_ok=True)
             settings = {
                 "runAIReview": True,
                 "executionMode": "pipeline",
@@ -41,7 +41,7 @@ class RepositoryPolicyTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("")
             config = root / ".ai/ai-review.config.json"
-            config.parent.mkdir(parents=True)
+            config.parent.mkdir(parents=True, exist_ok=True)
             config.write_text((ROOT / ".ai/ai-review.config.json").read_text())
             self.assertTrue(any("Missing mandatory GitHub CI evidence gate" in x for x in validate(root)))
 
