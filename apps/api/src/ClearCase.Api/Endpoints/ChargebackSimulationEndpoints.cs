@@ -76,11 +76,11 @@ public static class ChargebackSimulationEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(id, out var disputeId))
-            return DisputeEndpoints.Problem(context, 400, "Invalid dispute ID", "dispute.invalidId",
+            return ApiProblem.Create(context, 400, "Invalid dispute ID", "dispute.invalidId",
                 errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
         if (!Enum.TryParse<ChargebackCommand>(request.Command, out var command)
             || !Enum.IsDefined(command) || request.Command != command.ToString())
-            return DisputeEndpoints.Problem(context, 400, "Invalid chargeback command", "chargeback.invalidRequest",
+            return ApiProblem.Create(context, 400, "Invalid chargeback command", "chargeback.invalidRequest",
                 errors: [new("/command", "command.invalid", "Select a supported simulation command.")]);
         var errors = new List<QueryError>();
         if (request.ExpectedVersion is <= 0)
@@ -88,29 +88,29 @@ public static class ChargebackSimulationEndpoints
         RepresentmentEvidenceValidation.Validate(request.Command, request.Evidence, errors,
             out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
-            return DisputeEndpoints.Problem(context, 400, "Invalid representment metadata", "chargeback.invalidRequest", errors: errors);
+            return ApiProblem.Create(context, 400, "Invalid representment metadata", "chargeback.invalidRequest", errors: errors);
         try
         {
             var dispute = await handler.HandleAsync(new ChargebackProcessingCommand(
                 disputeId, command, evidenceId, evidenceKind,
                 (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!, request.ExpectedVersion), cancellationToken);
             return dispute is null
-                ? DisputeEndpoints.Problem(context, 404, "Dispute not found", "dispute.notFound")
+                ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
                 : TypedResults.Ok(DisputeResponse.From(dispute));
         }
         catch (InvalidChargebackTransitionException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Invalid chargeback transition",
+            return ApiProblem.Create(context, 409, "Invalid chargeback transition",
                 "chargeback.invalidTransition", "This action is not allowed or requires further review.");
         }
         catch (ActiveDisputeEscalationException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Supervisor review is pending",
+            return ApiProblem.Create(context, 409, "Supervisor review is pending",
                 "dispute.activeEscalation", "Resolve the active escalation before continuing case processing.");
         }
         catch (DisputeConcurrencyConflictException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
+            return ApiProblem.Create(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
                 "The dispute changed since it was read. Refresh the case before trying again.");
         }
     }
