@@ -215,12 +215,13 @@ if (app.Environment.IsDevelopment())
 
 if (trustedProxyAddresses.Length > 0)
     app.UseForwardedHeaders();
+// Security headers also apply to redirects, which short-circuit downstream middleware.
+app.UseMiddleware<ApiSecurityHeadersMiddleware>();
 if (app.Environment.IsProduction())
 {
     app.UseHsts();
     app.UseHttpsRedirection();
 }
-app.UseMiddleware<ApiSecurityHeadersMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
