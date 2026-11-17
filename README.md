@@ -1,3 +1,35 @@
+## Durable financial execution intents (PR-35)
+
+Financial gateway commands are now scheduled as unique, durable
+`FinancialOperationIntents` **before** the adapter is called. The SQLite transaction
+commits the operation reference, original case version, employee/correlation identity
+and initial `Pending` state, then closes. A fenced worker claims the intent
+(`Dispatched`), invokes the existing mock adapter **outside the dispute transaction**,
+persists its result (`ResultRecorded`), and only then applies the domain transition,
+timeline, audit and outbox. The API processes the mock intent inline for existing demo
+journeys; a separate worker can resume pending work after restart using
+`FinancialOperations:WorkerEnabled=true` (off by default, and disabled in Testing).
+
+**Never blindly resend financial operations.** If a worker crashes or is cancelled
+after dispatch, the expired `Dispatched` lease becomes an **Unknown** outcome;
+recovery records it against the existing operation reference rather than calling the
+adapter again. If a result was persisted but the case update interrupted, the worker
+replays that result and writes the state once, never the gateway call. A stable operation
+reference is unique per case/command. Correlation and audit remain intact.
+
+This supports debit reversal, bank-fee adjustment and card network
+initiation/forwarding/settlement with the existing mock adapters. It does **not**
+enable real banking integrations: production has unavailable gateways and retains
+its fail-closed behavior. Gateway timeout remains ambiguous, not an assumed failure.
+Reconciliation with an authoritative bank must precede any real retry.
+
+Apply migration `20261117092000_AddFinancialOperationIntents` before starting the
+new worker. Monitor `Pending`, `Dispatched` expired leases, `ResultRecorded`
+and `OutcomeUnknown` cases. Require supervised remediation for unknown outcomes.
+Stop the worker and preserve the intent records before any downgrade; rolling back
+the table would lose financial recovery metadata and is unsafe with outstanding
+operations.
+
 ## Kafka poison-record handling (PR-34)
 
 The optional Kafka consumer validates the versioned envelope before any side effect.
