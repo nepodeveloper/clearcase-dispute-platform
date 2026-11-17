@@ -56,9 +56,10 @@ test('customer completes the persisted journey for all categories, with filterin
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
   expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe(fromDate);
-  const expectedFromDate = new Date(`${fromDate}T00:00:00Z`).toLocaleDateString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
-  });
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [fromYear, fromMonth, fromDay] = fromDate.split('-');
+  const expectedFromDate = `${fromDay} ${months[Number(fromMonth) - 1]} ${fromYear}`;
   await expect(page.getByLabel('From date', { exact: true })).toHaveValue(expectedFromDate);
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
