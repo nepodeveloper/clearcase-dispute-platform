@@ -5,7 +5,7 @@ The **existing** GitHub CI checks remain the real build, test, NuGet/npm
 advisory, migration and browser gates. This PR adds a Python release
 *simulator*, tested by the existing `scripts/ci/test_*.py` discovery.
 
-The optional Azure DevOps pipeline at
+The demo pipeline checks it was queued from `refs/heads/main` and reruns repository-policy and Python unit tests before preparing the candidate. The full .NET, Angular and browser gates still belong to the mandatory CI workflow; configure branch protection so a green main CI run is required before starting a release.\n\nThe optional Azure DevOps pipeline at
 `.azuredevops/new/pipelines/azure-release-simulation.yml` is NOT connected
 and will not run until imported. It does not package containers, access Azure,
 move money, deploy code or read any Key Vault secret. The displayed
@@ -31,7 +31,7 @@ Repeat using a *fresh* state path and same dev/UAT/approval steps, then:
 python3 scripts/ci/release_simulator.py deploy --state "$STATE" --environment prod --scenario telemetry-failure
 ```
 
-The command intentionally exits 1, records a **critical** alert and restores
+For the synthetic telemetry canary, the proposed abort thresholds are HTTP 5xx over 2% or p95 latency over 750 ms. The injected failure produces 8.5% and 1400 ms respectively. These numbers are illustrative, not measured SLOs.\n\nThe command intentionally exits 1, records a **critical** alert and restores
 production traffic to a pre-seeded, synthetic known-good baseline. It does
 **not** undo database changes, outbox events or financial operations.
 Run `python3 -m unittest discover -s scripts/ci -p 'test_*.py'` for positive
