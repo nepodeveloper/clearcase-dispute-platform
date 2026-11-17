@@ -7,6 +7,7 @@ import { DecimalMoney } from '../transactions/decimal-money';
 import { StatCard, StatusBadge } from '../ui/ui-components';
 import { DisputeApi, DisputePage, DisputeQueryError, disputeQueryError } from './dispute-api';
 import { disputeDecisionLabel, disputeFinancialLabel, disputeStatusLabel } from './dispute-details';
+import { isCaseClosed, isCaseOpen } from './case-status-rules';
 
 type ViewState = { kind: 'loading' } | ({ kind: 'error' } & DisputeQueryError)
   | { kind: 'loaded'; page: DisputePage; loadingMore: boolean; error?: DisputeQueryError };
