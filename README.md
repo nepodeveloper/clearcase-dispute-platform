@@ -72,6 +72,17 @@ Apply `20261117091000_AddKafkaQuarantine` before enabling this worker.
 Rollback stops the worker first, then downgrades that migration (archive the
 quarantine metadata before rollback).
 
+## Outbox exhaustion, parking and supervised recovery (PR-42)
+
+After eight failed publish attempts, a message is parked durably rather than
+retried indefinitely. It remains unpublished and blocks later versions of the
+same dispute, preserving ordering. Authenticated Supervisors can view safe
+metadata and submit a reasoned, audited requeue through separate operational
+API endpoints; no raw event payload is ever returned. See the
+[outbox recovery runbook](docs/implementation/OUTBOX_RECOVERY.md).
+Migration `20261117100000_AddOutboxParkingAndRecoveryAudit` is additive; do not
+discard recovery metadata until all parked events are resolved.
+
 ## Durable outbox dispatch (PR-33)
 
 Outbox delivery uses a database-committed, fenced lease per event. A worker atomically

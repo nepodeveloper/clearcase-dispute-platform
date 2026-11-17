@@ -27,6 +27,7 @@ A successful smoke check alone never substitutes for a failed release gate.
 - PR-33: `20261117090000_AddOutboxDeliveryLeases` (16), additive lease and retry fields.
 - PR-34: `20261117091000_AddKafkaQuarantine` (17), quarantine metadata only.
 - PR-35: `20261117092000_AddFinancialOperationIntents` (18), durable financial intent state.
+- PR-42: `20261117100000_AddOutboxParkingAndRecoveryAudit` (19), parked messages and Supervisor recovery audit.
 
 The latter three migrations are **pending while their PRs remain unmerged**. Never
 assume schema changes are present in `main` before the corresponding PR is merged.
