@@ -16,12 +16,15 @@ public static class SyntheticTransactionSeeder
         ["Account service fee", "ATM withdrawal fee", "Card replacement fee", "Cash deposit fee", "Overdraft fee"]
     ];
     private static readonly long[] AmountsMinorUnits = [75000, 42050, 1500];
-    private static readonly DateTimeOffset Start = new(2026, 11, 10, 8, 30, 0, TimeSpan.Zero);
+    // The sample anchor is intentionally relative: a fresh local database remains
+    // inside the demo eligibility windows next year and in subsequent years.
+    // Freeze TimeProvider explicitly in deterministic test fixtures.
 
-    public static async Task SeedAsync(TransactionDbContext context, CancellationToken cancellationToken)
+    public static async Task SeedAsync(TransactionDbContext context, CancellationToken cancellationToken,
+        TimeProvider? clock = null)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        foreach (var item in CreateTransactions())
+        foreach (var item in CreateTransactions(clock ?? TimeProvider.System))
         {
             var type = item.Type.ToString();
             var status = item.Status.ToString();
@@ -44,12 +47,16 @@ public static class SyntheticTransactionSeeder
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static IEnumerable<PersistedTransaction> CreateTransactions()
+    private static IEnumerable<PersistedTransaction> CreateTransactions(TimeProvider clock)
     {
+        // Yesterday in UTC at a stable hour avoids future timestamps at morning startups.
+        // 30 records span the preceding 29 days, within the 60/120-day demo windows.
+        var start = new DateTimeOffset(clock.GetUtcNow().UtcDateTime.Date.AddDays(-1)
+            .AddHours(8).AddMinutes(30), TimeSpan.Zero);
         for (var index = 1; index <= 30; index++)
         {
             var typeIndex = (index - 1) % 3;
-            var date = Start.AddDays(-Math.Min(index - 1, 28));
+            var date = start.AddDays(-Math.Min(index - 1, 28));
             var type = (TransactionType)typeIndex;
             var isDebitOrder = type == TransactionType.DebitOrder;
             var description = Descriptions[typeIndex][((index - 1) / 3) % Descriptions[typeIndex].Length];
@@ -87,7 +94,7 @@ public static class SyntheticTransactionSeeder
             MerchantName = "Other synthetic customer",
             AmountMinorUnits = 2500,
             Currency = "ZAR",
-            TransactionDate = Start,
+            TransactionDate = start,
             Status = TransactionStatus.Posted,
             Reference = "TXN-2026-000099",
             IsDisputable = true,

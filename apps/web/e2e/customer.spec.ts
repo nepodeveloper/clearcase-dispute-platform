@@ -47,15 +47,18 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
-  await page.getByLabel('From date', { exact: true }).fill('2026-11-01');
-  await page.getByLabel('To date', { exact: true }).fill('2026-11-10');
+  const currentSeedDate = Date.parse(first.items[0].transactionDate);
+  const fromDate = new Date(currentSeedDate - 10 * 86_400_000).toISOString().slice(0, 10);
+  const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel('From date', { exact: true }).fill(fromDate);
+  await page.getByLabel('To date', { exact: true }).fill(toDate);
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'
-    && item.transactionDate.slice(0, 10) >= '2026-11-01' && item.transactionDate.slice(0, 10) <= '2026-11-10')).toBe(true);
+    && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
   await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
@@ -68,8 +71,8 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(page.locator('tbody')).toContainText('ATM withdrawal fee');
   await page.getByLabel('Search transactions', { exact: true }).fill('');
 
-  await page.getByLabel('From date', { exact: true }).fill('2030-01-01');
-  await page.getByLabel('To date', { exact: true }).fill('2030-01-02');
+  await page.getByLabel('From date', { exact: true }).fill('2200-01-01');
+  await page.getByLabel('To date', { exact: true }).fill('2200-01-02');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('status')).toContainText('No transactions found');
 

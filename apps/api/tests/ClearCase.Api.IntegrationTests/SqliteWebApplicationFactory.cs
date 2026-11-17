@@ -26,7 +26,9 @@ public sealed class SqliteWebApplicationFactory : WebApplicationFactory<Program>
         await using var context = new TransactionDbContext(
             new DbContextOptionsBuilder<TransactionDbContext>().UseSqlite(connectionString).Options);
         await context.Database.MigrateAsync();
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        // Preserve deterministic legacy fixture dates while production demo data tracks the clock.
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+            new FrozenSeederClock());
         await SyntheticIdentitySeeder.SeedAsync(context, TestIdentityPasswords.Seed, CancellationToken.None);
     }
 
@@ -38,6 +40,12 @@ public sealed class SqliteWebApplicationFactory : WebApplicationFactory<Program>
                 // Legacy workflow tests opt in; real auth tests override this, and Development ignores it.
                 ["Authentication:EnableDevelopmentCompatibilityPath"] = "true"
             }));
+
+    internal sealed class FrozenSeederClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() =>
+            new(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
+    }
 
     async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
 

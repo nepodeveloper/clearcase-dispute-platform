@@ -21,8 +21,10 @@ public sealed class SqliteTransactionReaderTests
         await using (var context = database.CreateContext())
         {
             await context.Database.MigrateAsync();
-            await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
-            await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+            await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
+            await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
 
             Assert.Equal(18, (await context.Database.GetAppliedMigrationsAsync()).Count());
             Assert.Equal(31, await context.Transactions.CountAsync());
@@ -47,7 +49,8 @@ public sealed class SqliteTransactionReaderTests
         await using var database = new TemporaryDatabase();
         await using var context = database.CreateContext();
         await context.Database.MigrateAsync();
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
         var reader = new SqliteTransactionReader(context);
 
         var page = await reader.ReadAsync(
@@ -77,7 +80,8 @@ public sealed class SqliteTransactionReaderTests
         await using var context = database.CreateContext();
         var migrator = context.GetService<IMigrator>();
         await migrator.MigrateAsync("20261112180532_InitialTransactions");
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
 
         await migrator.MigrateAsync();
 
@@ -162,13 +166,15 @@ public sealed class SqliteTransactionReaderTests
         await using var database = new TemporaryDatabase();
         await using var context = database.CreateContext();
         await context.Database.MigrateAsync();
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
         var item = await context.Transactions.SingleAsync(
             transaction => transaction.Id == Guid.Parse("00000000-0000-0000-0000-000000000001"));
         item.Description = "Updated synthetic description";
         await context.SaveChangesAsync();
 
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
         context.ChangeTracker.Clear();
         Assert.Equal("Updated synthetic description", (await context.Transactions.SingleAsync(
             transaction => transaction.Id == item.Id)).Description);

@@ -156,7 +156,8 @@ public sealed class SqliteDisputeStoreTests
         var migrator = context.GetService<IMigrator>();
         const string previousMigration = "20261112185347_AddDisputes";
         await migrator.MigrateAsync(previousMigration);
-        await SyntheticTransactionSeeder.SeedAsync(context, default);
+        await SyntheticTransactionSeeder.SeedAsync(context, default,
+            new SqliteWebApplicationFactory.FrozenSeederClock());
         var id = Guid.Parse("aaaaaaaa-1111-4222-8333-444455556666");
         var eventId = Guid.Parse("bbbbbbbb-1111-4222-8333-444455556666");
         await context.Database.ExecuteSqlInterpolatedAsync($"""
@@ -213,7 +214,8 @@ public sealed class SqliteDisputeStoreTests
         var database = new TemporaryDatabase();
         await using var context = database.CreateContext();
         await context.Database.MigrateAsync();
-        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
+        await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None,
+                new SqliteWebApplicationFactory.FrozenSeederClock());
         return database;
     }
 
