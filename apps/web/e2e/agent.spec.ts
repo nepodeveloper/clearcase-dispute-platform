@@ -170,7 +170,8 @@ test('Agent escalation is independently reviewed and private notes remain custom
 
 test('Agent processes a card dispute through decision, mock settlement and closure', async ({ page }) => {
   await signIn(page, 'customer.demo');
-  await page.goto(`/transactions/${transactionId}`);
+  // Use a different seeded card transaction from the escalation test to preserve isolation.
+  await page.goto('/transactions/00000000-0000-0000-0000-000000000007');
   await page.getByRole('combobox', { name: 'Dispute reason' }).selectOption({ index: 1 });
   await page.getByRole('textbox', { name: 'Describe the issue' })
     .fill('Please review the synthetic card payment through to an outcome.');
