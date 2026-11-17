@@ -33,7 +33,8 @@ public sealed class SecurityHostingTests
             .WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
         using var client = app.CreateClient(new WebApplicationFactoryClientOptions
         {
-            BaseAddress = new Uri("https://localhost")
+            // ASP.NET Core deliberately excludes localhost from HSTS by default.
+            BaseAddress = new Uri("https://api.clearcase.example.test")
         });
         using var response = await client.GetAsync("/health/live");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
