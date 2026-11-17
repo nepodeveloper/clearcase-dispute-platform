@@ -27,7 +27,7 @@ export class DisputesPage implements OnInit {
   });
   protected readonly shown = computed(() => this.loadedItems()?.length);
   protected readonly finished = computed(() =>
-    this.loadedItems()?.filter(item => item.caseStatus === 'Closed').length);
+    this.loadedItems()?.filter(item => isCaseClosed(item.caseStatus)).length);
   protected readonly inProgress = computed(() =>
     this.loadedItems()?.filter(item => item.caseStatus !== 'Closed').length);
   protected readonly typeLabel = transactionTypeLabel;
