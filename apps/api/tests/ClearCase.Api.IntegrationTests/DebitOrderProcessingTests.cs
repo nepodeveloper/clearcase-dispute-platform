@@ -374,7 +374,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
 
     private static async Task<Guid> Submit(HttpClient client, int transaction = 2, string reason = "duplicateCollection")
     {
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = $"00000000-0000-0000-0000-{transaction:D12}",
             reasonCode = reason,
