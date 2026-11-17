@@ -48,7 +48,7 @@ test('customer completes the persisted journey for all categories, with filterin
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
   const currentSeedDate = Date.parse(first.items[0].transactionDate);
-  const fromDate = new Date(currentSeedDate - 35 * 86_400_000).toISOString().slice(0, 10);
+  const fromDate = new Date(currentSeedDate - 10 * 86_400_000).toISOString().slice(0, 10);
   const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
   await page.getByLabel('From date', { exact: true }).fill(fromDate);
   await page.getByLabel('To date', { exact: true }).fill(toDate);
