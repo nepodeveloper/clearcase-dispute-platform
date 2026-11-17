@@ -22,9 +22,10 @@ public sealed class SqliteChargebackProcessingStore(TransactionDbContext context
         if (current is null) return null;
         if (command.ExpectedVersion is { } expected && current.Version != expected)
             throw new DisputeConcurrencyConflictException();
-        if (!DisputeEscalationRules.CanProcess(!await context.DisputeEscalations
-                .AnyAsync(item => item.DisputeId == command.DisputeId
-                    && item.Status != DisputeEscalationStatus.Resolved, cancellationToken)))
+        var hasActiveEscalation = await context.DisputeEscalations.AnyAsync(
+            item => item.DisputeId == command.DisputeId
+                && item.Status != DisputeEscalationStatus.Resolved, cancellationToken);
+        if (!DisputeEscalationRules.CanProcess(hasActiveEscalation))
             throw new ActiveDisputeEscalationException();
         var next = await transition(current);
         var item = await context.Disputes.Include(item => item.Chargeback).SingleAsync(
