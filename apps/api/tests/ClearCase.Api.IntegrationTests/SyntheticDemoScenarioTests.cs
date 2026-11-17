@@ -1,3 +1,4 @@
+using ClearCase.Application.Transactions;
 using ClearCase.Domain.Transactions;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.EntityFrameworkCore;
