@@ -13,6 +13,49 @@ public sealed record DisputeLifecycle(
     long Version,
     int LastSequenceNumber)
 {
+    public DisputeLifecycleTransition ReferForSpecialistReview(
+        DateTimeOffset occurredAt, Guid eventId)
+    {
+        if (CaseStatus is DisputeCaseStatus.Closed or DisputeCaseStatus.Rejected
+            or DisputeCaseStatus.ReversalConfirmed
+            || DecisionStatus != DisputeDecisionStatus.Pending
+            || FinancialStatus != DisputeFinancialStatus.NotInitiated)
+            throw new InvalidDisputeLifecycleTransitionException();
+        return SpecialistEvent("SpecialistReview",
+            "Your case has been referred for additional review.",
+            "dispute.specialist-review.v1", DisputeCaseStatus.ManualReview, occurredAt, eventId);
+    }
+
+    public DisputeLifecycleTransition ResumeAfterSpecialistReview(
+        DateTimeOffset occurredAt, Guid eventId)
+    {
+        if (CaseStatus != DisputeCaseStatus.ManualReview
+            || DecisionStatus != DisputeDecisionStatus.Pending
+            || FinancialStatus != DisputeFinancialStatus.NotInitiated)
+            throw new InvalidDisputeLifecycleTransitionException();
+        return SpecialistEvent("SpecialistReviewComplete",
+            "Additional review is complete and your case will continue to be investigated.",
+            "dispute.specialist-review-complete.v1",
+            DisputeCaseStatus.UnderReview, occurredAt, eventId);
+    }
+
+    private DisputeLifecycleTransition SpecialistEvent(
+        string eventType, string description, string envelope,
+        DisputeCaseStatus status, DateTimeOffset occurredAt, Guid eventId)
+    {
+        if (DisputeId == Guid.Empty || Version < 1 || LastSequenceNumber < 1 || eventId == Guid.Empty)
+            throw new InvalidDisputeLifecycleTransitionException();
+        var next = this with
+        {
+            CaseStatus = status,
+            Version = checked(Version + 1),
+            LastSequenceNumber = checked(LastSequenceNumber + 1)
+        };
+        return new DisputeLifecycleTransition(next,
+            new DisputeEvent(eventId, next.LastSequenceNumber, eventType, status,
+                description, occurredAt), envelope);
+    }
+
     public DisputeLifecycleTransition Advance(
         DisputeTransitionFamily family, string command,
         DisputeCaseStatus newCaseStatus, DisputeDecisionStatus newDecisionStatus,
