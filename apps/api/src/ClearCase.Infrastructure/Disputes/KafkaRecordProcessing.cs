@@ -72,6 +72,8 @@ public sealed class SqliteKafkaRecordProcessor(
             if (envelope.EventVersion != 1 || envelope.EventId == Guid.Empty
                 || envelope.AggregateId == Guid.Empty || envelope.AggregateVersion < 1
                 || string.IsNullOrWhiteSpace(envelope.EventType)
+                || !envelope.EventType.StartsWith("dispute.", StringComparison.Ordinal)
+                || !envelope.EventType.EndsWith(".v1", StringComparison.Ordinal)
                 || string.IsNullOrWhiteSpace(envelope.CorrelationId)
                 || envelope.OccurredAt == default
                 || envelope.Payload.ValueKind != JsonValueKind.Object)
