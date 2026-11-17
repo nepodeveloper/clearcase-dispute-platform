@@ -1,6 +1,7 @@
 using ClearCase.Api.Authentication;
 using ClearCase.Api.Disputes;
 using ClearCase.Api.Middleware;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.Disputes;
@@ -84,6 +85,11 @@ public static class DebitOrderSimulationEndpoints
         {
             return DisputeEndpoints.Problem(context, 409, "Invalid debit-order transition",
                 "debitOrder.invalidTransition", "This action is not allowed or requires further mandate and policy investigation.");
+        }
+        catch (ActiveDisputeEscalationException)
+        {
+            return DisputeEndpoints.Problem(context, 409, "Supervisor review is pending",
+                "dispute.activeEscalation", "Resolve the active escalation before continuing case processing.");
         }
         catch (DisputeConcurrencyConflictException)
         {
