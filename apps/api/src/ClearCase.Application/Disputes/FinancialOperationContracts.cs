@@ -24,3 +24,15 @@ public interface IFinancialOperationCoordinator
     Task<DisputeView?> ExecuteAsync(FinancialOperationRequest request, CancellationToken cancellationToken);
     Task<bool> RecoverNextAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Provider command data deliberately excludes EF entities and HTTP request state.</summary>
+public sealed record FinancialOperationExecution(
+    Guid DisputeId, FinancialOperationKind Kind, string OperationReference);
+
+/// <summary>One interchangeable, testable adapter per family of financial effects.</summary>
+public interface IFinancialOperationStrategy
+{
+    bool Supports(FinancialOperationKind kind);
+    bool IsAvailable { get; }
+    Task<string> ExecuteAsync(FinancialOperationExecution execution, CancellationToken cancellationToken);
+}
