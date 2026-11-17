@@ -35,7 +35,8 @@ public interface IChargebackProcessingHandler
 }
 
 public sealed class ChargebackProcessingHandler(
-    ICustomerContext customer, IChargebackProcessingStore store, ITransactionReader transactions,
+    ICustomerContext customer, IChargebackProcessingStore store, IDisputeStore disputeReader,
+    ITransactionReader transactions,
     DisputeEligibilityEvaluator evaluator, IFinancialOperationCoordinator operations, TimeProvider clock)
     : IChargebackProcessingHandler
 {
@@ -55,9 +56,8 @@ public sealed class ChargebackProcessingHandler(
                 ChargebackCommand.ExecuteSettlement => FinancialOperationKind.CardNetworkSettlement,
                 _ => throw new InvalidChargebackTransitionException()
             };
-            return operations.ExecuteAsync(new FinancialOperationRequest(
-                customerId, command.DisputeId, financialKind, command.ExpectedVersion, employee?.EmployeeId,
-                command.CorrelationId), cancellationToken);
+            return ExecuteCheckedAsync(customerId, command, financialKind,
+                employee?.EmployeeId, cancellationToken);
         }
 
         return store.ApplyAsync(customerId, command, now, async dispute =>
@@ -81,5 +81,24 @@ public sealed class ChargebackProcessingHandler(
             return chargeback.Apply(command.Command, dispute.DecisionStatus, dispute.FinancialStatus,
                 evidence, CardNetworkOutcome.Succeeded);
         }, cancellationToken, employee?.EmployeeId);
+    }
+
+    private async Task<DisputeView?> ExecuteCheckedAsync(
+        Guid customerId, ChargebackProcessingCommand command,
+        FinancialOperationKind kind, Guid? employeeId, CancellationToken cancellationToken)
+    {
+        var dispute = await disputeReader.ReadAsync(customerId, command.DisputeId, cancellationToken);
+        if (dispute is null) return null;
+        if (dispute.Category != TransactionCategory.CardPurchase || dispute.CaseStatus == DisputeCaseStatus.Closed)
+            throw new InvalidChargebackTransitionException();
+        if (command.Command == ChargebackCommand.Initiate)
+        {
+            var source = await transactions.ReadForEligibilityAsync(customerId, dispute.TransactionId, cancellationToken);
+            if (source is null || (await evaluator.EvaluateAsync(customerId, source, cancellationToken)).Outcome
+                    != DisputeEligibilityOutcome.EligibleToSubmit)
+                throw new InvalidChargebackTransitionException();
+        }
+        return await operations.ExecuteAsync(new FinancialOperationRequest(customerId, command.DisputeId, kind,
+            command.ExpectedVersion, employeeId, command.CorrelationId), cancellationToken);
     }
 }
