@@ -29,10 +29,10 @@ public sealed class SyntheticDemoScenarioTests
         Assert.Equal(10, all.Count(item => item.Type == TransactionType.DebitOrder));
         Assert.Equal(10, all.Count(item => item.Type == TransactionType.BankCharge));
 
-        var anchor = instant.Date.AddDays(-1);
+        var anchor = instant.UtcDateTime.Date.AddDays(-1);
         foreach (var item in all.Where(item => item.Status == TransactionStatus.Posted))
         {
-            Assert.InRange((anchor - item.TransactionDate).TotalDays, -1, 31);
+            Assert.InRange((anchor - item.TransactionDate.UtcDateTime).TotalDays, -1, 31);
             Assert.True((instant - item.TransactionDate).TotalDays < 60,
                 "The seeded payment must remain in both 60-day and 120-day demo windows.");
         }
