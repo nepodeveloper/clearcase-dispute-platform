@@ -5,6 +5,7 @@ import { DecimalMoney } from '../transactions/decimal-money';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { Timeline, TimelineEvent } from '../ui/ui-components';
 import { ChargebackStatus, Dispute, DisputeCaseStatus } from './dispute-api';
+import { isCaseClosed } from './case-status-rules';
 
 export function disputeStatusLabel(status: DisputeCaseStatus): string {
   const labels: Record<DisputeCaseStatus, string> = {
@@ -72,7 +73,7 @@ export class DisputeDetails {
       description: event.description,
       occurredAt: event.occurredAt,
     })));
-  protected readonly finished = computed(() => this.dispute().caseStatus === 'Closed');
+  protected readonly finished = computed(() => isCaseClosed(this.dispute().caseStatus));
   protected readonly nextStep = computed(() => {
     const dispute = this.dispute();
     if (dispute.caseStatus === 'Closed') return 'This case is closed. You can still review its decision and history here.';

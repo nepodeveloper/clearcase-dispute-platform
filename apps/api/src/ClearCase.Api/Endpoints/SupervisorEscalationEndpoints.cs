@@ -122,7 +122,7 @@ public static class SupervisorEscalationEndpoints
         }
 
         if (errors.Count != 0)
-            return DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest,
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
                 "Invalid supervisor escalation query", "supervisorEscalation.invalidQuery", errors: errors);
 
         var page = await handler.HandleAsync(new ListSupervisorEscalationsQuery(
@@ -286,28 +286,28 @@ public static class SupervisorEscalationEndpoints
         };
 
     private static ProblemHttpResult InvalidId(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest, "Invalid escalation ID",
+        ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid escalation ID",
             "supervisorEscalation.invalidId",
             errors: [new("/id", "escalationId.invalid", "Enter a valid escalation ID.")]);
 
     private static ProblemHttpResult DisputeNotFound(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status404NotFound, "Dispute not found",
+        ApiProblem.Create(context, StatusCodes.Status404NotFound, "Dispute not found",
             "agentDispute.notFound");
 
     private static ProblemHttpResult NotFound(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status404NotFound, "Escalation not found",
+        ApiProblem.Create(context, StatusCodes.Status404NotFound, "Escalation not found",
             "supervisorEscalation.notFound");
 
     private static ProblemHttpResult Conflict(HttpContext context, string title, string code) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status409Conflict, title, code);
+        ApiProblem.Create(context, StatusCodes.Status409Conflict, title, code);
 
     private static ProblemHttpResult EmployeeIdentityRequired(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status403Forbidden,
+        ApiProblem.Create(context, StatusCodes.Status403Forbidden,
             "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
 
     private static ProblemHttpResult InvalidRequest(
         HttpContext context, string title, string code, IReadOnlyList<QueryError> errors) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest, title, code, errors: errors);
+        ApiProblem.Create(context, StatusCodes.Status400BadRequest, title, code, errors: errors);
 
     private static string NormalizeNote(string? value, string pointer, List<QueryError> errors)
     {

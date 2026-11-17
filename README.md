@@ -1,3 +1,20 @@
+## API contract and idempotency hardening (PR-41)
+
+All new customer dispute submissions require exactly one valid `Idempotency-Key`
+header (1–128 visible ASCII characters), including the legacy `/v1` route.
+Missing or invalid headers return `400 dispute.invalidRequest` with a pointer
+to `/headers/Idempotency-Key`; no case, audit or outbox record is committed.
+A valid key still replays the original case if the normalized payload matches,
+or returns `409 dispute.idempotencyKeyReused` for a different request. Existing
+Angular drafts reuse the key on a network retry.
+
+`ApiProblem.Create` now builds the consistent RFC 9457-style error envelope
+for transaction, dispute, Agent, Supervisor and mock-processing endpoints with
+`code`, `correlationId` and JSON-pointer `errors`. `DisputeCaseRules` in
+Domain and `case-status-rules.ts` in Angular explicitly define only `Closed`
+as terminal for the case: an approved or rejected decision may still require
+financial reconciliation or case closure.
+
 ## Durable financial execution intents (PR-35)
 
 Financial gateway commands are now scheduled as unique, durable
@@ -257,7 +274,7 @@ No API, database, policy implementation, auth or event contract changed. Roll ba
 | No key | Previous behavior (unchanged) |
 | Malformed key | `400 dispute.invalidRequest`, pointer `/headers/Idempotency-Key` |
 
-The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry and making the header mandatory are deferred.
+The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry remains deferred. As of PR-41 the API rejects submissions without exactly one valid Idempotency-Key; the Angular client already sends a unique draft key.
 
 ## Optimistic concurrency (PR-16)
 

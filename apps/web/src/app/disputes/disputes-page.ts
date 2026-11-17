@@ -7,6 +7,7 @@ import { DecimalMoney } from '../transactions/decimal-money';
 import { StatCard, StatusBadge } from '../ui/ui-components';
 import { DisputeApi, DisputePage, DisputeQueryError, disputeQueryError } from './dispute-api';
 import { disputeDecisionLabel, disputeFinancialLabel, disputeStatusLabel } from './dispute-details';
+import { isCaseClosed, isCaseOpen } from './case-status-rules';
 
 type ViewState = { kind: 'loading' } | ({ kind: 'error' } & DisputeQueryError)
   | { kind: 'loaded'; page: DisputePage; loadingMore: boolean; error?: DisputeQueryError };
@@ -26,9 +27,9 @@ export class DisputesPage implements OnInit {
   });
   protected readonly shown = computed(() => this.loadedItems()?.length);
   protected readonly finished = computed(() =>
-    this.loadedItems()?.filter(item => item.caseStatus === 'Closed').length);
+    this.loadedItems()?.filter(item => isCaseClosed(item.caseStatus)).length);
   protected readonly inProgress = computed(() =>
-    this.loadedItems()?.filter(item => item.caseStatus !== 'Closed').length);
+    this.loadedItems()?.filter(item => isCaseOpen(item.caseStatus)).length);
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = disputeStatusLabel;
   protected readonly financialLabel = disputeFinancialLabel;

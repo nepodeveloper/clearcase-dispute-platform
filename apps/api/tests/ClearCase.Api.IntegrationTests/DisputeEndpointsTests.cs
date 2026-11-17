@@ -44,6 +44,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
             })
         };
         request.Headers.Add("X-Correlation-ID", "submit-dispute");
+        request.Headers.Add("Idempotency-Key", "submit-dispute-test-1");
         using var response = await client.SendAsync(request);
         using var body = await ReadJson(response);
         var created = body.RootElement;
@@ -84,7 +85,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     public async Task Post_HighAmountDebitOrder_RoutesToManualReview()
     {
         using var client = CreateClient();
-        using var response = await client.PostAsJsonAsync("/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/v1/disputes", new
         {
             transactionId = HighAmountDebitOrderId,
             reasonCode = "unauthorisedDebitOrder",
@@ -104,7 +105,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     public async Task Post_DebiCheckAuthorizationComplaint_CreatesInvestigationWithoutFinancialAction()
     {
         using var client = CreateClient();
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = "00000000-0000-0000-0000-000000000011",
             reasonCode = "unauthorisedDebitOrder",
@@ -143,7 +144,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
         Assert.Equal("EligibleToSubmit", eligibility.RootElement.GetProperty("outcome").GetString());
         reader.MandateMissing = true;
 
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId,
             reasonCode = "unauthorisedDebitOrder",
@@ -165,7 +166,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     public async Task Post_IneligibleTransaction_Returns422AndPersistsNothing()
     {
         using var client = CreateClient();
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = PendingCardId,
             reasonCode = "unrecognisedTransaction",
@@ -185,13 +186,13 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     public async Task Post_OtherCustomersTransaction_LooksIdenticalToUnknownTransaction()
     {
         using var client = CreateClient();
-        using var other = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var other = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = OtherCustomersTransactionId,
             reasonCode = "unrecognisedTransaction",
             description = ValidDescription
         });
-        using var unknown = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var unknown = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = "00000000-0000-0000-0000-000000000100",
             reasonCode = "unrecognisedTransaction",
@@ -247,8 +248,8 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
             reasonCode = "duplicateCharge",
             description = "I was charged twice for the same purchase."
         };
-        using var first = await client.PostAsJsonAsync("/api/v1/disputes", payload);
-        using var second = await client.PostAsJsonAsync("/api/v1/disputes", payload);
+        using var first = await client.SubmitDisputeAsync("/api/v1/disputes", payload);
+        using var second = await client.SubmitDisputeAsync("/api/v1/disputes", payload);
         using var body = await ReadJson(second);
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -266,6 +267,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
             Content = JsonContent.Create(new { transactionId = "not-a-guid", reasonCode = " ", description = "short" })
         };
         request.Headers.Add("X-Correlation-ID", "invalid-dispute");
+        request.Headers.Add("Idempotency-Key", "invalid-dispute-test-1");
         using var response = await client.SendAsync(request);
         using var body = await ReadJson(response);
 
@@ -281,7 +283,7 @@ public sealed class DisputeEndpointsTests : IClassFixture<SqliteWebApplicationFa
     public async Task Post_ReasonFromAnotherCategory_Returns422()
     {
         using var client = CreateClient();
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = BankChargeId,
             reasonCode = "unauthorisedDebitOrder",

@@ -122,7 +122,7 @@ public static class AgentDisputeEndpoints
         }
 
         if (errors.Count != 0)
-            return DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest,
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
                 "Invalid agent dispute query", "agentDispute.invalidQuery", errors: errors);
 
         var page = await handler.HandleAsync(
@@ -205,12 +205,12 @@ public static class AgentDisputeEndpoints
                 + $"{CreateInvestigationNoteHandler.MaximumLength} normalized characters."));
         }
         if (errors.Count > 0)
-            return DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest,
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
                 "Invalid investigation note", "agentNote.invalidRequest", errors: errors);
 
         var employeeIdValue = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(employeeIdValue, out var employeeId))
-            return DisputeEndpoints.Problem(context, StatusCodes.Status403Forbidden,
+            return ApiProblem.Create(context, StatusCodes.Status403Forbidden,
                 "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
 
         var correlationId = (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!;
@@ -221,7 +221,7 @@ public static class AgentDisputeEndpoints
         {
             InvestigationNoteWriteOutcome.Created => CreatedNote(context, result.Note!, replayed: false),
             InvestigationNoteWriteOutcome.Replayed => CreatedNote(context, result.Note!, replayed: true),
-            InvestigationNoteWriteOutcome.IdempotencyKeyReused => DisputeEndpoints.Problem(context,
+            InvestigationNoteWriteOutcome.IdempotencyKeyReused => ApiProblem.Create(context,
                 StatusCodes.Status409Conflict, "Idempotency key already used", "agentNote.idempotencyKeyReused",
                 "This Idempotency-Key was already used for different note text."),
             InvestigationNoteWriteOutcome.DisputeNotFound => DisputeNotFound(context),
@@ -238,12 +238,12 @@ public static class AgentDisputeEndpoints
     }
 
     private static ProblemHttpResult InvalidId(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest, "Invalid dispute ID",
+        ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid dispute ID",
             "agentDispute.invalidId",
             errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
 
     private static ProblemHttpResult DisputeNotFound(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status404NotFound, "Dispute not found",
+        ApiProblem.Create(context, StatusCodes.Status404NotFound, "Dispute not found",
             "agentDispute.notFound");
 
     private static bool IsValidIdempotencyKey(string? key) =>

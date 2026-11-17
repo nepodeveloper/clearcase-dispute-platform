@@ -44,36 +44,36 @@ public static class BankChargeSimulationEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(id, out var disputeId))
-            return DisputeEndpoints.Problem(context, 400, "Invalid dispute ID", "dispute.invalidId",
+            return ApiProblem.Create(context, 400, "Invalid dispute ID", "dispute.invalidId",
                 errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
         if (!Enum.TryParse<BankChargeCommand>(request.Command, out var command)
             || !Enum.IsDefined(command) || request.Command != command.ToString())
-            return DisputeEndpoints.Problem(context, 400, "Invalid bank-charge command", "bankCharge.invalidRequest",
+            return ApiProblem.Create(context, 400, "Invalid bank-charge command", "bankCharge.invalidRequest",
                 errors: [new("/command", "command.invalid", "Select a supported simulation command.")]);
         if (request.ExpectedVersion is <= 0)
-            return DisputeEndpoints.Problem(context, 400, "Invalid expected version", "dispute.invalidRequest",
+            return ApiProblem.Create(context, 400, "Invalid expected version", "dispute.invalidRequest",
                 errors: [new("/expectedVersion", "expectedVersion.invalid", "Expected version must be a positive integer.")]);
         try
         {
             var dispute = await handler.HandleAsync(disputeId, command, cancellationToken, request.ExpectedVersion,
                 (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!);
             return dispute is null
-                ? DisputeEndpoints.Problem(context, 404, "Dispute not found", "dispute.notFound")
+                ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
                 : TypedResults.Ok(DisputeResponse.From(dispute));
         }
         catch (InvalidBankChargeTransitionException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Invalid bank-charge transition",
+            return ApiProblem.Create(context, 409, "Invalid bank-charge transition",
                 "bankCharge.invalidTransition", "This action is not allowed or requires further investigation.");
         }
         catch (ActiveDisputeEscalationException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Supervisor review is pending",
+            return ApiProblem.Create(context, 409, "Supervisor review is pending",
                 "dispute.activeEscalation", "Resolve the active escalation before continuing case processing.");
         }
         catch (DisputeConcurrencyConflictException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
+            return ApiProblem.Create(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
                 "The dispute changed since it was read. Refresh the case before trying again.");
         }
     }
