@@ -1,0 +1,33 @@
+# Optional Azure DevOps CI mirror for ClearCase. Connect this path to a pipeline to enable.
+# It validates PRs and main; it never deploys, provisions cloud resources or runs AI reviews.
+name: clearcase-ci-$(Date:yyyyMMdd)$(Rev:.r)
+trigger:
+  branches:
+    include: [main]
+pr:
+  branches:
+    include: [main]
+variables:
+- template: ../templates/variables/toolchain.yml
+stages:
+- stage: Governance
+  displayName: Repository and review-policy validation
+  jobs:
+  - job: Policy
+    pool:
+      vmImage: ubuntu-latest
+    timeoutInMinutes: 10
+    steps:
+    - checkout: self
+    - bash: |
+        set -euo pipefail
+        python3 scripts/ci/repository_policy.py
+        python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+      displayName: Enforce repository CI governance and test policy guard
+- template: ../templates/stages/backend-validation.yml
+  parameters:
+    dotnetVersion: $(dotnetSdkVersion)
+- template: ../templates/stages/frontend-validation.yml
+  parameters:
+    nodeVersion: $(nodeVersion)
+    npmVersion: $(npmVersion)

@@ -1,0 +1,9 @@
+{
+  "runAIReview": false,
+  "executionMode": "local-only",
+  "maxFilesPerBatch": 8,
+  "maxChangedLinesPerBatch": 400,
+  "oversizeFallback": "skip",
+  "requireChangedLineEvidence": true,
+  "requireBatchTokenVerification": true
+}

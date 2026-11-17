@@ -1,0 +1,40 @@
+parameters:
+- name: nodeVersion
+  type: string
+- name: npmVersion
+  type: string
+stages:
+- stage: Frontend
+  displayName: Angular dependency scan, tests, build and E2E
+  dependsOn: Governance
+  jobs:
+  - job: BuildTest
+    pool:
+      vmImage: ubuntu-latest
+    timeoutInMinutes: 60
+    steps:
+    - checkout: self
+    - task: UseDotNet@2
+      inputs:
+        packageType: sdk
+        version: '10.0.x'
+    - task: NodeTool@0
+      inputs:
+        versionSpec: ${{ parameters.nodeVersion }}
+    - bash: |
+        set -euo pipefail
+        npm install --global npm@${{ parameters.npmVersion }}
+        npm ci
+        npm audit --omit=dev --audit-level=high
+        npm run test:ci
+        npm run build
+        npx playwright install --with-deps chromium
+        npm run test:e2e
+      workingDirectory: apps/web
+      displayName: Install, audit, unit test, build, and browser journeys
+    - publish: apps/web/playwright-report
+      artifact: browser-report
+      condition: always()
+    - publish: apps/web/test-results
+      artifact: browser-test-evidence
+      condition: always()
