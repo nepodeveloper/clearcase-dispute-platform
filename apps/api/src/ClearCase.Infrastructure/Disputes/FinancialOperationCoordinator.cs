@@ -90,9 +90,9 @@ public sealed class SqliteFinancialOperationCoordinator(
                 && debitGateway is UnavailableDisputeProcessingGateway
             || request.Kind == FinancialOperationKind.BankChargeAdjustment
                 && bankGateway is UnavailableDisputeProcessingGateway
-            || request.Kind is FinancialOperationKind.CardNetworkInitiate
+            || (request.Kind is FinancialOperationKind.CardNetworkInitiate
                 or FinancialOperationKind.CardNetworkForwardToAcquirer
-                or FinancialOperationKind.CardNetworkSettlement
+                or FinancialOperationKind.CardNetworkSettlement)
                 && cardGateway is UnavailableDisputeProcessingGateway)
             throw new DisputeProcessingUnavailableException();
 
