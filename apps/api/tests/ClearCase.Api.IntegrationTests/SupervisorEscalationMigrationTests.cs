@@ -1,3 +1,4 @@
+using ClearCase.Application.Transactions;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
