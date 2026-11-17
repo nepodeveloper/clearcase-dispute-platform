@@ -115,8 +115,10 @@ public sealed class SqliteFinancialOperationCoordinator(
             .SingleOrDefaultAsync(row => row.OperationReference == reference, cancellationToken);
         if (existing is not null)
         {
-            await transaction.CommitAsync(cancellationToken);
-            return existing.Id;
+            // The stable operation reference prevents a second external command, but
+            // a new HTTP request is not an idempotency-key replay. Return 409 so
+            // competing staff requests cannot both report a successful transition.
+            throw new DisputeConcurrencyConflictException();
         }
 
         var intent = new PersistedFinancialOperation

@@ -54,6 +54,23 @@ public sealed class FinancialOperationRecoveryTests
         }
     }
 
+    [Fact]
+    public async Task RepeatedFinancialIntentIsAConflictNotASecondSuccessfulCommand()
+    {
+        await using var db = new TemporaryDatabase();
+        await using var context = db.CreateContext();
+        await context.Database.MigrateAsync();
+        var disputeId = await SeedRequestedReversal(context);
+        var coordinator = NewCoordinator(context, new RecordingDebitGateway(context));
+        var original = await coordinator.ScheduleAsync(Request(disputeId), default);
+        Assert.NotNull(original);
+        await Assert.ThrowsAsync<DisputeConcurrencyConflictException>(() =>
+            coordinator.ScheduleAsync(Request(disputeId), default));
+        Assert.Single(await context.FinancialOperationIntents.AsNoTracking().ToArrayAsync());
+        Assert.Equal(FinancialOperationStage.Pending,
+            (await context.FinancialOperationIntents.AsNoTracking().SingleAsync()).Stage);
+    }
+
     [Theory]
     [InlineData(FinancialOperationStage.Dispatched, null, "Unknown", DisputeFinancialStatus.OutcomeUnknown)]
     [InlineData(FinancialOperationStage.ResultRecorded, "Confirmed", "Confirmed", DisputeFinancialStatus.Confirmed)]

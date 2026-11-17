@@ -133,57 +133,25 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             item.BankChargeAdjustmentReference, item.Version);
     }
 
-    public async Task<DisputeView?> ApplyAsync(
+    public Task<DisputeView?> ApplyAsync(
         Guid customerId, Guid disputeId, DebitOrderCommand command,
         Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
         CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
-        Guid? employeeId = null)
-    {
-        // SQLite's non-deferred transaction takes the writer lock before reading or calling the pure mock.
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var current = await ReadAsync(customerId, disputeId, cancellationToken);
-        if (current is null) return null;
-        if (expectedVersion is { } expected && current.Version != expected)
-            throw new DisputeConcurrencyConflictException();
-        var hasActiveEscalation = await context.DisputeEscalations.AnyAsync(
-            item => item.DisputeId == disputeId
-                && item.Status != DisputeEscalationStatus.Resolved, cancellationToken);
-        if (!DisputeEscalationRules.CanProcess(hasActiveEscalation))
-            throw new ActiveDisputeEscalationException();
-        var next = await transition(current);
-        var item = await context.Disputes.SingleAsync(
-            item => item.Id == disputeId && item.CustomerId == customerId, cancellationToken);
-        item.CaseStatus = next.State.Case;
-        item.DecisionStatus = next.State.Decision;
-        item.FinancialStatus = next.State.Financial;
-        item.Version = checked(item.Version + 1);
-        if (command == DebitOrderCommand.RequestReversal)
-            item.ReversalOperationReference = $"MOCK-DO-{disputeId:N}";
-        context.DisputeEvents.Add(new PersistedDisputeEvent
-        {
-            Id = Guid.NewGuid(), DisputeId = disputeId,
-            SequenceNumber = current.Timeline.Max(entry => entry.SequenceNumber) + 1,
-            EventType = $"DebitOrder{command}", CaseStatus = item.CaseStatus,
-            PublicDescription = next.Description, OccurredAt = occurredAt
-        });
-        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
-            item, command.ToString(), occurredAt, "dispute.debit-order-transitioned.v1",
-            correlationId ?? "local"));
-        if (employeeId is { } actor)
-            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
-                item, actor, command.ToString(), correlationId ?? "local", occurredAt));
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new DisputeConcurrencyConflictException();
-        }
-        var updated = await ReadAsync(customerId, disputeId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return updated;
-    }
+        Guid? employeeId = null) =>
+        new DisputeTransitionPersistence(context, this).ExecuteAsync(
+            customerId, disputeId, expectedVersion, DisputeTransitionFamily.DebitOrder,
+            command.ToString(), occurredAt, correlationId ?? "local", employeeId,
+            async current =>
+            {
+                var next = await transition(current);
+                return new DisputeTransitionPlan(next.State.Case, next.State.Decision,
+                    next.State.Financial, next.Description,
+                    row =>
+                    {
+                        if (command == DebitOrderCommand.RequestReversal)
+                            row.ReversalOperationReference = $"MOCK-DO-{disputeId:N}";
+                    });
+            }, cancellationToken);
 
     private static bool IsOpenDisputeConflict(DbUpdateException exception) =>
         exception.InnerException is SqliteException { SqliteErrorCode: SqliteConstraintError } sqlite
