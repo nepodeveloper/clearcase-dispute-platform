@@ -48,7 +48,7 @@ public sealed class ChargebackProcessingHandler(
             ? new RepresentmentEvidence(id, kind, now) : null;
         if (Chargeback.UsesGateway(command.Command))
         {
-            var kind = command.Command switch
+            var financialKind = command.Command switch
             {
                 ChargebackCommand.Initiate => FinancialOperationKind.CardNetworkInitiate,
                 ChargebackCommand.ForwardToAcquirer => FinancialOperationKind.CardNetworkForwardToAcquirer,
@@ -56,7 +56,7 @@ public sealed class ChargebackProcessingHandler(
                 _ => throw new InvalidChargebackTransitionException()
             };
             return operations.ExecuteAsync(new FinancialOperationRequest(
-                customerId, command.DisputeId, kind, command.ExpectedVersion, employee?.EmployeeId,
+                customerId, command.DisputeId, financialKind, command.ExpectedVersion, employee?.EmployeeId,
                 command.CorrelationId), cancellationToken);
         }
 
