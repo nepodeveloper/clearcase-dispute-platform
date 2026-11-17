@@ -12,7 +12,7 @@ import { StaffCommandPanel } from './staff-command-panel';
 
 @Component({
   selector: 'cc-investigation',
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm, StaffCommandPanel],
   template: `
     @if (loading() && dispute() === null) {
       <p class="notice" role="status">Loading persisted investigation...</p>
