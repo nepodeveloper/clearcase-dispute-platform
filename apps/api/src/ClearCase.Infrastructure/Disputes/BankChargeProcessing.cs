@@ -31,9 +31,10 @@ public sealed class SqliteBankChargeProcessingStore(TransactionDbContext context
         if (current is null) return null;
         if (expectedVersion is { } expected && current.Version != expected)
             throw new DisputeConcurrencyConflictException();
-        if (!DisputeEscalationRules.CanProcess(!await context.DisputeEscalations
-                .AnyAsync(item => item.DisputeId == disputeId
-                    && item.Status != DisputeEscalationStatus.Resolved, cancellationToken)))
+        var hasActiveEscalation = await context.DisputeEscalations.AnyAsync(
+            item => item.DisputeId == disputeId
+                && item.Status != DisputeEscalationStatus.Resolved, cancellationToken);
+        if (!DisputeEscalationRules.CanProcess(hasActiveEscalation))
             throw new ActiveDisputeEscalationException();
         var next = await transition(current);
         var item = await context.Disputes.SingleAsync(
