@@ -22,6 +22,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedOutboxMessage> OutboxMessages => Set<PersistedOutboxMessage>();
     public DbSet<PersistedConsumerInboxMessage> ConsumerInbox => Set<PersistedConsumerInboxMessage>();
     public DbSet<PersistedConsumerEffect> ConsumerEffects => Set<PersistedConsumerEffect>();
+    public DbSet<PersistedKafkaQuarantinedRecord> KafkaQuarantinedRecords => Set<PersistedKafkaQuarantinedRecord>();
     public DbSet<PersistedChargeback> Chargebacks => Set<PersistedChargeback>();
     public DbSet<ChargebackAuditEvent> ChargebackAuditEvents => Set<ChargebackAuditEvent>();
     public DbSet<PersistedInvestigationNote> InvestigationNotes => Set<PersistedInvestigationNote>();
@@ -51,6 +52,7 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         DisputePersistenceModel.Configure(modelBuilder);
         OutboxPersistenceModel.Configure(modelBuilder);
         KafkaInboxPersistenceModel.Configure(modelBuilder);
+        KafkaQuarantinePersistenceModel.Configure(modelBuilder);
         ChargebackPersistenceModel.Configure(modelBuilder);
         AgentDisputePersistenceModel.Configure(modelBuilder);
         SupervisorEscalationPersistenceModel.Configure(modelBuilder);
