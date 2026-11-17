@@ -91,9 +91,17 @@ def deploy(path, environment, scenario="success"):
         state["production"]["previousDigest"] = state["production"]["currentDigest"]
         state["production"]["trafficPercentNew"] = 10
         record(state, "canary_traffic_started", percent=10)
+    # Synthetic telemetry readings: illustrative thresholds, not real Azure Monitor results.
+    metrics = {"http5xxPercent": 8.5 if scenario == "telemetry-failure" else 0.2,
+               "p95LatencyMs": 1400 if scenario == "telemetry-failure" else 180,
+               "unknownFinancialOperations": 0}
+    limits = {"http5xxPercent": 2.0, "p95LatencyMs": 750}
+    telemetry_ok = (metrics["http5xxPercent"] <= limits["http5xxPercent"]
+                    and metrics["p95LatencyMs"] <= limits["p95LatencyMs"]
+                    and metrics["unknownFinancialOperations"] == 0)
     checks = {"readiness": scenario != "readiness-failure",
-              "smoke": scenario != "smoke-failure",
-              "telemetry": scenario != "telemetry-failure"}
+              "smoke": scenario != "smoke-failure", "telemetry": telemetry_ok}
+    state.setdefault("measurements", {})[environment] = {"metrics": metrics, "limits": limits}
     state["checks"] = {environment: checks}
     record(state, "post_deploy_checks", environment=environment, **checks)
     if not all(checks.values()):
