@@ -36,8 +36,6 @@ namespace ClearCase.Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_ParkedAt_OccurredAt",
                 table: "OutboxMessages", columns: new[] { "ParkedAt", "OccurredAt" });
-            migrationBuilder.CreateIndex(name: "IX_OutboxRecoveryAudits_EventId",
-                table: "OutboxRecoveryAudits", column: "EventId");
             migrationBuilder.CreateIndex(name: "IX_OutboxRecoveryAudits_EventId_OccurredAt",
                 table: "OutboxRecoveryAudits", columns: new[] { "EventId", "OccurredAt" });
         }
