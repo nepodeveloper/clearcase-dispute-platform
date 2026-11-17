@@ -11,11 +11,11 @@ public sealed class ApiSecurityHeadersMiddleware(RequestDelegate next)
         context.Response.OnStarting(() =>
         {
             var headers = context.Response.Headers;
-            headers.XContentTypeOptions = "nosniff";
-            headers.XFrameOptions = "DENY";
+            headers["X-Content-Type-Options"] = "nosniff";
+            headers["X-Frame-Options"] = "DENY";
             headers["Referrer-Policy"] = "no-referrer";
             headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-            headers.ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+            headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
             return Task.CompletedTask;
         });
         await next(context);
