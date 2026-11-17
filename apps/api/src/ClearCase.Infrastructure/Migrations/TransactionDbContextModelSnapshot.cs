@@ -561,7 +561,7 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasIndex("CreatedAt", "Reference")
                         .IsUnique();
 
-                    b.HasIndex("DisputeId", "Status")
+                    b.HasIndex("DisputeId")
                         .IsUnique()
                         .HasDatabaseName("IX_DisputeEscalations_DisputeId_Active")
                         .HasFilter("\"Status\" <> 'Resolved'");

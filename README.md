@@ -208,6 +208,33 @@ Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview
 
 For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
 
+## Supervisor escalation hardening (PR-30)
+
+Agent creation and idempotent replay return an Agent-safe escalation DTO. It contains the
+Agent's own original note and safe status, not Supervisor resolution notes, reviewer identities,
+or private audit history. Full audit details are available only through Supervisor-authorized APIs.
+
+Supervisor resolution validates the current dispute and escalation state together in a
+transaction. The dispute must still be in `ManualReview`, with a pending decision and no
+initiated financial outcome; a closed or decided case cannot be reopened by an escalation.
+
+The `EnforceSingleActiveEscalation` migration replaces the legacy filtered unique index
+on `(DisputeId, Status)` with one on `DisputeId`, excluding resolved rows. Existing
+records are preserved; already-corrupt mixed active rows deliberately cause the migration
+to fail rather than silently deleting history. Detect and remediate such rows before
+running the migration:
+
+```sql
+SELECT "DisputeId", COUNT(*) AS active_count
+FROM "DisputeEscalations"
+WHERE "Status" <> 'Resolved'
+GROUP BY "DisputeId"
+HAVING COUNT(*) > 1;
+```
+
+Roll back via EF migration to `20261116184208_AddDisputeCommandAudit` if needed;
+the previous index schema is restored without deleting escalations.
+
 ## Staff case commands (PR-29)
 
 `POST /api/v1/agent/disputes/{id}/commands` allows authenticated Agents and Supervisors to process cases in the same explicitly bank-wide scope as the investigation workspace. It requires the session's CSRF token and a positive `expectedVersion` from the latest case read, **not** `X-Simulation-Key`. The owner is looked up from the stored case; the employee comes from the authenticated identity. Neither identity can be supplied by JSON.

@@ -35,6 +35,26 @@ public sealed record SupervisorEscalationListItemResponse(
             item.Reason, item.Status.ToString(), item.CreatedAt);
 }
 
+/// <summary>
+/// Agent-safe response for creation and idempotent replay. The only private note included
+/// is the originating Agent's note; Supervisor review history is never serialized.
+/// </summary>
+public sealed record AgentEscalationCreationResponse(
+    Guid Id,
+    string Reference,
+    Guid DisputeId,
+    string Reason,
+    string? Note,
+    string Status,
+    DateTimeOffset CreatedAt)
+{
+    public static AgentEscalationCreationResponse From(SupervisorEscalationDetails item) =>
+        new(item.Id, item.Reference, item.DisputeId, item.Reason,
+            item.History.Single(entry => entry.Action == ClearCase.Domain.Disputes.DisputeEscalationAction.Created)
+                .PrivateNote,
+            item.Status.ToString(), item.CreatedAt);
+}
+
 /// <summary>A supervisor-only escalation detail view with append-only review history.</summary>
 public sealed record SupervisorEscalationResponse(
     Guid Id,

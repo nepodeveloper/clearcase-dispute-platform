@@ -30,7 +30,7 @@ public static class SupervisorEscalationEndpoints
             .WithDescription("Stores a private agent note and publishes only safe customer progress. "
                 + "Requires an Idempotency-Key; repeated matching requests replay the original escalation.")
             .Accepts<CreateDisputeEscalationRequest>("application/json")
-            .Produces<SupervisorEscalationResponse>(StatusCodes.Status201Created)
+            .Produces<AgentEscalationCreationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -149,7 +149,7 @@ public static class SupervisorEscalationEndpoints
             : TypedResults.Ok(SupervisorEscalationResponse.From(escalation));
     }
 
-    private static async Task<Results<Created<SupervisorEscalationResponse>, ProblemHttpResult>> Create(
+    private static async Task<Results<Created<AgentEscalationCreationResponse>, ProblemHttpResult>> Create(
         string id,
         CreateDisputeEscalationRequest request,
         [FromHeader(Name = IdempotencyKeyHeader)] string? idempotencyKey,
@@ -235,13 +235,13 @@ public static class SupervisorEscalationEndpoints
         return ActionResult(context, result);
     }
 
-    private static Results<Created<SupervisorEscalationResponse>, ProblemHttpResult> Created(
+    private static Results<Created<AgentEscalationCreationResponse>, ProblemHttpResult> Created(
         HttpContext context, Guid disputeId, SupervisorEscalationDetails escalation, bool replayed)
     {
         if (replayed)
             context.Response.Headers["Idempotent-Replayed"] = "true";
         return TypedResults.Created($"/api/v1/agent/disputes/{disputeId}",
-            SupervisorEscalationResponse.From(escalation));
+            AgentEscalationCreationResponse.From(escalation));
     }
 
     private static Results<Ok<SupervisorEscalationResponse>, ProblemHttpResult> ActionResult(

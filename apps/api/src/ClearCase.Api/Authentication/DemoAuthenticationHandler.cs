@@ -63,6 +63,6 @@ public sealed class CompositeAuthenticationHandler(
             return true;
 
         return Context.Request.Headers.Cookie.Any(header =>
-            header.Contains($"{cookieName}=", StringComparison.Ordinal));
+            header is not null && header.Contains($"{cookieName}=", StringComparison.Ordinal));
     }
 }

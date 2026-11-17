@@ -23,7 +23,7 @@ internal static class SupervisorEscalationPersistenceModel
         escalation.Property(item => item.CreatedAt).HasConversion(
             value => value.UtcTicks,
             value => new DateTimeOffset(value, TimeSpan.Zero));
-        escalation.HasIndex(item => new { item.DisputeId, item.Status })
+        escalation.HasIndex(item => item.DisputeId)
             .IsUnique()
             .HasFilter($"\"Status\" <> '{DisputeEscalationStatus.Resolved}'")
             .HasDatabaseName(ActiveEscalationIndex);

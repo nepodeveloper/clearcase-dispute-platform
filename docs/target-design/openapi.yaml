@@ -362,9 +362,9 @@ paths:
       operationId: createDisputeEscalation
       summary: Escalate an eligible dispute for independent Supervisor review
       description: >-
-        Requires AgentAccess, CSRF protection and an Idempotency-Key. The private Agent note is
-        returned only to authorized bank employees; customer timeline and outbox events contain
-        only safe progress text. An active escalation prevents duplicate referrals.
+        Requires AgentAccess, CSRF protection and an Idempotency-Key. Both creation and replay
+        return only the originating Agent's note and safe metadata, never Supervisor resolution
+        notes or audit history. Only Supervisor endpoints expose complete review history.
       parameters:
         - $ref: '#/components/parameters/AgentDisputeId'
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
@@ -386,7 +386,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SupervisorEscalation'
+                $ref: '#/components/schemas/AgentEscalationCreation'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -895,6 +895,20 @@ components:
           minLength: 15
           maxLength: 2000
           description: Private Supervisor note, trimmed and Unicode-normalized before validation.
+    AgentEscalationCreation:
+      type: object
+      required: [id, reference, disputeId, reason, status, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        disputeId: { type: string, format: uuid }
+        reason: { type: string }
+        note:
+          type: string
+          description: Original Agent note only; no Supervisor review history.
+        status: { $ref: '#/components/schemas/EscalationStatus' }
+        createdAt: { type: string, format: date-time }
     AgentActiveEscalation:
       type: object
       required: [id, reference, reason, status, createdAt]

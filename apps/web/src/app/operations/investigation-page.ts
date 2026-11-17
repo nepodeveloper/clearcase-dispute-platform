@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { MinorUnitsMoney, PageHeading, StatusBadge } from '../ui/ui-components';
-import { AgentActiveEscalation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
+import { AgentEscalationCreation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
 import { EscalationForm } from './escalation-form';
 
 @Component({
@@ -165,7 +165,7 @@ export class InvestigationPage {
     }
   }
 
-  protected escalated(result: AgentActiveEscalation): void {
+  protected escalated(result: AgentEscalationCreation): void {
     this.confirmation.set(`${result.reference} saved. The supervisor can now review it. No money has moved.`);
     this.closeDialog();
     void this.loadDispute();
