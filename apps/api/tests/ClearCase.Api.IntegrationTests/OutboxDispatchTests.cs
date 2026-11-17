@@ -17,38 +17,94 @@ public sealed class OutboxDispatchTests
     private static readonly DateTimeOffset OccurredAt = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Dispatch_RetriesSameEventAfterFailureAndMarksPublishedOnlyAfterAcknowledgement()
+    public async Task Dispatch_RetriesWithBackoffAndAcknowledgesOnlyAfterSuccessfulPublish()
     {
-        await using var database = new TemporaryDatabase();
-        await using (var setup = database.CreateContext())
-        {
-            await setup.Database.MigrateAsync();
-            await SyntheticTransactionSeeder.SeedAsync(setup, CancellationToken.None);
-            var dispute = NewDispute();
-            Assert.Equal(DisputeAddResult.Added,
-                await new SqliteDisputeStore(setup).AddAsync(dispute, CancellationToken.None));
-        }
-
+        await using var database = await SeedAsync();
         var publisher = new FailOncePublisher();
+        var clock = new MutableTimeProvider(OccurredAt.AddMinutes(1));
         await using var context = database.CreateContext();
         var store = new SqliteOutboxStore(context);
-        var dispatcher = new OutboxDispatcher(store, publisher,
-            new FixedTimeProvider(OccurredAt.AddMinutes(1)), NullLogger<OutboxDispatcher>.Instance);
+        var dispatcher = new OutboxDispatcher(store, publisher, clock, NullLogger<OutboxDispatcher>.Instance);
 
-        Assert.False(await dispatcher.DispatchNextAsync(CancellationToken.None));
-        context.ChangeTracker.Clear();
+        Assert.False(await dispatcher.DispatchNextAsync(default));
         var pending = await context.OutboxMessages.AsNoTracking().SingleAsync();
         Assert.Null(pending.PublishedAt);
+        Assert.Null(pending.LeaseId);
+        Assert.Null(pending.LeaseUntilAt);
+        Assert.Equal(clock.GetUtcNow().AddSeconds(2), pending.NextAttemptAt);
         Assert.Equal(1, pending.Attempts);
+        Assert.False(await dispatcher.DispatchNextAsync(default));
+        Assert.Single(publisher.Events);
 
-        Assert.True(await dispatcher.DispatchNextAsync(CancellationToken.None));
-        context.ChangeTracker.Clear();
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.True(await dispatcher.DispatchNextAsync(default));
         var published = await context.OutboxMessages.AsNoTracking().SingleAsync();
-        Assert.Equal(OccurredAt.AddMinutes(1), published.PublishedAt);
+        Assert.Equal(clock.GetUtcNow(), published.PublishedAt);
+        Assert.Null(published.LeaseId);
+        Assert.Null(published.NextAttemptAt);
         Assert.Equal(2, published.Attempts);
         Assert.Equal(2, publisher.Events.Count);
         Assert.Equal(publisher.Events.First().EventId, publisher.Events.Last().EventId);
-        Assert.Null(await store.ReadNextAsync(CancellationToken.None));
+        Assert.Null(await store.ClaimNextAsync(clock.GetUtcNow(), TimeSpan.FromMinutes(2), default));
+    }
+
+    [Fact]
+    public async Task TwoWorkersCannotOwnTheSameUnexpiredLease()
+    {
+        await using var database = await SeedAsync();
+        await using var first = database.CreateContext();
+        await using var second = database.CreateContext();
+        var now = OccurredAt.AddMinutes(1);
+        var results = await Task.WhenAll(
+            new SqliteOutboxStore(first).ClaimNextAsync(now, TimeSpan.FromMinutes(2), default),
+            new SqliteOutboxStore(second).ClaimNextAsync(now, TimeSpan.FromMinutes(2), default));
+        var claim = Assert.Single(results.OfType<OutboxClaim>());
+        Assert.Equal(1, await first.OutboxMessages.AsNoTracking().SingleAsync()
+            .ContinueWith(task => task.Result.Attempts));
+        Assert.False(await new SqliteOutboxStore(first).MarkPublishedAsync(
+            claim.Message.EventId, Guid.NewGuid(), now, default));
+        Assert.True(await new SqliteOutboxStore(second).MarkPublishedAsync(
+            claim.Message.EventId, claim.LeaseId, now, default));
+    }
+
+    [Fact]
+    public async Task RestartRecoversExpiredLeaseAndFencesStaleAcknowledgements()
+    {
+        await using var database = await SeedAsync();
+        var now = OccurredAt.AddMinutes(1);
+        OutboxClaim abandoned;
+        await using (var crashedContext = database.CreateContext())
+        {
+            abandoned = (await new SqliteOutboxStore(crashedContext)
+                .ClaimNextAsync(now, TimeSpan.FromMinutes(2), default))!;
+            Assert.NotNull(abandoned);
+        }
+        // The previous worker published or crashed; only a new lease can ack after expiry.
+        await using var restartedContext = database.CreateContext();
+        var restartedStore = new SqliteOutboxStore(restartedContext);
+        Assert.Null(await restartedStore.ClaimNextAsync(now.AddMinutes(1),
+            TimeSpan.FromMinutes(2), default));
+        var recovered = (await restartedStore.ClaimNextAsync(now.AddMinutes(2).AddTicks(1),
+            TimeSpan.FromMinutes(2), default))!;
+        Assert.Equal(abandoned.Message.EventId, recovered.Message.EventId);
+        Assert.NotEqual(abandoned.LeaseId, recovered.LeaseId);
+        Assert.Equal(2, recovered.Message.Attempts);
+        Assert.False(await restartedStore.MarkPublishedAsync(
+            abandoned.Message.EventId, abandoned.LeaseId, now.AddMinutes(3), default));
+        Assert.True(await restartedStore.MarkPublishedAsync(
+            recovered.Message.EventId, recovered.LeaseId, now.AddMinutes(3), default));
+        Assert.NotNull((await restartedContext.OutboxMessages.AsNoTracking().SingleAsync()).PublishedAt);
+    }
+
+    private static async Task<TemporaryDatabase> SeedAsync()
+    {
+        var database = new TemporaryDatabase();
+        await using var setup = database.CreateContext();
+        await setup.Database.MigrateAsync();
+        await SyntheticTransactionSeeder.SeedAsync(setup, default);
+        Assert.Equal(DisputeAddResult.Added,
+            await new SqliteDisputeStore(setup).AddAsync(NewDispute(), default));
+        return database;
     }
 
     private static Dispute NewDispute()
@@ -76,8 +132,10 @@ public sealed class OutboxDispatchTests
         }
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    private sealed class MutableTimeProvider(DateTimeOffset instant) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => now;
+        private DateTimeOffset _now = instant;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan duration) => _now = _now.Add(duration);
     }
 }
