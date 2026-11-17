@@ -32,13 +32,19 @@ public interface IDebitOrderProcessingHandler
 
 public sealed class DebitOrderProcessingHandler(
     ICustomerContext customer, IDebitOrderProcessingStore store, ITransactionReader transactions,
-    DisputeEligibilityEvaluator evaluator, IDebitOrderProcessingGateway gateway, TimeProvider clock)
+    DisputeEligibilityEvaluator evaluator, IDebitOrderProcessingGateway gateway,
+    IFinancialOperationCoordinator operations, TimeProvider clock)
     : IDebitOrderProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,
         long? expectedVersion = null, string? correlationId = null, EmployeeDisputeScope? employee = null)
     {
         var customerId = employee?.CustomerId ?? customer.CustomerId;
+        if (command == DebitOrderCommand.ExecuteReversal)
+            return operations.ExecuteAsync(new FinancialOperationRequest(
+                customerId, disputeId, FinancialOperationKind.DebitReversal,
+                expectedVersion, employee?.EmployeeId, correlationId ?? "local"), cancellationToken);
+
         return store.ApplyAsync(customerId, disputeId, command, async dispute =>
         {
             if (dispute.Category != TransactionCategory.DebitOrder)
@@ -57,14 +63,7 @@ public sealed class DebitOrderProcessingHandler(
             var eligible = transaction is not null
                 && (await evaluator.EvaluateAsync(customerId, transaction, cancellationToken)).Outcome
                     == DisputeEligibilityOutcome.EligibleToSubmit;
-            var transition = state.Apply(command, eligible, dispute.ReasonCode != "duplicateCollection");
-            if (command == DebitOrderCommand.ExecuteReversal)
-            {
-                var reference = dispute.ReversalOperationReference
-                    ?? throw new InvalidOperationException("A requested reversal must have an operation reference.");
-                transition = state.CompleteReversal(await gateway.ReverseAsync(reference, cancellationToken));
-            }
-            return transition;
+            return state.Apply(command, eligible, dispute.ReasonCode != "duplicateCollection");
         }, clock.GetUtcNow(), cancellationToken, expectedVersion, correlationId, employee?.EmployeeId);
     }
 }
