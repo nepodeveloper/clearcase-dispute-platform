@@ -37,7 +37,7 @@ public interface IChargebackProcessingHandler
 public sealed class ChargebackProcessingHandler(
     ICustomerContext customer, IChargebackProcessingStore store, IDisputeStore disputeReader,
     ITransactionReader transactions,
-    DisputeEligibilityEvaluator evaluator, IFinancialOperationCoordinator operations, TimeProvider clock)
+    DisputeEligibilityEvaluator evaluator, IFinancialOperationExecutor operations, TimeProvider clock)
     : IChargebackProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken,

@@ -17,7 +17,7 @@ internal sealed class FinancialOperationBackgroundService(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var coordinator = scope.ServiceProvider.GetRequiredService<IFinancialOperationCoordinator>();
+                var coordinator = scope.ServiceProvider.GetRequiredService<IFinancialOperationRecovery>();
                 if (await coordinator.RecoverNextAsync(stoppingToken))
                     continue;
             }

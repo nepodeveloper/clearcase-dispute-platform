@@ -34,7 +34,7 @@ public sealed class DebitOrderProcessingHandler(
     ICustomerContext customer, IDebitOrderProcessingStore store, IDisputeStore disputeReader,
     ITransactionReader transactions,
     DisputeEligibilityEvaluator evaluator, IDebitOrderProcessingGateway gateway,
-    IFinancialOperationCoordinator operations, TimeProvider clock)
+    IFinancialOperationExecutor operations, TimeProvider clock)
     : IDebitOrderProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, DebitOrderCommand command, CancellationToken cancellationToken,

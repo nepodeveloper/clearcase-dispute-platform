@@ -29,7 +29,7 @@ public interface IBankChargeProcessingHandler
 public sealed class BankChargeProcessingHandler(
     ICustomerContext customer, IBankChargeProcessingStore store, IDisputeStore disputeReader,
     ITransactionReader transactions,
-    DisputeEligibilityEvaluator evaluator, IFinancialOperationCoordinator operations, TimeProvider clock)
+    DisputeEligibilityEvaluator evaluator, IFinancialOperationExecutor operations, TimeProvider clock)
     : IBankChargeProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(Guid disputeId, BankChargeCommand command, CancellationToken cancellationToken,
