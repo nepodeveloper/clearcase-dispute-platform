@@ -528,6 +528,8 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
         Assert.False(string.IsNullOrWhiteSpace(firstResponse.Headers.Location?.ToString()));
         Assert.Equal("Open", first.RootElement.GetProperty("status").GetString());
         Assert.Equal(privateNote, first.RootElement.GetProperty("note").GetString());
+        Assert.False(first.RootElement.TryGetProperty("history", out _));
+        Assert.False(first.RootElement.TryGetProperty("createdByEmployeeId", out _));
 
         using var agentCaseResponse = await agent.GetAsync($"/api/v1/agent/disputes/{caseId}");
         using var agentCase = await ReadJson(agentCaseResponse);
@@ -642,6 +644,24 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
             .GetProperty("privateNote").GetString());
         Assert.Equal("33333333-3333-3333-3333-333333333334",
             resolved.RootElement.GetProperty("history")[2].GetProperty("employeeId").GetString());
+
+        // Replaying the Agent's original key after resolution must not reveal any
+        // Supervisor-only notes or audit details, even though replay returns current status.
+        using var agentReplayResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "agent-escalation-review-1", "Policy exception review", privateNote));
+        using var agentReplay = await ReadJson(agentReplayResponse);
+        Assert.Equal(HttpStatusCode.Created, agentReplayResponse.StatusCode);
+        Assert.Equal("true", agentReplayResponse.Headers.GetValues("Idempotent-Replayed").Single());
+        Assert.Equal(escalationId, agentReplay.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal("Resolved", agentReplay.RootElement.GetProperty("status").GetString());
+        Assert.Equal(privateNote, agentReplay.RootElement.GetProperty("note").GetString());
+        Assert.False(agentReplay.RootElement.TryGetProperty("history", out _));
+        Assert.False(agentReplay.RootElement.TryGetProperty("createdByEmployeeId", out _));
+        Assert.False(agentReplay.RootElement.TryGetProperty("financialStatus", out _));
+        Assert.DoesNotContain(resolutionNote, agentReplay.RootElement.GetRawText(), StringComparison.Ordinal);
+        using var agentSupervisorDetail = await agent.GetAsync(
+            $"/api/v1/supervisor/escalations/{escalationId}");
+        Assert.Equal(HttpStatusCode.Forbidden, agentSupervisorDetail.StatusCode);
 
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
