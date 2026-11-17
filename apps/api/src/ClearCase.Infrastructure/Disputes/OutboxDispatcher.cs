@@ -9,31 +9,49 @@ public sealed class OutboxDispatcher(
     TimeProvider clock,
     ILogger<OutboxDispatcher> logger) : IOutboxDispatcher
 {
+    // All deliveries are at-least-once. A process crash after broker acknowledgement and
+    // before MarkPublished will replay the same EventId after the lease expires.
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromMinutes(5);
+
     public async Task<bool> DispatchNextAsync(CancellationToken cancellationToken)
     {
-        var message = await store.ReadNextAsync(cancellationToken);
-        if (message is null)
-            return false;
-
-        await store.RecordAttemptAsync(message.EventId, cancellationToken);
+        var lease = await store.ClaimNextAsync(clock.GetUtcNow(), LeaseDuration, cancellationToken);
+        if (lease is null) return false;
         try
         {
-            await publisher.PublishAsync(message, cancellationToken);
+            await publisher.PublishAsync(lease.Message, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Do not release a lease on shutdown: a restart reclaims it after expiry.
             throw;
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Outbox publish failed for {EventId} ({EventType})",
-                message.EventId, message.EventType);
+            var delay = RetryDelay(lease.Message.Attempts);
+            await store.ScheduleRetryAsync(lease.Message.EventId, lease.LeaseId,
+                clock.GetUtcNow().Add(delay), cancellationToken);
+            logger.LogWarning(exception,
+                "Outbox publish failed for {EventId} ({EventType}); retry after {Delay}",
+                lease.Message.EventId, lease.Message.EventType, delay);
             return false;
         }
 
-        await store.MarkPublishedAsync(message.EventId, clock.GetUtcNow(), cancellationToken);
+        if (!await store.MarkPublishedAsync(
+                lease.Message.EventId, lease.LeaseId, clock.GetUtcNow(), cancellationToken))
+        {
+            // Lease expired/stolen during a slow publish. A second delivery may occur;
+            // never acknowledge an event claimed by another worker.
+            logger.LogWarning("Outbox lease was lost for event {EventId}", lease.Message.EventId);
+            return false;
+        }
         return true;
     }
+
+    internal static TimeSpan RetryDelay(int attempts) =>
+        TimeSpan.FromSeconds(Math.Min(MaximumRetryDelay.TotalSeconds,
+            Math.Pow(2, Math.Clamp(attempts, 1, 9))));
 }
 
 public sealed class LocalOutboxPublisher(ILogger<LocalOutboxPublisher> logger) : IOutboxPublisher
