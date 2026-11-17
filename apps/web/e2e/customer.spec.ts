@@ -58,7 +58,7 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'
-    && item.transactionDate.slice(0, 10) >= '2026-11-01' && item.transactionDate.slice(0, 10) <= '2026-11-10')).toBe(true);
+    && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
   await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
