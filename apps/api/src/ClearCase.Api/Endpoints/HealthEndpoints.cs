@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using ClearCase.Infrastructure.Transactions;
+using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Api.Endpoints;
 
@@ -16,30 +18,58 @@ public static class HealthEndpoints
 
         app.MapGet("/health/ready", GetReadiness)
             .WithName("HealthReady")
-            .WithSummary("Check whether the API has completed startup")
-            .WithDescription("Readiness checks application startup only; no external dependencies are checked.")
+            .WithSummary("Check application startup, database connectivity and applied schema")
+            .WithDescription("Readiness requires application startup, SQLite connectivity and no pending EF migrations.")
             .Produces<HealthResponse>(StatusCodes.Status200OK)
             .Produces<HealthResponse>(StatusCodes.Status503ServiceUnavailable);
 
         return app;
     }
 
-    private static Results<Ok<HealthResponse>, JsonHttpResult<HealthResponse>> GetReadiness(
-        IHostApplicationLifetime applicationLifetime)
+    private static async Task<IResult> GetReadiness(
+        IHostApplicationLifetime applicationLifetime,
+        TransactionDbContext database,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
     {
         if (!applicationLifetime.ApplicationStarted.IsCancellationRequested)
         {
-            return TypedResults.Json(
-                new HealthResponse(
-                    "not_ready",
-                    new Dictionary<string, string> { ["application"] = "starting" }),
-                statusCode: StatusCodes.Status503ServiceUnavailable);
+            return TypedResults.Json(new HealthResponse(
+                "not_ready", new Dictionary<string, string>
+                {
+                    ["application"] = "starting",
+                    ["database"] = "not_checked"
+                }), statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        return TypedResults.Ok(new HealthResponse(
-            "ready",
-            new Dictionary<string, string> { ["application"] = "ready" }));
+        try
+        {
+            if (await database.Database.CanConnectAsync(cancellationToken)
+                && !(await database.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
+                return TypedResults.Ok(new HealthResponse("ready", new Dictionary<string, string>
+                {
+                    ["application"] = "ready",
+                    ["database"] = "ready"
+                }));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            loggerFactory.CreateLogger("ClearCase.Readiness")
+                .LogWarning(error, "Readiness dependency check failed.");
+        }
+
+        return TypedResults.Json(new HealthResponse(
+            "not_ready", new Dictionary<string, string>
+            {
+                ["application"] = "ready",
+                ["database"] = "unavailable"
+            }), statusCode: StatusCodes.Status503ServiceUnavailable);
     }
+
 }
 
 /// <summary>Provides a non-sensitive machine-readable health status.</summary>
