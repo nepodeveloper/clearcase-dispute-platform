@@ -16,10 +16,17 @@ internal static class OutboxPersistenceModel
         message.Property(item => item.OccurredAt).HasConversion(
             value => value.UtcTicks,
             value => new DateTimeOffset(value, TimeSpan.Zero));
+        message.Property(item => item.LeaseUntilAt).HasConversion(
+            value => value.HasValue ? value.Value.UtcTicks : (long?)null,
+            value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
+        message.Property(item => item.NextAttemptAt).HasConversion(
+            value => value.HasValue ? value.Value.UtcTicks : (long?)null,
+            value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
         message.Property(item => item.PublishedAt).HasConversion(
             value => value.HasValue ? value.Value.UtcTicks : (long?)null,
             value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : (DateTimeOffset?)null);
         message.HasIndex(item => new { item.PublishedAt, item.OccurredAt });
+        message.HasIndex(item => new { item.PublishedAt, item.NextAttemptAt, item.LeaseUntilAt, item.OccurredAt });
         message.HasIndex(item => new { item.AggregateId, item.AggregateVersion }).IsUnique();
         message.HasOne<PersistedDispute>().WithMany()
             .HasForeignKey(item => item.AggregateId)
@@ -39,6 +46,9 @@ public sealed class PersistedOutboxMessage
     public DateTimeOffset OccurredAt { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public int Attempts { get; set; }
+    public Guid? LeaseId { get; set; }
+    public DateTimeOffset? LeaseUntilAt { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
 
     public static PersistedOutboxMessage Submitted(PersistedDispute dispute, string correlationId) => Create(
         dispute, "dispute.submitted.v1", dispute.CreatedAt, correlationId, new

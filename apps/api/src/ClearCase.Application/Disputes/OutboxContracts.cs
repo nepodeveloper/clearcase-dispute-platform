@@ -27,13 +27,18 @@ public sealed record DisputeEventEnvelope(
         EventVersion, CorrelationId, Payload.GetRawText(), OccurredAt, 0);
 }
 
+/// <summary>A fenced delivery lease. A restarted worker may reclaim only after its expiry.</summary>
+public sealed record OutboxClaim(OutboxEvent Message, Guid LeaseId);
+
 public interface IOutboxStore
 {
-    Task<OutboxEvent?> ReadNextAsync(CancellationToken cancellationToken);
+    Task<OutboxClaim?> ClaimNextAsync(DateTimeOffset now, TimeSpan leaseDuration, CancellationToken cancellationToken);
 
-    Task RecordAttemptAsync(Guid eventId, CancellationToken cancellationToken);
+    Task<bool> MarkPublishedAsync(Guid eventId, Guid leaseId, DateTimeOffset publishedAt,
+        CancellationToken cancellationToken);
 
-    Task MarkPublishedAsync(Guid eventId, DateTimeOffset publishedAt, CancellationToken cancellationToken);
+    Task<bool> ScheduleRetryAsync(Guid eventId, Guid leaseId, DateTimeOffset nextAttemptAt,
+        CancellationToken cancellationToken);
 }
 
 public interface IOutboxPublisher

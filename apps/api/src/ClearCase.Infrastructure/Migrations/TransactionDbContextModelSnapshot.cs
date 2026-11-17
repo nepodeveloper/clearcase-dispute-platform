@@ -496,6 +496,15 @@ namespace ClearCase.Infrastructure.Migrations
                     b.Property<int>("EventVersion")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LeaseUntilAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("NextAttemptAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("OccurredAt")
                         .HasColumnType("INTEGER");
 
@@ -512,6 +521,8 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("PublishedAt", "OccurredAt");
+
+                    b.HasIndex("PublishedAt", "NextAttemptAt", "LeaseUntilAt", "OccurredAt");
 
                     b.ToTable("OutboxMessages", (string)null);
                 });

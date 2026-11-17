@@ -1,3 +1,24 @@
+## Durable outbox dispatch (PR-33)
+
+Outbox delivery uses a database-committed, fenced lease per event. A worker atomically
+claims a due message, then publishes **outside** the transaction and marks it published
+only when the broker acknowledges it and the same lease token is still current.
+Independent workers cannot claim an unexpired lease. The previous claim expires after
+two minutes if a worker crashes; a restarted worker replays the same immutable event ID.
+An expired worker cannot acknowledge a lease owned by a different worker.
+
+On failure, the lease is released with exponential retry backoff (2s, 4s, 8s, ...
+bounded to five minutes). Later aggregate versions do not overtake an earlier
+unpublished version. The original outbox data survives the additive migration.
+Publication remains **at-least-once**, not exactly-once: a crash after broker
+acknowledgment may deliver an event again. Consumers must deduplicate by event ID.
+
+Operations: watch pending age, attempts, and expired leases; investigate repeatedly
+failing messages without manually marking them as published. Apply migration
+`20261117090000_AddOutboxDeliveryLeases` before starting the updated worker.
+Rollback requires stopping dispatch first and downgrading the migration. Keep the
+database backed up and preserve pending rows.
+
 # ClearCase
 
 ClearCase is a starter monorepo for incrementally building a financial dispute management platform. It includes an ASP.NET Core 10 API, an Angular 21 transaction listing, health endpoints, automated tests, and CI.
