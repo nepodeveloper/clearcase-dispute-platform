@@ -8,6 +8,7 @@ import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { MinorUnitsMoney, PageHeading, StatusBadge } from '../ui/ui-components';
 import { AgentEscalationCreation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
 import { EscalationForm } from './escalation-form';
+import { StaffCommandPanel } from './staff-command-panel';
 
 @Component({
   selector: 'cc-investigation',
