@@ -36,21 +36,22 @@ describe('Supervisor queue', () => {
 
   it('loads persisted escalations and uses status, search, and opaque cursor filters', () => {
     const fixture = render();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector<HTMLSelectElement>('select')!.value).toBe('');
     const initial = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
-    expect(initial.request.params.get('pageSize')).toBe('20');
-    expect(initial.request.params.get('status')).toBe('Open');
+    expect(initial.request.params.get('pageSize')).toBe('5');
+    expect(initial.request.params.has('status')).toBe(false);
     initial.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'opaque-cursor' } });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain(item.reference);
     expect(fixture.nativeElement.textContent).toContain(item.disputeReference);
 
-    const root = fixture.nativeElement as HTMLElement;
     const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
     search.value = ' DSP-SUPERVISOR ';
     search.dispatchEvent(new Event('input'));
     const filtered = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
     expect(filtered.request.params.get('search')).toBe('DSP-SUPERVISOR');
-    expect(filtered.request.params.get('status')).toBe('Open');
+    expect(filtered.request.params.has('status')).toBe(false);
     filtered.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'filtered-cursor' } });
     fixture.detectChanges();
 
@@ -69,5 +70,16 @@ describe('Supervisor queue', () => {
     next.flush({ items: [], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
     expect(root.textContent).toContain('No matching escalations');
+
+    const size = root.querySelector<HTMLSelectElement>('.page-size select')!;
+    size.value = '20';
+    size.dispatchEvent(new Event('change'));
+    const resized = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
+    expect(resized.request.params.get('pageSize')).toBe('20');
+    expect(resized.request.params.get('status')).toBe('Acknowledged');
+    expect(resized.request.params.has('cursor')).toBe(false);
+    resized.flush({ items: [item], pageInfo: { hasNextPage: false } });
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Page 1');
   });
 });

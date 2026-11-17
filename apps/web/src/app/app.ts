@@ -15,7 +15,7 @@ function navigationLinks(user: AuthUser): NavigationLink[] {
   if (user.roles.includes('Agent'))
     links.push({ label: 'Agent work queue', url: '/agent/disputes', icon: '\u2637', section: 'agent' });
   if (user.roles.includes('Supervisor'))
-    links.push({ label: 'Supervisor queue', url: '/agent/escalations', icon: '\u25c8', section: 'supervisor' });
+    links.push({ label: 'Supervisor queue', url: '/supervisor/escalations', icon: '\u25c8', section: 'supervisor' });
   return links;
 }
 

@@ -1,5 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, input, Pipe, PipeTransform } from '@angular/core';
+import { Component, computed, input, output, Pipe, PipeTransform } from '@angular/core';
+
+export const pageSizeOptions = [5, 10, 20, 50] as const;
+export type PageSize = typeof pageSizeOptions[number];
+export const defaultPageSize: PageSize = 5;
 
 export interface TimelineEvent {
   id: string;
@@ -50,6 +54,25 @@ export class StatCard {
   readonly label = input.required<string>();
   readonly value = input.required<string | number>();
   readonly hint = input('');
+}
+
+@Component({
+  selector: 'cc-page-size',
+  template: `
+    <label class="page-size"><span>Rows per page</span>
+      <select class="cc-control" #size (change)="select(size.value)">
+        @for (option of options; track option) { <option [value]="option" [selected]="option === value()">{{ option }}</option> }
+      </select></label>`,
+})
+export class PageSizeSelect {
+  readonly value = input.required<number>();
+  readonly valueChange = output<PageSize>();
+  protected readonly options = pageSizeOptions;
+
+  protected select(raw: string): void {
+    const size = pageSizeOptions.find(option => String(option) === raw);
+    if (size !== undefined && size !== this.value()) this.valueChange.emit(size);
+  }
 }
 
 const statusTones: Readonly<Record<string, string>> = {

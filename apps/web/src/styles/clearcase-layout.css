@@ -58,6 +58,16 @@ textarea.cc-control { resize: vertical; }
 .paging { display: flex; flex-wrap: wrap; gap: 5px; }
 .paging button { border: 1px solid var(--cc-border); background: var(--cc-surface); color: var(--cc-ink); font-weight: 700; min-width: 36px; height: 44px; border-radius: var(--cc-radius-sm); cursor: pointer; }
 .paging button:disabled { color: var(--cc-muted); background: var(--cc-canvas); cursor: not-allowed; }
+.pager { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.cc-date-field { min-width: 170px; }
+.cc-field.cc-date-field > label { font-size: 12px; font-weight: 700; color: var(--cc-ink); }
+.cc-date-field__control { position: relative; display: flex; }
+.cc-date-field__control .cc-control { padding-right: 46px; }
+.cc-date-field__button { position: absolute; top: 0; right: 0; width: 44px; height: 100%; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--cc-radius-sm); background: transparent; color: var(--cc-brand-strong); cursor: pointer; }
+.cc-date-field__button:disabled { color: var(--cc-muted); cursor: not-allowed; }
+.cc-date-field__picker { position: absolute; left: 0; bottom: 0; width: 100%; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.page-size { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--cc-ink); }
+.page-size .cc-control { width: auto; min-height: 44px; padding: 8px 10px; }
 .back { display: inline-flex; align-items: center; min-height: 30px; font-size: 12px; font-weight: 700; text-decoration: none; margin-bottom: 12px; }
 .split-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 20px; align-items: start; }
 .split-grid.unequal { grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr); }

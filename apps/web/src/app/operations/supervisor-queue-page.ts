@@ -3,14 +3,14 @@ import { Component, computed, DestroyRef, ElementRef, inject, signal, viewChild 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
-import { PageHeading, StatCard, StatusBadge } from '../ui/ui-components';
+import { defaultPageSize, PageHeading, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import { EscalationStatus, SupervisorEscalationPage, SupervisorEscalationsApi } from './supervisor-escalations-api';
 
 const escalationStatuses: readonly EscalationStatus[] = ['Open', 'Acknowledged', 'Resolved'];
 
 @Component({
   selector: 'cc-supervisor-queue',
-  imports: [DatePipe, RouterLink, PageHeading, StatCard, StatusBadge],
+  imports: [DatePipe, RouterLink, PageHeading, PageSizeSelect, StatCard, StatusBadge],
   template: `
     <cc-page-heading title="Escalations queue" eyebrow="Supervisor workspace"
       description="Cases waiting for specialist oversight and a recorded outcome.">
@@ -45,11 +45,11 @@ const escalationStatuses: readonly EscalationStatus[] = ['Open', 'Acknowledged',
           <thead><tr><th scope="col">Escalation ID</th><th scope="col">Dispute</th><th scope="col">Customer</th>
             <th scope="col">Reason</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col"><span class="cc-sr-only">Action</span></th></tr></thead>
           <tbody>@for (item of items(); track item.id) {
-            <tr><td><a [routerLink]="['/agent/escalations', item.id]">{{ item.reference }}</a></td>
+            <tr><td><a [routerLink]="['/supervisor/escalations', item.id]">{{ item.reference }}</a></td>
               <td>{{ item.disputeReference }}</td><td>{{ item.customerReference }}</td>
               <td>{{ item.reason }}</td><td><cc-status-badge [label]="item.status" /></td>
               <td>{{ item.createdAt | date:'dd MMM yyyy':'UTC' }}</td>
-              <td><a class="row-action" [routerLink]="['/agent/escalations', item.id]" [attr.aria-label]="'Review ' + item.reference">Review &rarr;</a></td></tr>
+              <td><a class="row-action" [routerLink]="['/supervisor/escalations', item.id]" [attr.aria-label]="'Review ' + item.reference">Review &rarr;</a></td></tr>
           }</tbody>
         </table>
       </div>
@@ -58,9 +58,12 @@ const escalationStatuses: readonly EscalationStatus[] = ['Open', 'Acknowledged',
       }
       <nav class="panel-footer queue-pagination" aria-label="Escalation queue pagination">
         <span aria-live="polite">Page {{ pageNumber() }}</span>
-        <div class="paging">
-          <button type="button" aria-label="Previous page" [disabled]="pageNumber() <= 1 || loading()" (click)="previousPage()">&lsaquo;</button>
-          <button type="button" aria-label="Next page" [disabled]="!hasNextPage() || loading()" (click)="nextPage()">&rsaquo;</button>
+        <div class="pager">
+          <cc-page-size [value]="pageSize()" (valueChange)="setPageSize($event)" />
+          <div class="paging">
+            <button type="button" aria-label="Previous page" [disabled]="pageNumber() <= 1 || loading()" (click)="previousPage()">&lsaquo;</button>
+            <button type="button" aria-label="Next page" [disabled]="!hasNextPage() || loading()" (click)="nextPage()">&rsaquo;</button>
+          </div>
         </div>
       </nav>
     </section>`,
@@ -72,7 +75,8 @@ export class SupervisorQueuePage {
   private readonly cursors: (string | null)[] = [null];
   private requestId = 0;
   protected readonly search = signal('');
-  protected readonly status = signal<EscalationStatus | ''>('Open');
+  protected readonly status = signal<EscalationStatus | ''>('');
+  protected readonly pageSize = signal<PageSize>(defaultPageSize);
   protected readonly pageNumber = signal(1);
   protected readonly page = signal<SupervisorEscalationPage | null>(null);
   protected readonly loading = signal(false);
@@ -97,11 +101,16 @@ export class SupervisorQueuePage {
     this.resetPaging();
   }
 
+  protected setPageSize(size: PageSize): void {
+    this.pageSize.set(size);
+    this.resetPaging();
+  }
+
   protected load(): void {
     const requestId = ++this.requestId;
     this.loading.set(true);
     this.error.set('');
-    this.api.list(this.search(), this.status(), this.cursors[this.pageNumber() - 1] ?? null)
+    this.api.list(this.search(), this.status(), this.cursors[this.pageNumber() - 1] ?? null, this.pageSize())
       .pipe(takeUntilDestroyed(this.destroyRef), finalize(() => {
         if (requestId === this.requestId) this.loading.set(false);
       }))

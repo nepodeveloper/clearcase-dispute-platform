@@ -134,8 +134,8 @@ export interface AgentDisputeFilters {
 export class AgentDisputesApi {
   private readonly http = inject(HttpClient);
 
-  list(filters: AgentDisputeFilters, cursor: string | null) {
-    let params = new HttpParams().set('pageSize', 20);
+  list(filters: AgentDisputeFilters, cursor: string | null, pageSize: number) {
+    let params = new HttpParams().set('pageSize', pageSize);
     if (filters.search.trim() !== '') params = params.set('search', filters.search.trim());
     if (filters.category !== '') params = params.set('category', filters.category);
     if (filters.caseStatus !== '') params = params.set('caseStatus', filters.caseStatus);

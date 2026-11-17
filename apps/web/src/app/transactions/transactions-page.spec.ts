@@ -108,6 +108,31 @@ describe('TransactionsPage', () => {
     request.flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
   });
 
+  it('offers 5, 10, 20 and 50 rows per page and restarts at page one when the size changes', () => {
+    const fixture = render();
+    const initial = http.expectOne((request) => request.url === '/api/v1/transactions');
+    expect(initial.request.params.get('pageSize')).toBe('5');
+    initial.flush({ items: [item], pageNumber: 1, pageSize: 5, totalCount: 6, totalPages: 2, hasNextPage: true });
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('[data-testid="next"]')!.click();
+    http.expectOne((request) => request.url === '/api/v1/transactions')
+      .flush({ items: [item], pageNumber: 2, pageSize: 5, totalCount: 6, totalPages: 2, hasNextPage: false });
+    fixture.detectChanges();
+
+    const size = element.querySelector<HTMLSelectElement>('.page-size select')!;
+    expect([...size.options].map(option => option.value)).toEqual(['5', '10', '20', '50']);
+    expect(size.value).toBe('5');
+    size.value = '10';
+    size.dispatchEvent(new Event('change'));
+    const resized = http.expectOne((request) => request.url === '/api/v1/transactions');
+    expect(resized.request.params.get('pageSize')).toBe('10');
+    expect(resized.request.params.get('pageNumber')).toBe('1');
+    resized.flush({ items: [item], pageNumber: 1, pageSize: 10, totalCount: 6, totalPages: 1, hasNextPage: false });
+    fixture.detectChanges();
+    expect(element.querySelector<HTMLSelectElement>('.page-size select')!.value).toBe('10');
+  });
+
   it('moves focus to the transaction heading after next and previous page loads', () => {
     const fixture = render();
     respond([item], true);
@@ -149,7 +174,7 @@ describe('TransactionsPage', () => {
     http.expectNone((request) => request.url === '/api/v1/transactions');
     expect(element.textContent).toContain('To date must not precede from date.');
     expect(to.getAttribute('aria-invalid')).toBe('true');
-    expect(to.getAttribute('aria-describedby')).toBe('date-range-error');
+    expect(to.getAttribute('aria-describedby')).toBe('date-error');
     expect(element.querySelector('[data-testid="retry"]')).toBeNull();
 
     to.value = '2026-11-11';
@@ -158,6 +183,42 @@ describe('TransactionsPage', () => {
     const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
     expect(request.request.params.get('toDate')).toBe('2026-11-11');
     request.flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
+  });
+
+  it('shows filter dates as dd MMM yyyy, sends ISO dates and rejects unreadable dates', () => {
+    const fixture = render();
+    respond();
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const from = element.querySelector<HTMLInputElement>('[name="fromDate"]')!;
+    const to = element.querySelector<HTMLInputElement>('[name="toDate"]')!;
+    const form = element.querySelector<HTMLFormElement>('form')!;
+    expect(from.placeholder).toBe('dd MMM yyyy');
+
+    from.value = '31 Feb 2026';
+    from.dispatchEvent(new Event('input'));
+    form.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    http.expectNone((request) => request.url === '/api/v1/transactions');
+    expect(element.textContent).toContain('Enter dates as dd MMM yyyy, for example 01 Nov 2026.');
+    expect(from.getAttribute('aria-invalid')).toBe('true');
+
+    from.value = '1 nov 2026';
+    from.dispatchEvent(new Event('input'));
+    from.dispatchEvent(new Event('blur'));
+    const picker = element.querySelectorAll<HTMLInputElement>('cc-date-field input[type="date"]')[1];
+    picker.value = '2026-11-10';
+    picker.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(from.value).toBe('01 Nov 2026');
+    expect(to.value).toBe('10 Nov 2026');
+    expect(from.getAttribute('aria-invalid')).toBeNull();
+
+    form.dispatchEvent(new Event('submit'));
+    const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
+    expect(request.request.params.get('fromDate')).toBe('2026-11-01');
+    expect(request.request.params.get('toDate')).toBe('2026-11-10');
+    request.flush({ items: [], pageNumber: 1, pageSize: 5, totalCount: 0, totalPages: 0, hasNextPage: false });
   });
 
   it('shows server validation messages instead of offering a futile retry', () => {

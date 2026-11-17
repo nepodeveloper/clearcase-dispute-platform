@@ -42,7 +42,7 @@ describe('Agent queue', () => {
 
   function respond(page: AgentDisputePage = { items: [item], pageInfo: { hasNextPage: false } }) {
     const request = http.expectOne(candidate => candidate.url === '/api/v1/agent/disputes');
-    expect(request.request.params.get('pageSize')).toBe('20');
+    expect(request.request.params.get('pageSize')).toBe('5');
     request.flush(page);
   }
 
@@ -81,6 +81,27 @@ describe('Agent queue', () => {
     next.flush({ items: [], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No matching cases');
+  });
+
+  it('restarts at page one with the chosen page size', () => {
+    const fixture = render();
+    respond({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'opaque-cursor' } });
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('[data-testid="next"]')!.click();
+    http.expectOne(request => request.url === '/api/v1/agent/disputes')
+      .flush({ items: [item], pageInfo: { hasNextPage: false } });
+    fixture.detectChanges();
+
+    const size = root.querySelector<HTMLSelectElement>('.page-size select')!;
+    size.value = '50';
+    size.dispatchEvent(new Event('change'));
+    const resized = http.expectOne(request => request.url === '/api/v1/agent/disputes');
+    expect(resized.request.params.get('pageSize')).toBe('50');
+    expect(resized.request.params.has('cursor')).toBe(false);
+    resized.flush({ items: [item], pageInfo: { hasNextPage: false } });
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Page 1');
   });
 
   it('shows a retry after a transient queue failure', () => {

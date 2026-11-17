@@ -50,8 +50,8 @@ export interface SupervisorEscalation {
 export class SupervisorEscalationsApi {
   private readonly http = inject(HttpClient);
 
-  list(search: string, status: EscalationStatus | '', cursor: string | null) {
-    let params = new HttpParams().set('pageSize', 20);
+  list(search: string, status: EscalationStatus | '', cursor: string | null, pageSize: number) {
+    let params = new HttpParams().set('pageSize', pageSize);
     if (search.trim() !== '') params = params.set('search', search.trim());
     if (status !== '') params = params.set('status', status);
     if (cursor !== null) params = params.set('cursor', cursor);
