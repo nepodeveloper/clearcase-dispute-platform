@@ -73,6 +73,8 @@ import { StaffCommandPanel } from './staff-command-panel';
               <li><span class="dot" aria-hidden="true"></span><span>{{ event.eventType }} &middot; {{ event.occurredAt | date:'dd MMM':'UTC' }}</span></li>
             }
           </ul></section>
+          <cc-staff-command-panel [dispute]="item"
+            (completed)="commandCompleted($event)" (refreshRequested)="loadDispute()" />
           <aside class="panel info-panel"><h3>Next best action</h3>
             @if (item.activeEscalation; as escalation) {
               <p>{{ escalation.reference }} &middot; {{ escalation.status }}. This case has already been referred for specialist review.</p>
