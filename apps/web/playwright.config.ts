@@ -43,8 +43,9 @@ export default defineConfig({
       Authentication__SeedPasswords__OtherCustomer: password,
       Authentication__SeedPasswords__Agent: password,
       Authentication__SeedPasswords__Supervisor: password,
-      // Fixed seed dates must not make browser journeys expire; policy boundaries have clocked API tests.
-      DisputeEligibility__Card__DemoWindowEnabled: 'false',
+      // Realistic mock processing requires an enabled card review window; PR-38
+      // makes fresh synthetic dates relative to the clock so this stays valid.
+      DisputeEligibility__Card__DemoWindowEnabled: 'true',
     },
     reuseExistingServer: false,
     timeout: 120000,
