@@ -1,0 +1,103 @@
+# Optional DEMO-ONLY Azure DevOps release promotion. Import explicitly; it provisions nothing.
+# IMPORTANT: production approval checks MUST also be configured in Azure DevOps Environments UI.
+# This workflow simulates a synthetic digest and never runs az deploy, accesses Key Vault or moves money.
+name: clearcase-release-demo-$(Date:yyyyMMdd)$(Rev:.r)
+trigger: none
+pr: none
+parameters:
+- name: failureScenario
+  displayName: Production verification scenario
+  type: string
+  default: success
+  values: [success, readiness-failure, smoke-failure, telemetry-failure]
+stages:
+- stage: Candidate
+  jobs:
+  - job: Prepare
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - checkout: self
+    - bash: |
+        set -euo pipefail
+        python3 scripts/ci/release_simulator.py prepare --state "$(Build.ArtifactStagingDirectory)/release.json" --commit "$(Build.SourceVersion)"
+      displayName: Prepare immutable synthetic candidate
+    - publish: $(Build.ArtifactStagingDirectory)/release.json
+      artifact: release-candidate
+- stage: Development
+  dependsOn: Candidate
+  jobs:
+  - deployment: PromoteDev
+    environment: clearcase-development
+    pool: { vmImage: ubuntu-latest }
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: current
+            artifact: release-candidate
+          - bash: |
+              set -euo pipefail
+              cp "$(Pipeline.Workspace)/release-candidate/release.json" "$(Build.ArtifactStagingDirectory)/release.json"
+              python3 scripts/ci/release_simulator.py deploy --state "$(Build.ArtifactStagingDirectory)/release.json" --environment dev
+            displayName: Simulate development deployment + smoke/health/monitor
+          - publish: $(Build.ArtifactStagingDirectory)/release.json
+            artifact: release-dev
+            condition: always()
+- stage: UAT
+  dependsOn: Development
+  jobs:
+  - deployment: PromoteUAT
+    environment: clearcase-uat
+    pool: { vmImage: ubuntu-latest }
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: current
+            artifact: release-dev
+          - bash: |
+              set -euo pipefail
+              cp "$(Pipeline.Workspace)/release-dev/release.json" "$(Build.ArtifactStagingDirectory)/release.json"
+              python3 scripts/ci/release_simulator.py deploy --state "$(Build.ArtifactStagingDirectory)/release.json" --environment uat
+            displayName: Simulate UAT deployment and E2E verification
+          - publish: $(Build.ArtifactStagingDirectory)/release.json
+            artifact: release-uat
+            condition: always()
+- stage: ProductionApproval
+  dependsOn: UAT
+  jobs:
+  - job: ManualGate
+    displayName: Manual human release approval (demo)
+    pool: server
+    timeoutInMinutes: 1440
+    steps:
+    - task: ManualValidation@0
+      timeoutInMinutes: 1430
+      inputs:
+        notifyUsers: ''
+        instructions: 'Review test artifacts, migration plan, release digest, rollback and financial unknown-outcome risks. Reject unless approved.'
+        onTimeout: reject
+- stage: Production
+  dependsOn: ProductionApproval
+  jobs:
+  - deployment: CanaryAndVerify
+    environment: clearcase-production
+    pool: { vmImage: ubuntu-latest }
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: current
+            artifact: release-uat
+          - bash: |
+              set -euo pipefail
+              cp "$(Pipeline.Workspace)/release-uat/release.json" "$(Build.ArtifactStagingDirectory)/release.json"
+              python3 scripts/ci/release_simulator.py approve --state "$(Build.ArtifactStagingDirectory)/release.json" --approver "Azure Pipelines ManualValidation (mock)" --ticket "$(Build.BuildId)"
+              python3 scripts/ci/release_simulator.py deploy --state "$(Build.ArtifactStagingDirectory)/release.json" --environment prod --scenario "${{ parameters.failureScenario }}"
+            displayName: Simulate 10% canary, smoke, health, monitoring and rollback
+          - publish: $(Build.ArtifactStagingDirectory)/release.json
+            artifact: release-production-evidence
+            condition: always()
