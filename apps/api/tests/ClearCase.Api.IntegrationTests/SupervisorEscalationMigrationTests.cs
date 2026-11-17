@@ -31,7 +31,7 @@ public sealed class SupervisorEscalationMigrationTests
         await db.SaveChangesAsync();
 
         await migrator.MigrateAsync();
-        Assert.Equal(16, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(17, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(original.Id,
             (await db.DisputeEscalations.AsNoTracking().SingleAsync(e => e.DisputeId == disputeId)).Id);
 

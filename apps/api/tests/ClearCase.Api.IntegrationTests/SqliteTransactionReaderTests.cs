@@ -24,7 +24,7 @@ public sealed class SqliteTransactionReaderTests
             await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
             await SyntheticTransactionSeeder.SeedAsync(context, CancellationToken.None);
 
-            Assert.Equal(16, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(17, (await context.Database.GetAppliedMigrationsAsync()).Count());
             Assert.Equal(31, await context.Transactions.CountAsync());
             var descriptions = await context.Transactions.Where(item => item.CustomerId == DemoCustomer)
                 .Select(item => item.Description).Distinct().CountAsync();

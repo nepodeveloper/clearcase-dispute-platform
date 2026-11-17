@@ -470,6 +470,45 @@ namespace ClearCase.Infrastructure.Migrations
                     b.ToTable("DisputeSubmissions", (string)null);
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedKafkaQuarantinedRecord", b =>
+                {
+                    b.Property<string>("ConsumerName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Topic")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Partition")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Offset")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FailureCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PayloadByteLength")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("QuarantinedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConsumerName", "Topic", "Partition", "Offset");
+
+                    b.HasIndex("QuarantinedAt");
+
+                    b.ToTable("KafkaQuarantinedRecords", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", b =>
                 {
                     b.Property<Guid>("EventId")

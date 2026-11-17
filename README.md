@@ -1,3 +1,28 @@
+## Kafka poison-record handling (PR-34)
+
+The optional Kafka consumer validates the versioned envelope before any side effect.
+Malformed JSON and invalid envelopes are written to a durable SQLite
+`KafkaQuarantinedRecords` table; only after that write commits does the consumer commit
+the Kafka offset. Quarantine records contain consumer group, topic, partition, offset,
+failure code, length, SHA-256 fingerprint and arrival time — **not raw payload or
+personal data**. Transient database and offset-commit errors do not acknowledge the
+record; the worker seeks back and retries. Valid duplicates remain inbox-idempotent.
+
+`ClearCase.Kafka` exposes counters `clearcase.kafka.processed`,
+`clearcase.kafka.duplicate`, `clearcase.kafka.quarantined` and
+`clearcase.kafka.failed` for an OpenTelemetry/Metrics listener.
+
+**Operator procedure:** alert on new quarantine rows and sustained failures; inspect
+topic/partition/offset and failure code (never paste raw payloads into logs or tickets).
+Correct schema/source issues, then republish a corrected version with the original
+`EventId` where appropriate. Consumers deduplicate it against a previously
+accepted event. Source-message recovery depends on Kafka topic retention: quarantine
+stores metadata, **not** a replayable message body or a Kafka dead-letter topic.
+Do not delete or auto-reprocess quarantined records without review.
+Apply `20261117091000_AddKafkaQuarantine` before enabling this worker.
+Rollback stops the worker first, then downgrades that migration (archive the
+quarantine metadata before rollback).
+
 ## Durable outbox dispatch (PR-33)
 
 Outbox delivery uses a database-committed, fenced lease per event. A worker atomically
