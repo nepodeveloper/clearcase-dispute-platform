@@ -1,153 +1,115 @@
-## API contract and idempotency hardening (PR-41)
-
-All new customer dispute submissions require exactly one valid `Idempotency-Key`
-header (1–128 visible ASCII characters), including the legacy `/v1` route.
-Missing or invalid headers return `400 dispute.invalidRequest` with a pointer
-to `/headers/Idempotency-Key`; no case, audit or outbox record is committed.
-A valid key still replays the original case if the normalized payload matches,
-or returns `409 dispute.idempotencyKeyReused` for a different request. Existing
-Angular drafts reuse the key on a network retry.
-
-`ApiProblem.Create` now builds the consistent RFC 9457-style error envelope
-for transaction, dispute, Agent, Supervisor and mock-processing endpoints with
-`code`, `correlationId` and JSON-pointer `errors`. `DisputeCaseRules` in
-Domain and `case-status-rules.ts` in Angular explicitly define only `Closed`
-as terminal for the case: an approved or rejected decision may still require
-financial reconciliation or case closure.
-
-## Durable financial execution intents (PR-35)
-
-Financial gateway commands are now scheduled as unique, durable
-`FinancialOperationIntents` **before** the adapter is called. The SQLite transaction
-commits the operation reference, original case version, employee/correlation identity
-and initial `Pending` state, then closes. A fenced worker claims the intent
-(`Dispatched`), invokes the existing mock adapter **outside the dispute transaction**,
-persists its result (`ResultRecorded`), and only then applies the domain transition,
-timeline, audit and outbox. The API processes the mock intent inline for existing demo
-journeys; a separate worker can resume pending work after restart using
-`FinancialOperations:WorkerEnabled=true` (off by default, and disabled in Testing).
-
-**Never blindly resend financial operations.** If a worker crashes or is cancelled
-after dispatch, the expired `Dispatched` lease becomes an **Unknown** outcome;
-recovery records it against the existing operation reference rather than calling the
-adapter again. If a result was persisted but the case update interrupted, the worker
-replays that result and writes the state once, never the gateway call. A stable operation
-reference is unique per case/command. Correlation and audit remain intact.
-
-This supports debit reversal, bank-fee adjustment and card network
-initiation/forwarding/settlement with the existing mock adapters. It does **not**
-enable real banking integrations: production has unavailable gateways and retains
-its fail-closed behavior. Gateway timeout remains ambiguous, not an assumed failure.
-Reconciliation with an authoritative bank must precede any real retry.
-
-Apply migration `20261117092000_AddFinancialOperationIntents` before starting the
-new worker. Monitor `Pending`, `Dispatched` expired leases, `ResultRecorded`
-and `OutcomeUnknown` cases. Require supervised remediation for unknown outcomes.
-Stop the worker and preserve the intent records before any downgrade; rolling back
-the table would lose financial recovery metadata and is unsafe with outstanding
-operations.
-
-## Kafka poison-record handling (PR-34)
-
-The optional Kafka consumer validates the versioned envelope before any side effect.
-Malformed JSON and invalid envelopes are written to a durable SQLite
-`KafkaQuarantinedRecords` table; only after that write commits does the consumer commit
-the Kafka offset. Quarantine records contain consumer group, topic, partition, offset,
-failure code, length, SHA-256 fingerprint and arrival time — **not raw payload or
-personal data**. Transient database and offset-commit errors do not acknowledge the
-record; the worker seeks back and retries. Valid duplicates remain inbox-idempotent.
-
-`ClearCase.Kafka` exposes counters `clearcase.kafka.processed`,
-`clearcase.kafka.duplicate`, `clearcase.kafka.quarantined` and
-`clearcase.kafka.failed` for an OpenTelemetry/Metrics listener.
-
-**Operator procedure:** alert on new quarantine rows and sustained failures; inspect
-topic/partition/offset and failure code (never paste raw payloads into logs or tickets).
-Correct schema/source issues, then republish a corrected version with the original
-`EventId` where appropriate. Consumers deduplicate it against a previously
-accepted event. Source-message recovery depends on Kafka topic retention: quarantine
-stores metadata, **not** a replayable message body or a Kafka dead-letter topic.
-Do not delete or auto-reprocess quarantined records without review.
-Apply `20261117091000_AddKafkaQuarantine` before enabling this worker.
-Rollback stops the worker first, then downgrades that migration (archive the
-quarantine metadata before rollback).
-
-## Outbox exhaustion, parking and supervised recovery (PR-42)
-
-After eight failed publish attempts, a message is parked durably rather than
-retried indefinitely. It remains unpublished and blocks later versions of the
-same dispute, preserving ordering. Authenticated Supervisors can view safe
-metadata and submit a reasoned, audited requeue through separate operational
-API endpoints; no raw event payload is ever returned. See the
-[outbox recovery runbook](docs/implementation/OUTBOX_RECOVERY.md).
-Migration `20261117100000_AddOutboxParkingAndRecoveryAudit` is additive; do not
-discard recovery metadata until all parked events are resolved.
-
-## Durable outbox dispatch (PR-33)
-
-Outbox delivery uses a database-committed, fenced lease per event. A worker atomically
-claims a due message, then publishes **outside** the transaction and marks it published
-only when the broker acknowledges it and the same lease token is still current.
-Independent workers cannot claim an unexpired lease. The previous claim expires after
-two minutes if a worker crashes; a restarted worker replays the same immutable event ID.
-An expired worker cannot acknowledge a lease owned by a different worker.
-
-On failure, the lease is released with exponential retry backoff (2s, 4s, 8s, ...
-bounded to five minutes). Later aggregate versions do not overtake an earlier
-unpublished version. The original outbox data survives the additive migration.
-Publication remains **at-least-once**, not exactly-once: a crash after broker
-acknowledgment may deliver an event again. Consumers must deduplicate by event ID.
-
-Operations: watch pending age, attempts, and expired leases; investigate repeatedly
-failing messages without manually marking them as published. Apply migration
-`20261117090000_AddOutboxDeliveryLeases` before starting the updated worker.
-Rollback requires stopping dispatch first and downgrading the migration. Keep the
-database backed up and preserve pending rows.
-
 # ClearCase
 
-ClearCase is a local financial-dispute assessment platform with an ASP.NET Core 10 modular monolith, Angular 21 customer/Agent/Supervisor workspaces, SQLite migrations, health endpoints, automated tests and CI.
+ClearCase is a local demo platform for raising and handling bank-transaction disputes.
+Customers dispute card purchases, debit orders and bank fees; bank Agents investigate and
+process the cases; Supervisors review escalations. Every step is recorded on a timeline the
+customer can follow.
 
-**Local assessment only:** sign in with an explicitly configured synthetic ASP.NET Core Identity account. Development no longer signs callers in automatically. Do not expose Development/Testing to untrusted users or connect real customer data. No real customer information or money movement is involved.
+> [!IMPORTANT]
+> **Demo only.** All data is synthetic and every financial step (chargebacks, reversals, fee
+> refunds) is a local mock, so no real money moves. This is an engineering foundation, not a
+> production system: there is no bank identity provider, MFA, live banking integration or cloud
+> deployment. Don't load real customer data or expose the Development environment to untrusted users.
 
-**This is an engineering foundation, not a production dispute platform.** Local cookie authentication and an optional Kafka transport/inbox are implemented, but bank identity-provider integration, MFA, live banking integrations, production Kafka hosting and AWS deployment are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+## Features
 
-## CI, release evidence and dependency security (PR-36)
+- **Customers:** search and filter transactions, check whether a transaction can be disputed,
+  submit a dispute and follow its progress.
+- **Agents:** work a bank-wide case queue, add private investigation notes, move cases through
+  their workflow (decision and mock settlement, reversal or adjustment) and escalate cases.
+- **Supervisors:** acknowledge and resolve escalations raised by Agents.
+- **Under the hood:** idempotent submissions, optimistic concurrency, append-only timelines and
+  audit records, and a transactional outbox with optional Kafka publishing.
 
-GitHub Actions performs Release restore/build with .NET analyzers and a high/critical
-NuGet advisory gate; .NET integration tests emit TRX and Cobertura coverage for download.
-A dedicated migration test run checks upgrade/rollback behavior and tests
-`Database.HasPendingModelChanges()` against the checked-in EF snapshot. Frontend
-CI performs clean installation, a high/critical production-dependency audit,
-Angular tests/build and browser E2E verification, retaining screenshots and reports.
+## Tech stack
 
-Coverage is collected and its presence is enforced; a numeric coverage threshold is
-**not yet enforced** because the baseline must first be measured and agreed.
-See [release evidence and rollback checklist](docs/implementation/RELEASE_EVIDENCE.md)
-for exact commands, evidence artifacts and the distinctions between implemented
-simulation capabilities and missing production banking controls.
+| Area | Technology |
+| --- | --- |
+| API | ASP.NET Core 10 modular monolith, EF Core with SQLite, ASP.NET Core Identity (cookie auth) |
+| Web | Angular 21, Vitest, Playwright |
+| CI/CD | GitHub Actions, with equivalent Azure DevOps pipelines |
 
-## Time-relative synthetic demo fixtures (PR-38)
+## Repository layout
 
-New Development/Testing demo databases seed transactions relative to the current
-UTC clock (yesterday through the preceding month) rather than a hardcoded 2026 date.
-The three dispute categories retain deterministic fixture IDs, explicit eligibility
-exceptions and a repeatable customer/Agent mock-outcome journey. All records are
-insert-only; retained databases are **not** silently rewritten. Use a fresh,
-explicitly disposable demo database to re-seed historical fixtures.
-See [demo scenarios](docs/implementation/DEMO_SCENARIOS.md).
+```text
+apps/api/src/       ClearCase.Api, .Application, .Domain, .Infrastructure (migrations, seed data)
+apps/api/tests/     API integration tests
+apps/web/           Angular app (src/) and Playwright browser tests (e2e/)
+.github/workflows/  CI and the manual release-simulation workflow
+.azuredevops/       Equivalent Azure DevOps pipelines
+scripts/ci/         Repository policy and release-simulation scripts
+infra/azure/        Azure infrastructure blueprint (Bicep)
+```
 
 ## Prerequisites
 
 - .NET 10 SDK
 - Node.js 24.18.0 and npm 11.16.x
+- PowerShell 7 (used by the commands below)
 
-The Angular project pins its public npm registry and enables a lockfile in `apps/web/.npmrc`, independent of machine-level registry settings.
-SQLite is bundled with its .NET provider; no database server, Docker, administrator rights, or globally installed EF tool is required.
+SQLite is bundled, so no database server, Docker or administrator rights are needed.
+
+## Run locally
+
+**1. Start the API** from the repository root. Choose a password for each demo account when
+prompted (at least 12 characters, with uppercase, lowercase, a digit and a symbol):
+
+```powershell
+$env:Authentication__SeedPasswords__Customer = Read-Host 'Customer password' -MaskInput
+$env:Authentication__SeedPasswords__OtherCustomer = Read-Host 'Second customer password' -MaskInput
+$env:Authentication__SeedPasswords__Agent = Read-Host 'Agent password' -MaskInput
+$env:Authentication__SeedPasswords__Supervisor = Read-Host 'Supervisor password' -MaskInput
+dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
+```
+
+On first start the API creates `apps/api/src/ClearCase.Api/App_Data/clearcase.db`, applies
+migrations and seeds the demo accounts and synthetic transactions. The passwords are used only
+when an account is first created; changing them later doesn't affect an existing database.
+
+**2. Start the web app** in a second terminal:
+
+```powershell
+Set-Location apps/web
+npm ci
+npm start
+```
+
+**3. Open <http://localhost:4200>** and sign in. The dev server proxies `/api` to port 5100, so
+keep the API on that port.
+
+The API also serves `/health/live`, `/health/ready` and, in Development, an OpenAPI document at
+`/openapi/v1.json`. Example requests are in [ClearCase.Api.http](apps/api/ClearCase.Api.http).
+
+## Demo accounts
+
+| Username | Password variable | Opens |
+| --- | --- | --- |
+| `customer.demo` | `Authentication__SeedPasswords__Customer` | Customer transactions (`/`) |
+| `customer.other` | `Authentication__SeedPasswords__OtherCustomer` | A second customer, for checking data isolation |
+| `agent.demo` | `Authentication__SeedPasswords__Agent` | Dispute work queue (`/agent/disputes`) |
+| `supervisor.demo` | `Authentication__SeedPasswords__Supervisor` | Escalation queue (`/supervisor/escalations`) |
+
+## Demo walkthrough
+
+1. Sign in as `customer.demo`, open a transaction, pick a reason, describe the issue (at least
+   15 characters) and select **Submit dispute**. The case timeline opens.
+2. Sign out, sign in as `agent.demo`, search the queue for the case reference and open it.
+   Add a private note, then process the case with the action buttons (each asks for confirmation).
+3. Or select **Escalate case** instead, then sign in as `supervisor.demo` to acknowledge and
+   resolve the escalation. A case can't be processed while its escalation is open.
+4. Sign back in as the customer. The timeline shows progress and the outcome, never staff notes.
+
+Seeded transactions for each category, with the Agent's happy-path actions:
+
+| Transaction | Category | Agent actions |
+| --- | --- | --- |
+| `/transactions/00000000-0000-0000-0000-000000000001` | Card purchase | Initiate chargeback → Send to acquirer → Merchant accepts → Request settlement → Process mock settlement → Close case |
+| `/transactions/00000000-0000-0000-0000-000000000002` | Debit order | Start review → Verify mandate → Approve & request reversal → Process mock reversal → Close case |
+| `/transactions/00000000-0000-0000-0000-000000000003` | Bank charge | Start review → Approve dispute → Request fee adjustment → Process mock adjustment → Close case |
 
 ## Build and test
 
-From the repository root:
+Backend, from the repository root:
 
 ```powershell
 dotnet restore apps/api/ClearCase.slnx
@@ -155,819 +117,59 @@ dotnet build apps/api/ClearCase.slnx --configuration Release --no-restore
 dotnet test apps/api/ClearCase.slnx --configuration Release --no-build
 ```
 
-Run the frontend commands from `apps/web` so its project-local npm configuration is applied:
+Frontend, from `apps/web`:
 
 ```powershell
-Set-Location apps/web
 npm ci
-npm run test:ci
+npm run test:ci                          # unit tests
 npm run build
+npx playwright install chromium          # first time only
+npm run test:e2e                         # browser tests
 ```
 
-GitHub Actions runs the same backend restore/build/test and frontend clean-install/test/build gates on pull requests and pushes to `main`.
+`npm run test:e2e` starts its own API and web server with temporary databases and generated
+passwords, so it never touches your local database. To run one project, use
+`npm run test:e2e -- --project customer-desktop`.
 
-## Run locally
+## Reset the demo database
 
-Start the API from the repository root:
+Startup never overwrites existing data. To start fresh, stop the API and delete the database
+files. Only do this for disposable demo data.
 
 ```powershell
-# PowerShell 7: enter strong local-only passwords without putting values in shell history.
-$env:Authentication__SeedPasswords__Customer = Read-Host 'Customer seed password' -MaskInput
-$env:Authentication__SeedPasswords__OtherCustomer = Read-Host 'Second customer seed password' -MaskInput
-$env:Authentication__SeedPasswords__Agent = Read-Host 'Agent seed password' -MaskInput
-$env:Authentication__SeedPasswords__Supervisor = Read-Host 'Supervisor seed password' -MaskInput
-dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
+$db = 'apps/api/src/ClearCase.Api/App_Data/clearcase.db'
+Remove-Item $db, "$db-wal", "$db-shm", "$db-journal" -ErrorAction SilentlyContinue
 ```
 
-Passwords require at least 12 characters with uppercase, lowercase, a digit and a symbol. They are required only when creating missing accounts, are hashed in SQLite, and must never be committed or logged. Stop the API and clear these process environment variables when finished. Do not set these variables in the frontend environment.
+The next start recreates and reseeds it, so set the password variables again first.
 
-The launch profile uses Development. On Development startup the API creates the configured data directory, applies the checked-in SQLite migrations, and inserts missing synthetic records. Failures stop startup; existing databases are not deleted or reset. See [SQLite persistence](#sqlite-persistence) before using any non-disposable data.
+## Optional: Kafka
 
-In a second terminal, start Angular:
+Events go to a local logging publisher by default. To publish to Kafka instead (requires Docker),
+start the broker and set these variables before starting the API:
 
 ```powershell
-Set-Location apps/web
-npm start
+docker compose -f compose.kafka.yml up -d
+$env:Messaging__Kafka__Enabled = 'true'
+$env:Messaging__Kafka__BootstrapServers = 'localhost:9092'
 ```
 
-Open `http://localhost:4200`. The Angular development server proxies `/api` to `http://localhost:5100`; start the API with the URL above. The API exposes `GET /health/live` and `GET /health/ready` at `http://localhost:5100`. In Development, the generated OpenAPI document is available at `http://localhost:5100/openapi/v1.json`. The readiness response verifies application startup only; it does not check a database or other dependency.
-
-After backend changes, stop and rerun `dotnet run` in its original terminal to preserve its configuration. Angular's automatic reload does not restart the API; an older API can ignore new query parameters such as `search`. The running OpenAPI document shows whether the new parameter is loaded.
-
-For a manual API smoke check, open `apps/api/ClearCase.Api.http` in VS Code with the REST Client extension, or request the endpoints directly with `curl`.
-
-## Local authentication and UI integration (PR-12 / PR-13)
-
-The backend now uses ASP.NET Core Identity with SQLite-backed tables in the same local database as disputes and transactions. Cookie authentication is the primary path:
-
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/logout`
-- `GET /api/v1/auth/me`
-
-Development seeds deterministic synthetic identities; integration tests explicitly seed isolated SQLite databases with generated, process-local passwords:
-
-| Username | Password configuration key under `Authentication:SeedPasswords` | Role | Workspace |
-| --- | --- | --- | --- |
-| `customer.demo` | `Customer` | `Customer` | `/` |
-| `customer.other` | `OtherCustomer` | `Customer` | `/` (isolated second customer) |
-| `agent.demo` | `Agent` | `Agent` | `/agent/disputes` |
-| `supervisor.demo` | `Supervisor` | `Supervisor` | `/supervisor/escalations` |
-
-Use `/login` in the normal Angular application. The reactive form validates username/password, supports keyboard use and password visibility, and explains invalid credentials and rate limiting. Roles come only from the backend session. Agent queue, investigation, escalation, Supervisor queue and review live under `apps/web/src/app/operations` and call the authenticated API directly.
-
-Login and `/auth/me` return `{ username, actorType, roles, customerId, csrfToken }`; staff `customerId` is currently null. Angular restores `/auth/me` before route decisions, keeps identity/CSRF only in memory, and uses the HTTP-only `clearcase.auth` cookie as authority. It does not use localStorage/sessionStorage. Customer routes include `/`, `/transactions/:id`, `/disputes` and `/disputes/:id`; Agent routes include `/agent/disputes` and `/agent/disputes/:id`; Supervisor routes include `/supervisor/escalations` and `/supervisor/escalations/:id` (legacy `/agent/escalations` URLs redirect there; the queue defaults to all escalation statuses). Role mismatch goes to `/unauthorized`. Only known, role-appropriate application-relative return URLs are preserved.
-
-The shared interceptor sends `X-CSRF-TOKEN` on same-origin `/api/v1/` and legacy `/v1/` POST/PUT/PATCH/DELETE operations, except initial login. It preserves/provides `X-Correlation-ID`, updates tokens on login/restoration, and clears state on logout or 401. It never adds CSRF to an external origin. Failed logout remains visible and retryable; it is not shown as successful. The server independently validates authorization, ownership and CSRF (`400`, `code: auth.csrfInvalid`). `/auth/me` is non-cacheable. Cookies use SameSite=Strict, HttpOnly authentication and Secure outside local Development/Testing; use HTTPS in deployed environments.
-
-Development compatibility is disabled even if its old flag is set to true. Testing also defaults to false. Only the legacy integration-test factory explicitly opts in with `Authentication:EnableDevelopmentCompatibilityPath=true`; auth/browser tests exercise real cookies. Invalid, empty or expired identity cookies cannot fall back. **Removal plan:** migrate legacy workflow fixtures to explicit test login, then remove the Testing-only compatibility handler and `Demo:CustomerId` override in a separate hardening change.
-
-Seeding does not reset existing password hashes, security stamps or lockout state. **Upgrade from PR-12:** previously published seed passwords must be considered compromised. Changing seed environment variables does not rotate existing accounts. Before running PR-13, recreate only an explicitly disposable demo database using the reset procedure below and seed new passwords; retained data requires an administrator-controlled Identity credential/security-stamp rotation instead. Do not downgrade to the old hardcoded seeder.
-
-### Browser verification
-
-From `apps/web`, run `npm run test:e2e`. The wrapper runs the authentication, customer-desktop, customer-mobile, agent-desktop and agent-mobile projects in separate Playwright processes with ephemeral credentials and unique temporary SQLite databases. This keeps login rate-limit state and customer test data isolated; each database and its sidecars are deleted after its servers exit. It never uses the developer's database. Browser tests cover all three roles, mobile/desktop screenshots, restoration, logout, denied navigation, invalid cookies, rate limiting, customer submission with CSRF, and the Agent investigation/private-note journey. Authentication traces are disabled to avoid recording credentials; screenshots are taken before password entry or after sign-in. Each project's test output is isolated under `apps/web/test-results` so later groups don't overwrite earlier screenshots; reports/screenshots are uploaded by existing CI. Run filters through the wrapper, e.g. `npm run test:e2e -- --project authentication`.
-
-### One frontend (PR-28)
-
-`npm start` is the only frontend. The former API-free UI demo (`npm run start:ui`), its in-memory fixtures and its role picker were removed; its design is now the layout of the connected application for every role. Shared building blocks are in `apps/web/src/app/ui` and layout styles in `apps/web/src/styles/clearcase-layout.css`. Demo elements that had no API behind them (a masked account number, "Remember this device" and "Forgot password") remain absent rather than faked. Transaction search now uses the real API in PR-22.
-
-## Connected customer journey (PR-14)
-
-Start the application with `npm start`:
-
-1. Sign in at `/login` using a configured customer assessment account. Login opens **Your transactions**.
-2. Search by description, merchant or reference and filter by transaction type and inclusive UTC dates, then use **Next** / **Previous**. Filtering and pagination run on the server; account totals are not fabricated. Every table (transactions, Agent queue, Supervisor queue) shows 5 rows per page by default, and **Rows per page** offers 5, 10, 20 or 50; changing it returns to page 1. The API default page size (20) is unchanged. Date filters display and accept `dd MMM yyyy` (for example `01 Nov 2026`) and include a calendar picker; the API still receives ISO `yyyy-MM-dd` dates.
-3. Select a transaction to view its persisted GUID-linked details and authoritative eligibility. Already-disputed transactions link to the existing case; pending payments offer **View details**, not **View & dispute**. Amounts are formatted directly from decimal strings without floating-point conversion.
-4. Select a backend-provided reason, enter a 15-2000 character description, and **Submit dispute**. Pending submission is locked against repeated clicks. Field errors remain associated with the form; forbidden, expired-session, duplicate and ineligible responses are explained.
-5. Successful submission automatically opens `/disputes/{id}` using the backend-issued case ID/reference. **My disputes** uses the API's opaque continuation cursor. Case, decision and financial statuses remain distinct; no approval implies confirmed funds.
-6. Follow the event-specific, SQLite-backed timeline, sorted by `sequenceNumber`, including tied or reversed timestamps. Open cases refresh every 30 seconds while the tab is visible, without stealing focus or overlapping requests. Manual refresh remains available; failures retain the last loaded case with an explicit error and retry.
-7. Sign out to end the cookie session. Expired sessions return to login; another customer cannot access the transaction, eligibility or case.
-
-There is one route implementation for each screen, with no in-memory workspace, fake account details or role selector. Database seed records remain explicitly synthetic local assessment data.
-
-### Customer UX improvements (PR-22)
-
-1. **Recognizable cases:** list cards and details include the original transaction description, available merchant, exact amount/currency and transaction date.
-2. **Existing-case recovery:** transactions expose an owner-scoped `activeDisputeId` until the case is `Closed`, including rejected or refund-confirmed cases awaiting closure. The form handles a concurrent duplicate (`409 dispute.activeCaseExists`) by reloading owned details and linking to that case.
-3. **Useful progress:** event-specific milestones, next-step guidance and visible-tab refresh explain what is happening. No completion deadline is invented; open cases explicitly say none has been confirmed.
-4. **Plain status language:** case progress, review decision and money updates stay separate. Approval or an unknown outcome never implies a confirmed refund. The assessment notice and explicit no-real-money confirmation remain.
-5. **Local times:** customer dates/times use the device timezone; ISO UTC values remain in the API and HTML `datetime`. Date filters still use UTC calendar days, as noted in the UI. Staff history keeps its UTC default.
-6. **Find transactions:** bounded, case-insensitive search runs before paging; pending transactions do not advertise submission. Fresh synthetic databases have varied merchants/descriptions. Repeat seeding deliberately preserves existing rows, so retained databases keep their old samples.
-7. **Correct recovery:** unknown application URLs retain their address and show **Page not found**, with a role-appropriate home/sign-in link. Valid routes still enforce authentication and roles.
-
-The API adds transaction context and optional active-case links without changing routes, database schema, events, policy, authorization or financial processing. Deploy the API before the web build. To roll back, redeploy the previous API/web build together; retain all SQLite records and migrations. Older frontends ignore the additive fields; the new frontend tolerates missing transaction context during deployment. New seed descriptions require no reset, and existing databases must not be deleted to refresh a demo.
-
-Focused customer browser verification: `npm run test:e2e -- --project customer-desktop --project customer-mobile` from `apps/web`. Both projects use isolated temporary databases and `Africa/Johannesburg` browser time, covering search, all three submission categories, context, existing-case links, automatic refresh without focus theft, local times, mobile overflow, not-found recovery, session expiry and ownership.
-
-### PR-14 verification and backout
-
-Focused frontend checks (from `apps/web`):
-
-```powershell
-npm run test:ci -- --include "src/app/transactions/*.spec.ts" --include "src/app/disputes/*.spec.ts"
-npm run build
-```
-
-The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
-
-No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. At the time of the PR-14 frontend work, idempotency and staff workflows were deferred; subsequent PR-15 and PR-26/27/29 features implement those capabilities. Real financial processing remains unavailable.
-
-## Submission idempotency (PR-15)
-
-`POST /api/v1/disputes` accepts an optional `Idempotency-Key` header (1-128 visible ASCII characters, scoped to the signed-in customer). See [ADR 0004](docs/adr/0004-submission-idempotency.md).
-
-| Request | Response |
-| --- | --- |
-| New key | `201`, case created; key stored atomically with the case and timeline |
-| Same key, same normalized payload | `201`, original case (current state), `Idempotent-Replayed: true`; no new case |
-| Same key, different payload | `409 dispute.idempotencyKeyReused` |
-| Different key, transaction already has an open case | `409 dispute.activeCaseExists` (unchanged) |
-| No key | Previous behavior (unchanged) |
-| Malformed key | `400 dispute.invalidRequest`, pointer `/headers/Idempotency-Key` |
-
-The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry remains deferred. As of PR-41 the API rejects submissions without exactly one valid Idempotency-Key; the Angular client already sends a unique draft key.
-
-## Optimistic concurrency (PR-16)
-
-Dispute responses include a monotonically increasing `version`, starting at `1`. Local debit-order, chargeback and bank-charge simulation commands may include `expectedVersion` from the last response. If another command has changed the case, the stale request returns `409 dispute.concurrencyConflict` and does not append a timeline entry or perform transition work. Omitting `expectedVersion` remains supported for compatibility; callers should send it to detect stale updates. The database version predicate is checked on every processing write, and each version increment commits with the case and timeline. Migration `AddDisputeOptimisticConcurrency` adds the column with version `1` for existing cases. Back out code and migrate to `AddDisputeSubmissionIdempotency` to roll back this schema change.
-
-## Transactional outbox (PR-17)
-
-Dispute submission and each debit-order, chargeback or bank-charge transition write an event-intent row in `OutboxMessages` in the same transaction as the case, version and timeline. The versioned envelope includes a stable event ID, aggregate ID/version, event type/version, UTC occurrence time, correlation ID and a customer-safe status payload. Descriptions and other customer-provided text are not included.
-
-In Development/Production, a background dispatcher sends pending records to the local logging publisher. It marks an event published only after the publisher acknowledges it. Failures leave the event pending and increment its attempt count; retries use the same event ID. Migration `AddTransactionalOutbox` adds the table; back out code and migrate to `AddDisputeOptimisticConcurrency` to remove it.
-
-## Kafka transport and inbox (PR-18)
-
-Kafka is opt-in for local development; normal API operation continues to use the local publisher. With Docker Compose installed, start the single-node development broker with `docker compose -f compose.kafka.yml up -d`, then configure `Messaging__Kafka__Enabled=true` and `Messaging__Kafka__BootstrapServers=localhost:9092` before starting the API. Topic defaults to `disputes.case-events.v1`; consumer group defaults to `clearcase-local-v1`. Stop the broker with `docker compose -f compose.kafka.yml down`.
-
-Events are partitioned by dispute ID and carry the same stable event ID across retries. The consumer disables automatic offset commits and commits only after its SQLite inbox/effect transaction completes. `(ConsumerName, EventId)` is unique; a replay after database commit but before offset commit is acknowledged without repeating the local effect. This is at-least-once delivery with deduplicated local processing, not exactly-once external financial execution. The inbox records a local event-acceptance effect only; customer notifications and production broker operations are not implemented. See [the AsyncAPI event contract](docs/target-design/asyncapi.yaml). The broker could not be exercised in this environment because Docker is unavailable; SQLite replay and envelope/partition-key tests run without it.
-
-## Debit reversal recovery (PR-19)
-
-If the simulated debit-order reversal returns `OutcomeUnknown`, keep the case at `ReversalRequested` with financial status `OutcomeUnknown`; do not issue `ExecuteReversal` again. Use the existing Development/Testing-only debit-order simulation route with `ReconcileReversal`. It queries the original `MOCK-DO-{caseId}` operation reference; `Unknown` leaves the financial status pending, while only authoritative `Confirmed` or `Failed` status changes it. Every reconciliation result is versioned and appended to the timeline/outbox.
-
-The gateway wrapper never automatically retries reversal submission. Status reads use at most three retries with exponential backoff and jitter; repeated timeouts open a 15-second, per-process circuit breaker and return `Unknown` without issuing another operation. To demonstrate timeout-after-remote-success locally, set `Simulation__DebitOrderOutcome=Unknown` and `Simulation__DebitOrderStatus=Confirmed` before starting the API; reset both to their defaults after the demo. These are deterministic local simulations, not a production bank integration. No schema migration is required for PR-19.
-
-## Agent investigation workspace (PR-26)
-
-The connected Agent workspace reads persisted disputes from all three synthetic transaction categories. The current operational visibility scope is explicitly bank-wide for authenticated Agent and Supervisor roles; it does not imply assignment or branch-level authorization. The API enforces `BankEmployeeAccess`, and customer-scoped dispute readers are not reused or impersonated. Customer references are stable SHA-256-derived pseudonyms from the stored synthetic customer ID; no customer names are generated.
-
-`GET /api/v1/agent/disputes` supports `search`, `category`, `caseStatus`, `pageSize` (1-100, default 20), and an opaque `cursor`. Search matches case reference, transaction description, or reason code. Results are ordered by `createdAt` descending and reference ascending, with server-side projection/filtering and no unbounded count. The queue displays the backend case reference, customer reference, persisted category/description/amount, case status and submission date.
-
-`GET /api/v1/agent/disputes/{id}` returns an operational projection with the persisted transaction facts, customer statement, eligibility result/policy version, distinct case/decision/financial statuses, version, sequence-ordered customer timeline, and persisted card/debit-order/bank-charge workflow facts. It contains no card credentials or raw payment data.
-
-Agents can read notes with `GET /api/v1/agent/disputes/{id}/notes` and append them with `POST /api/v1/agent/disputes/{id}/notes`. Creation requires the authenticated employee claim, CSRF token, and `Idempotency-Key`. Text is trimmed and Unicode-normalized before the 15-2000 character check. The note ID and UTC timestamp are server-generated; the employee ID and correlation ID are persisted. A repeated key and identical normalized note returns the original note with `Idempotent-Replayed: true`; a different note with that key returns 409. The table is protected against updates and deletes by SQLite triggers. Internal note text is not copied into customer timelines, customer DTOs, outbox records or application log messages.
-
-Migration `AddInvestigationNotes` adds only the append-only notes table. Before rolling back, stop API instances and retain a backup; the explicit down target is `AddKafkaInbox`, which preserves all pre-PR-26 tables and data. For Development, startup applies the migration automatically. For retained databases, use the explicit migration procedure above with target `AddInvestigationNotes`. Reverting the application and migrating down removes investigation notes; it does not change dispute statuses or transaction data.
-
-To demonstrate the flow, sign in as `customer.demo`, submit a synthetic dispute, sign out, sign in as `agent.demo`, find its reference at `/agent/disputes`, add a private note, and reload the case. Sign back in as the customer and open the case timeline; the note remains private. See PR-27 below for escalation and Supervisor review. Run the real-API browser journey (including desktop/mobile screenshots and isolated SQLite data; also part of the default `npm run test:e2e` and CI run) from `apps/web` with:
-
-```powershell
-npm run test:e2e -- --project agent-desktop --project agent-mobile
-```
-
-Assignment scopes, staff MFA/IdP integration and real banking operations remain out of scope. Financial state is unchanged by notes or investigation reads.
-
-## Supervisor escalation and review (PR-27)
-
-The connected Agent can create one active escalation per eligible dispute with a private note and an `Idempotency-Key`. A different authenticated Supervisor must acknowledge it before recording a private resolution. Requests use the existing cookie session, CSRF protection and employee identity; no role is selected or simulated in the normal app. Queue/detail reads are private and non-cacheable.
-
-`GET /api/v1/supervisor/escalations` supports bounded `pageSize`, `cursor`, `search` and `status` filters. Supervisors can read `/api/v1/supervisor/escalations/{id}`, acknowledge with `POST .../{id}/acknowledgements`, and resolve with `POST .../{id}/resolutions`. Agent referrals use `POST /api/v1/agent/disputes/{id}/escalations`. All side-effecting operations require an idempotency key and CSRF token. Escalation and resolution notes remain in bank-employee-only projections and append-only audit storage; customer timeline and outbox payloads include only safe progress events.
-
-Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview`. Neither operation changes `decisionStatus` or `financialStatus`, and neither initiates or confirms money movement. Migration `AddSupervisorEscalations` is additive. To roll back, stop API instances, retain a database backup, revert the application, then migrate down to `AddInvestigationNotes`; this removes escalation/audit storage but preserves the case timeline and does not touch transaction data or financial operations.
-
-For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
-
-## Escalation consistency across every processing path (PR-31 follow-up)
-
-All three persisted processing paths now reject mutations while an escalation is Open or
-Acknowledged. The check occurs inside the SQLite write transaction, before invoking the
-workflow transition or writing timeline, audit or outbox records. It applies to staff
-commands **and** Development/Testing-only local simulation endpoints, which return
-`409 dispute.activeEscalation` instead of bypassing the Agent-level guard.
-
-Resolution remains governed by `DisputeEscalationRules.CanResolve`, including a pending
-decision and financially untouched `ManualReview` case. New integration tests verify
-blocking across workflows, racing Supervisor resolutions, and a Supervisor resolution
-contending with a legacy case-closure writer. No database migration is needed.
-
-## Supervisor escalation hardening (PR-30)
-
-Agent creation and idempotent replay return an Agent-safe escalation DTO. It contains the
-Agent's own original note and safe status, not Supervisor resolution notes, reviewer identities,
-or private audit history. Full audit details are available only through Supervisor-authorized APIs.
-
-Supervisor resolution validates the current dispute and escalation state together in a
-transaction. The dispute must still be in `ManualReview`, with a pending decision and no
-initiated financial outcome; a closed or decided case cannot be reopened by an escalation.
-
-The `EnforceSingleActiveEscalation` migration replaces the legacy filtered unique index
-on `(DisputeId, Status)` with one on `DisputeId`, excluding resolved rows. Existing
-records are preserved; already-corrupt mixed active rows deliberately cause the migration
-to fail rather than silently deleting history. Detect and remediate such rows before
-running the migration:
-
-```sql
-SELECT "DisputeId", COUNT(*) AS active_count
-FROM "DisputeEscalations"
-WHERE "Status" <> 'Resolved'
-GROUP BY "DisputeId"
-HAVING COUNT(*) > 1;
-```
-
-Roll back via EF migration to `20261116184208_AddDisputeCommandAudit` if needed;
-the previous index schema is restored without deleting escalations.
-
-## Staff case commands (PR-29)
-
-`POST /api/v1/agent/disputes/{id}/commands` allows authenticated Agents and Supervisors to process cases in the same explicitly bank-wide scope as the investigation workspace. It requires the session's CSRF token and a positive `expectedVersion` from the latest case read, **not** `X-Simulation-Key`. The owner is looked up from the stored case; the employee comes from the authenticated identity. Neither identity can be supplied by JSON.
-
-```json
-{ "command": "StartReview", "expectedVersion": 1 }
-```
-
-| Category | Commands (existing workflow prerequisites still apply) |
-| --- | --- |
-| Debit order | `StartReview`, `VerifyMandate`, `CompleteInvestigation`, `RequestReversal`, `ExecuteReversal`, `ReconcileReversal`, `Reject`, `Close` |
-| Card purchase | `Initiate`, `ForwardToAcquirer`, `MerchantAccept`, `MerchantContest`, `ReceiveRepresentment`, `ReviewRepresentment`, `Approve`, `Reject`, `RequestSettlement`, `ExecuteSettlement`, `Close` |
-| Bank charge | `StartReview`, `Approve`, `Reject`, `RequestAdjustment`, `ExecuteAdjustment`, `Close` |
-
-`ReceiveRepresentment` requires `evidence: { "id": "<nonempty GUID>", "kind": "Receipt" }`; the other supported kinds are `DeliveryConfirmation` and `AuthorizationRecord`. Evidence remains synthetic metadata, not verified files, and is forbidden on other commands. Synthetic merchant acceptance, contest and representment updates are available only in Development/Testing.
-
-Success returns `200` with the updated customer-safe case, timeline and incremented version. Missing/invalid version, command or evidence returns `400 agentDispute.invalidRequest`; missing cases return `404 dispute.notFound`; stale versions return `409 dispute.concurrencyConflict`; invalid workflow transitions return `409 dispute.invalidTransition`. An unresolved escalation blocks commands with `409 dispute.activeEscalation` until the independent Supervisor flow completes. Repeating a committed request with its original version returns 409 and cannot repeat its effect; this is version-based duplicate prevention, not idempotency-key response replay.
-
-Every successful employee command commits the state/version, customer timeline, existing event envelope and an immutable `DisputeCommandAuditEvents` row together. Audit records include the employee ID, command, resulting statuses, version, UTC timestamp and correlation ID. Card audit records also identify the employee rather than the customer. Employee IDs are not added to customer DTOs, timelines or event payloads. Existing customer-scoped simulator routes retain their environment, owner and secret-key restrictions.
-
-**No real money movement:** local financial adapters remain pure mocks inside the SQLite transaction. Outside Development/Testing, unconfigured financial adapters and synthetic merchant updates return `503 dispute.processingUnavailable` without committing a transition. Default Production policy configuration also continues to block approval; this PR does not authorize demo policy for real disputes. Do not replace these mocks with external calls inside the transaction. Existing eligibility rechecks, unknown-outcome reconciliation and separation of approval from confirmation are unchanged.
-
-**Demo:** create a fresh fee dispute as a customer; sign out and sign in as `agent.demo`; GET `/api/v1/agent/disputes/{id}`; POST `StartReview`, then `Approve`, `RequestAdjustment`, `ExecuteAdjustment`, `Close`, using the new version after each success. Alternatively, use `StartReview`, `Reject`, `Close`. Requests are included in [ClearCase.Api.http](apps/api/ClearCase.Api.http). There are no staff command buttons yet.
-
-**Migration/backout:** apply additive migration `AddDisputeCommandAudit` using [the migration procedure](#migrations-and-seed). It adds only the audit table, unique case/version index and append-only triggers. To roll back, stop API instances, retain a verified database/audit backup, redeploy the previous API and migrate down to `AddSupervisorEscalations` using the same project, startup-project and connection arguments. Downgrading deletes this new audit history, not cases, timelines, outbox records or prior card audits; it cannot undo decisions or financial outcomes. Retaining the additive table when rolling back code preserves the history.
-
-Deferred: connected staff controls, assignment/delegation and MFA, decision-reason capture, real banking adapters, the unified aggregate/transition-store refactor, and changes to submission-time versus processing-time eligibility policy.
-
-## Transaction listing API
-
-`GET /api/v1/transactions` lists only transactions belonging to the authenticated customer. `GET /v1/transactions` is a compatibility alias with identical behavior. Both return `401` without authentication and `403` for staff identities. No customer ID from a request header or query parameter is trusted. The curl examples below require a prior login and its cookie jar; use the `.http` examples or signed-in Angular UI for the complete flow.
-
-| Parameter | Meaning |
-| --- | --- |
-| `pageNumber` | Positive integer, default `1`. |
-| `pageSize` | Integer from `1` to `100`, default `20`. |
-| `transactionType` | Optional, case-sensitive `CardPurchase`, `DebitOrder`, or `BankCharge`. |
-| `search` | Optional description/merchant/reference substring, trimmed and case-insensitive, at most 100 characters. `%` and `_` are literal characters, not wildcards. |
-| `fromDate`, `toDate` | Optional inclusive UTC calendar dates in `YYYY-MM-DD` format; `fromDate` must not be later than `toDate`. |
-
-Filtering occurs before offset pagination; ordering is transaction date descending, then ID ascending. `totalCount` counts filtered records; `totalPages` is zero for no matches and `hasNextPage` is false on the last page. A page beyond the end has an empty `items` array. Invalid parameters return HTTP 400 `application/problem+json` with a stable code, correlation ID and per-field errors. Responses use `Cache-Control: private, no-store`.
-
-List/detail items include `activeDisputeId` only when the authenticated customer has a linked case that is not closed; it is omitted otherwise. `isDisputable` is a navigation affordance, false for pending/non-posted transactions, not a substitute for the server eligibility decision. Customer dispute creation, detail and list responses include `transaction: { description, merchantName?, amount, currency, transactionDate }`, with amount as an exact decimal string and absent merchant omitted.
-
-The Angular filters reject an inverted date range before making a request and display validation messages returned by the API. After a page change, focus moves to the transactions heading.
-
-Example, with the API running in Development:
-
-```powershell
-curl.exe "http://localhost:5100/api/v1/transactions?transactionType=CardPurchase&fromDate=2026-11-10&pageSize=1"
-```
-
-```json
-{
-  "items": [
-    {
-      "id": "00000000-0000-0000-0000-000000000001",
-      "transactionType": "CardPurchase",
-      "description": "Woolworths",
-      "amount": "750.00",
-      "currency": "ZAR",
-      "transactionDate": "2026-11-10T08:30:00+00:00",
-      "status": "Posted",
-      "isDisputable": true
-    }
-  ],
-  "pageNumber": 1,
-  "pageSize": 1,
-  "totalCount": 1,
-  "totalPages": 1,
-  "hasNextPage": false
-}
-```
-
-Amounts are decimal **strings**, not JSON numbers, to preserve exact decimal values across clients; timestamps are UTC ISO 8601. `isDisputable` remains a provisional synthetic display indicator, not an authoritative eligibility decision. A follow-up contract change should derive it from the shared policy or retire it; the detailed eligibility endpoint is authoritative for this PR.
-
-The Development seed inserts 30 fixed, dated transactions across all three types for the demo identity and one record for a second synthetic identity to exercise isolation. IDs and dates are fixed, not random or derived from the current clock. Repeated seeding inserts missing IDs without overwriting existing records. Identity customer mappings match these fixed IDs. `Demo:CustomerId` is used only by explicitly enabled Testing compatibility; other environments cannot use it to authenticate.
-
-## Transaction details
-
-`GET /api/v1/transactions/{id}` returns an authenticated customer's transaction; `GET /v1/transactions/{id}` is an equivalent alias. A malformed GUID returns 400 Problem Details. A missing transaction or one owned by another customer returns the same 404 response; callers without authentication receive 401. Both successful and error responses include a correlation ID and use `Cache-Control: private, no-store` for authenticated detail requests. Optional merchant and reference fields are omitted when unavailable.
-
-With the API running in Development:
-
-```powershell
-curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-000000000001"
-```
-
-```json
-{
-  "id": "00000000-0000-0000-0000-000000000001",
-  "transactionType": "CardPurchase",
-  "description": "Woolworths",
-  "merchantName": "Woolworths",
-  "amount": "750.00",
-  "currency": "ZAR",
-  "transactionDate": "2026-11-10T08:30:00+00:00",
-  "status": "Posted",
-  "reference": "TXN-2026-000001",
-  "isDisputable": true
-}
-```
-
-Amounts are stored as integer ZAR cents, converted exactly to decimals, and exposed as decimal strings, consistent with the listing contract. Merchant names and references are synthetic demo data. The Angular transaction list links to `/transactions/{id}`; the details page includes a back link and loading, not-found, and retryable-error states, plus the eligibility-driven submission form.
-
-## SQLite persistence
-
-SQLite was chosen for a self-contained local demo without a server or administrator access; it is not a production scaling claim. `Persistence:DatabasePath` defaults to `App_Data/clearcase.db` relative to the API content root, not the shell's working directory. Override it with configuration, for example `Persistence__DatabasePath`; do not place it in the web root or expose it via static files. Database, WAL, SHM and journal files are Git-ignored. Protect the file and its backups with appropriate filesystem permissions; never put real customer records in the demo environments.
-
-The Infrastructure adapter implements the existing application transaction-reader port. The SQLite schema has a transaction GUID primary key, customer GUID, category, display fields, status, reference, provisional `isDisputable`, and the facts required by the eligibility policies. Customer/date/ID and customer/type/date/ID indexes support scoped list queries; there is no separate customer table to reference yet. Queries apply ownership and filters in SQLite before materialization, order by UTC timestamp then ID, and paginate in the database. Transaction timestamps use UTC ticks and ZAR amounts use integer cents, avoiding binary floating point. A database check limits this slice to ZAR; supporting currencies with other minor-unit scales requires a separate migration and contract review.
-
-The connection enables foreign keys and sets a configurable busy/locked command timeout (`Persistence:BusyTimeoutSeconds`, default 5); the provider handles busy/locked retries within that timeout. The EF SQLite provider enables write-ahead logging (WAL) for newly created databases. WAL permits concurrent readers but SQLite still allows only one writer at a time; it requires reliable local filesystem locking and is unsuitable for many network filesystems. Back up with a SQLite-consistent backup procedure, not a copy of the database file alone while it is active.
-
-### Migrations and seed
-
-Development startup applies migrations and runs the seed in a transaction. The seed contains synthetic data only and does not overwrite existing transaction IDs. Testing uses isolated databases explicitly migrated and seeded by tests. Production and other environments **do not** automatically migrate, create the database, or seed; the runtime opens an existing database in read/write mode. Development must never be pointed at a production database.
-
-The repository-local `dotnet-ef` tool is pinned in the tool manifest. To apply migrations explicitly to the default local database, run from the repository root in a dedicated PowerShell session:
-
-```powershell
-dotnet tool restore
-$apiRoot = (Resolve-Path .\apps\api\src\ClearCase.Api).Path
-$dbPath = Join-Path $apiRoot 'App_Data\clearcase.db'
-New-Item -ItemType Directory -Force -Path (Split-Path $dbPath) | Out-Null
-$env:ASPNETCORE_ENVIRONMENT = 'Production'
-dotnet tool run dotnet-ef database update --project .\apps\api\src\ClearCase.Infrastructure --startup-project .\apps\api\src\ClearCase.Api --connection "Data Source=$dbPath;Mode=ReadWriteCreate;Foreign Keys=True;Default Timeout=5"
-```
-
-For a differently configured database, replace `$dbPath` with its approved absolute path. The explicit `ReadWriteCreate` connection is for the migration command, not the production runtime. Review migrations and take a verified backup before applying them to retained data. To scaffold a future SQLite migration, use `dotnet tool run dotnet-ef migrations add <Name> --project .\apps\api\src\ClearCase.Infrastructure --startup-project .\apps\api\src\ClearCase.Api --output-dir Migrations` from the repository root; review the generated provider-specific migration.
-
-To reset **only a disposable local demo database**, stop all API processes, confirm the resolved `$dbPath` is the intended demo file and that no data needs preserving, then remove the exact database and sidecars:
-
-```powershell
-$apiRoot = (Resolve-Path .\apps\api\src\ClearCase.Api).Path
-$dbPath = Join-Path $apiRoot 'App_Data\clearcase.db'
-foreach ($file in @($dbPath, "$dbPath-wal", "$dbPath-shm", "$dbPath-journal")) {
-    if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
-}
-```
-
-For a differently configured database, resolve and verify its path instead. The next Development startup recreates and reseeds it. Do not use this reset procedure on retained or production data.
-
-Run relational persistence and startup tests with:
-
-```powershell
-dotnet test .\apps\api\tests\ClearCase.Api.IntegrationTests\ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~SqliteTransactionReaderTests|FullyQualifiedName~SqliteStartupTests"
-```
-
-A future PostgreSQL provider requires separately tested provider-specific migrations, exact-money and UTC mapping, data transfer and rollback plans, and concurrency/operational review; SQLite migrations and WAL behavior are not portable as-is. See [ADR 0003](docs/adr/0003-sqlite-local-persistence.md).
-
-## Dispute eligibility
-
-The transaction details page requests a read-only decision from `GET /api/v1/transactions/{id}/dispute-eligibility`. The legacy alias `GET /v1/transactions/{id}/dispute-eligibility` is also available. Both routes require authentication, scope the transaction lookup to the trusted customer identity, return 404 for missing or inaccessible IDs, preserve correlation IDs, and use `Cache-Control: private, no-store`. A decision is a successful 200 response even when its outcome is `Ineligible`; this API never creates a dispute or initiates a reversal, refund, or other financial operation.
-
-```powershell
-curl.exe "http://localhost:5100/api/v1/transactions/00000000-0000-0000-0000-000000000001/dispute-eligibility"
-```
-
-```json
-{
-  "transactionId": "00000000-0000-0000-0000-000000000001",
-  "outcome": "EligibleToSubmit",
-  "reasonCodes": [],
-  "explanation": "This transaction can be submitted for review.",
-  "policyVersion": "demo-v1",
-  "evaluatedAt": "2026-11-12T10:00:00+00:00"
-}
-```
-
-`ClearCase.Domain.DisputeEligibility.IDisputeEligibilityPolicy` defines the pure policy boundary. Separate card-purchase, debit-order, and bank-charge implementations receive transaction facts and an evaluation context; the application handler supplies the trusted transaction, configuration, and injected `TimeProvider`. Policies do not access storage or call external systems.
-
-| Category and condition | Outcome | Example reason code |
-| --- | --- | --- |
-| Posted/settled card debit with information inside the configured demo window | `EligibleToSubmit` | — |
-| Pending card authorization, or outside the configured demo window | `Ineligible` | `card.pendingAuthorization`, `card.outsideDemoWindow` |
-| Missing card information or no configured card window | `RequiresManualReview` | `transaction.informationMissing`, `card.windowNotConfigured` |
-| Debit order with effective policy, complete authorized mandate facts, within window, and amount at or below threshold | `EligibleToSubmit` | — |
-| Debit order outside its standard window or above the internal threshold | `RequiresManualReview` | `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold` |
-| Missing, unauthorized, inactive or mismatched mandate | `RequiresManualReview`, investigation route | `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateNotActive`, `debitOrder.mandateMismatch` |
-| Valid authorized DebiCheck | Ordinary reversal `Ineligible`; authorization complaint remains `RequiresManualReview`, investigation route | `debitOrder.authorisedDebiCheckRequiresReview` |
-| Bank charge posted with required information and no configured review condition | `EligibleToSubmit` | — |
-| Pending bank charge | `Ineligible` | `bankCharge.notPosted` |
-| Bank charge missing information or meeting the configured review condition | `RequiresManualReview` | `transaction.informationMissing`, `bankCharge.configuredReviewCondition` |
-
-Reason codes are stable machine-readable identifiers; the response explanation is customer-safe text. Every outcome includes `policyVersion` and an ISO-8601 `evaluatedAt` timestamp.
-
-The current policy reason codes are:
-
-- Card: `policy.notConfigured`, `card.unsupportedType`, `transaction.notDebit`, `card.pendingAuthorization`, `transaction.notPosted`, `card.invalidAmount`, `transaction.informationMissing`, `card.windowNotConfigured`, `card.transactionDateInFuture`, `card.outsideDemoWindow`.
-- Debit order: `policy.notConfigured`, `debitOrder.unsupportedType`, `debitOrder.notDebit`, `debitOrder.notPosted`, `debitOrder.invalidAmount`, `debitOrder.collectionInformationMissing`, `debitOrder.policyUnavailable`, `debitOrder.mandateInformationMissing`, `debitOrder.unauthorisedCollection`, `debitOrder.mandateNotActive`, `debitOrder.mandateMismatch`, `debitOrder.authorisedDebiCheckRequiresReview`, `debitOrder.outsideStandardWindow`, `debitOrder.amountAboveStandardReviewThreshold`.
-- Bank charge: `policy.notConfigured`, `bankCharge.unsupportedType`, `bankCharge.notPosted`, `transaction.informationMissing`, `bankCharge.invalidAmount`, `bankCharge.configuredReviewCondition`.
-
-### Demonstration configuration and policy caveats
-
-`appsettings.Development.json` and `appsettings.Testing.json` contain the local demonstration settings. The base `appsettings.json` leaves demo policies disabled; an unconfigured policy returns `RequiresManualReview` rather than applying a demo rule.
-
-- Card purchases use a configurable 120-calendar-day **demo-only** window. `DemoWindowEnabled` controls applicability; disabling it routes cases to manual review. This is not a card-network deadline or statement of customer rights.
-- The debit-order example rule has an effective date of 13 April 2026, a 60-calendar-day standard window (day 1 begins after collection), and a configurable R2,000 standard-review threshold. Rule selection uses the collection date. The rule/effective date reflect a proposed demonstration assumption and require confirmation against authoritative bank, scheme, product, legal, and operational guidance before production use.
-- Amounts above R2,000 route to enhanced/manual review, not rejection. The threshold is an illustrative internal routing value, not a legal limit or an actual bank self-service limit. Outside-window debit orders, unauthorised/unclear mandates, and authorization complaints about valid authorised DebiCheck collections remain eligible for further review; no automatic reversal is implied.
-- Bank charges use a separate posted-status, information, and configurable internal review condition (`ManualReviewAboveAmount`, set to R5,000 for this demo). Card-window and debit-order mandate rules are not applied to bank charges.
-- Seeded examples include an eligible card purchase (ID ending `000001`), EFT debit order (`000002`), bank charge (`000003`), pending card authorization (`000004`), high-value debit order (`000005`), incomplete mandate (`000008`), authorised DebiCheck (`000011`), Registered Mandate (`000014`), unauthorized EFT (`000017`), cancelled mandate (`000020`), DebiCheck amount mismatch (`000023`), and suspended Registered Mandate (`000026`).
-
-The policies use deterministic inputs and never read the system clock directly. The API injects `TimeProvider`; tests use a fixed clock for date boundaries. A future dispute-submission use case must separately revalidate ownership, policy and evidence and must use an authorized, idempotent banking adapter; eligibility is not approval or a promise of funds.
-
-### PR-07 mandate verification and investigation
-
-The existing eligibility evaluator now reads `IDebitOrderMandateReader` after the customer-scoped transaction lookup, for debit orders only. Both the GET eligibility query and POST dispute submission use this evaluator; submission reads the mandate again rather than trusting a previous GET. The domain policy stays pure. The reader accepts the trusted customer ID, transaction ID and cancellation token.
-
-Development and Testing use fixed, customer-scoped synthetic snapshots: EFT, Registered Mandate and DebiCheck, status **at collection** (`Active`, `Cancelled`, `Suspended`), authorization, authorized amount/currency and collection date. Unknown records or unavailable fields require investigation; legacy mandate flags stored on transactions are retained for schema compatibility but are **not** a verification fallback. Outside demo environments no banking adapter is configured: the reader returns missing information, never synthetic verification. Production never seeds accounts or enables synthetic auto-login.
-
-This demo assumes exact amount, currency and collection-date matching, not real mandate tolerances or variable-amount rules. A later cancellation is not evidence that a mandate was cancelled at collection. A real source, lifecycle mapping and scheme-specific matching rules require separate confirmation and implementation. Raw mandate records are not exposed in HTTP responses or logged.
-
-Debit-order configuration is under `DisputeEligibility:DebitOrder`:
-
-| Setting | Meaning |
-| --- | --- |
-| `PolicyVersion` | Optional per-rule identifier; current demo `proposed-debit-order-2026-04-13-v2`. Falls back to the existing top-level version when omitted. |
-| `EffectiveFrom`, `EffectiveTo` | Inclusive collection-date bounds; absent/null end means no expiry. Latest matching `EffectiveFrom` wins, independent of list order. Use unique start dates. Gaps or invalid window/threshold values require policy confirmation, never a guessed historical rule. |
-| `WindowCalendarDays` | Proposed EFT/Registered Mandate standard window: `60`. |
-| `StandardReviewAmountLimit` | Existing compatible name for the internal review tier: `2000.00` ZAR. At/below is standard, strictly above is enhanced/manual review, not refusal. No bank self-service limit is configured or inferred. |
-
-Collection dates are South African calendar dates. Evaluation converts the injected UTC instant to South African time (UTC+02:00, no daylight saving). The collection day is day 0; the next calendar day is day 1; day 60 is included and day 61 is referred for review. Day 0/future collections also need review. This refines the earlier UTC-date calculation at the South African midnight boundary. Dates, the proposed 13 April 2026 applicability and the 60-day window still require operational/legal confirmation; no historical production rule is invented.
-
-Valid, active, authorized, matching DebiCheck collections are excluded from ordinary reversal, independently of the EFT/RM window and review threshold. To preserve the existing complaint flow, the overall outcome remains `RequiresManualReview`; the response adds `ordinaryReversalOutcome: "Ineligible"` and `reviewRoute: "Investigation"`. Missing/unauthorized/inactive/mismatched mandate information also sets the investigation route, without claiming a definitive ordinary-reversal outcome. Optional fields are omitted elsewhere, including card/bank-charge responses. Existing outcomes, reason codes and `availableReasons` remain compatible.
-
-For example, GET the eligibility route for transaction `00000000-0000-0000-0000-000000000011`, then submit `unauthorisedDebitOrder` with a description via the existing POST disputes endpoint. It creates `ManualReview` / `Pending` / `NotInitiated` and one initial event, not a reversal. Angular displays the server explanation and keeps the existing complaint form available; it implements no mandate policy.
-
-PR-07 provides assessment and manual-review intake, **not** an investigator queue or bank-core workflow. Case storage retains the selected eligibility policy version, overall outcome and complaint reason, not a mandate snapshot. PR-08 adds the restricted simulation described below; it does not introduce a production investigation service.
-
-Focused checks:
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEligibilityPolicyTests|FullyQualifiedName~DisputeEligibilityEndpointsTests|FullyQualifiedName~DebitOrderMandateReaderTests|FullyQualifiedName~DisputeEndpointsTests"
-Set-Location apps/web
-npm run test:ci -- --include=src/app/transactions/transaction-details-page.spec.ts
-```
-
-For focused tests:
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter FullyQualifiedName~TransactionEndpointsTests
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~TransactionDetailsEndpointsTests|FullyQualifiedName~TransactionApplicationTests"
-Set-Location apps/web
-npm run test:ci -- --include=src/app/transactions/transactions-page.spec.ts --include=src/app/transactions/transaction-details-page.spec.ts
-```
-
-The checked-in target-design OpenAPI document describes a future cursor-based contract; the generated Development OpenAPI document describes this implemented, page-number-based slice. Moving to a different contract requires a separately planned compatibility change.
-
-## Dispute submission
-
-The eligibility response includes `availableReasons` (`[{ "code", "label" }]`, empty when `Ineligible`). The transaction details page shows a form for eligible and manual-review outcomes, then navigates to the persisted case timeline. A confirmation link remains available if navigation does not complete.
-
-| Route | Purpose |
-| --- | --- |
-| `POST /api/v1/disputes` (alias `POST /v1/disputes`) | Submit a dispute for one of the caller's transactions |
-| `GET /api/v1/disputes/{id}` (alias `GET /v1/disputes/{id}`) | Read one of the caller's disputes, including its timeline |
-
-```powershell
-curl.exe -X POST "http://localhost:5100/api/v1/disputes" -H "Content-Type: application/json" `
-  -d '{"transactionId":"00000000-0000-0000-0000-000000000001","reasonCode":"unrecognisedTransaction","description":"I did not make this purchase at the store."}'
-```
-
-A successful submission returns `201 Created` with a `Location` header:
-
-```json
-{
-  "id": "…",
-  "reference": "DSP-0A1B2C3D4E5F",
-  "transactionId": "00000000-0000-0000-0000-000000000001",
-  "category": "CardPurchase",
-  "reasonCode": "unrecognisedTransaction",
-  "description": "I did not make this purchase at the store.",
-  "caseStatus": "Submitted",
-  "decisionStatus": "Pending",
-  "financialStatus": "NotInitiated",
-  "createdAt": "2026-11-12T10:00:00+00:00",
-  "timeline": [{ "sequenceNumber": 1, "eventType": "DisputeSubmitted", "caseStatus": "Submitted", "…": "…" }]
-}
-```
-
-Rules:
-
-- The customer is derived from the trusted identity; any `customerId` in the body is ignored. The transaction lookup is customer-scoped, so another customer's transaction is indistinguishable from an unknown one.
-- Eligibility is re-evaluated with the same PR-04 policies at submission time. `Ineligible` is rejected; `RequiresManualReview` creates the case with `caseStatus: ManualReview`.
-- `reasonCode` must belong to the transaction's category (card: `unrecognisedTransaction`, `duplicateCharge`, `goodsOrServicesNotReceived`, `incorrectAmount`; debit order: `unauthorisedDebitOrder`, `amountDiffersFromMandate`, `mandateCancelled`, `duplicateCollection`; bank charge: `incorrectFee`, `duplicateFee`, `feeNotAgreed`). `description` is trimmed and must be 15–2000 characters.
-- `caseStatus`, `decisionStatus`, and `financialStatus` are independent. This slice only produces `Submitted`/`ManualReview`, `Pending`, and `NotInitiated`; no money moves.
-- The dispute row and its first `DisputeEvent` are saved in a single transaction. `DisputeEvents` is append-only: SQLite triggers reject `UPDATE` and `DELETE`.
-- A filtered unique index (`IX_Disputes_CustomerId_TransactionId_Open`, where `CaseStatus <> 'Closed'`) prevents more than one open case per customer transaction, including under concurrent requests.
-
-| Status | Code | When |
-| --- | --- | --- |
-| 400 | `dispute.invalidRequest` | Malformed JSON or invalid fields (`errors[]` with `/transactionId`, `/reasonCode`, `/description` pointers) |
-| 400 | `dispute.invalidId` | Non-GUID dispute ID on `GET` |
-| 401 | — | Unauthenticated, including Development |
-| 403 | — | Authenticated identity lacks Customer access |
-| 404 | `dispute.notFound` | Unknown or another customer's dispute |
-| 409 | `dispute.activeCaseExists` | An open dispute already exists for the transaction |
-| 422 | `dispute.transactionNotFound`, `dispute.invalidReason`, `dispute.transactionIneligible` | Unknown/inaccessible transaction, reason not valid for the category, or ineligible transaction (`detail` holds the customer-safe explanation) |
-
-The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Request idempotency (`Idempotency-Key` replay) was delivered in PR-15: identical normalized submissions replay the prior case, while a reused key with a different request returns 409. A network timeout is not proof that submission failed: check **My disputes** before retrying.
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
-Set-Location apps/web
-npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
-```
-
-## Unified dispute tracking (PR-10)
-
-Use **Your disputes** in the navigation, or open Angular `/disputes`, to see the authenticated
-customer's submitted cases across all three categories. Each item links to `/disputes/{id}`;
-successful submission opens the timeline automatically. The dashboard has loading,
-empty, error/retry and load-more states. Case details reuse the existing case/status presentation,
-with a keyboard-focusable ordered timeline and explicit UTC timestamps. The details heading receives
-focus after loading; switching cases cancels the previous request. Refresh status reads the latest
-case and timeline together, without initiating processing or inferring confirmation from approval.
-
-| API route (both prefixes supported) | Result |
-| --- | --- |
-| `GET /api/v1/disputes`, `GET /v1/disputes` | Owned summaries, newest `createdAt` first and reference ascending for timestamp ties |
-| `GET /api/v1/disputes/{id}`, `GET /v1/disputes/{id}` | Owned case, separate statuses, customer-safe `statusDescription`, and complete timeline |
-| `GET /api/v1/disputes/{id}/events`, `GET /v1/disputes/{id}/events` | Array of customer-safe events ordered by ascending `sequenceNumber` |
-
-All queries require authentication and use `Cache-Control: private, no-store`. Another customer's
-case/events are indistinguishable from a missing case (404). Lists never expose complaint text,
-evidence, audit identities or internal operation references. Timelines retain their existing small,
-unpaged simulation-history contract; sequence is the canonical chronological order even when timestamps
-tie or the clock changes. The dashboard uses GET case's state/timeline snapshot; the events subresource
-is available for timeline-only consumers, not an extra request that could race the case status.
-
-List parameters: `pageSize` defaults to 20 and is bounded to 1-100; optional `cursor` must be the opaque
-`pageInfo.nextCursor` from the previous response. Invalid values return 400 `dispute.invalidQuery`
-with `/pageSize` or `/cursor` errors. The next cursor is omitted when there is no next page.
-The cursor is not an authorization credential; customer scoping always applies. It uses the immutable
-creation time/reference boundary, so newly submitted cases appear on refresh rather than shifting
-already traversed pages. This new collection uses cursor pagination; existing transaction-list
-page-number pagination is unchanged.
-
-```json
-{ "items": [], "pageInfo": { "hasNextPage": false } }
-```
-
-### Bank-charge investigation and adjustment
-
-`POST /api/v1/disputes/{id}/bank-charge-simulations` is Development/Testing-only and requires the
-authenticated owner plus `X-Simulation-Key`, checked against `Simulation:BankChargeKey`. With no
-configured key, customers cannot process cases. Other environments have no route or mock registration.
-Card/debit-order cases cannot enter this workflow, and bank-charge cases cannot enter either of theirs.
-
-| Command | Required state | Result |
-| --- | --- | --- |
-| `StartReview` | Submitted or legacy ManualReview bank-charge case | UnderReview, decision Pending, financial NotInitiated |
-| `Approve` | UnderReview/Pending and current valid fee facts/policy | Decision Approved; financial still NotInitiated |
-| `Reject` | UnderReview/Pending | Case and decision Rejected, no adjustment |
-| `RequestAdjustment` | Approved, financial NotInitiated, current valid fee facts/policy | Financial Requested, stable `MOCK-FEE-{caseId}` reference |
-| `ExecuteAdjustment` | Approved, financial Requested, current valid fee facts/policy | Explicit mock result: Confirmed, Failed or OutcomeUnknown |
-| `Close` | Approved/Confirmed or Rejected/NotInitiated | Closed; decision and financial outcome preserved |
-
-Investigation does not automatically approve a fee. Missing transaction information or an unavailable
-policy blocks approval/adjustment; an amount routed for internal review can be explicitly approved
-after investigation. Invalid/repeated commands return 409 `bankCharge.invalidTransition`. The case,
-adjustment reference and append-only `DisputeEvent` commit in one SQLite transaction. Concurrent
-execution and restart replays cannot repeat a committed adjustment. Failed/unknown results remain
-unconfirmed and cannot be retried or closed; recovery remains future work.
-The mock is pure, local and never posts funds. Never replace it with an external call inside the
-SQLite writer transaction.
-
-### Three end-to-end demo journeys
-
-Use a disposable local demo database with the normal API/Angular startup commands. To enable
-privileged simulation, generate private keys in the API shell before startup:
-
-```powershell
-$env:Simulation__DebitOrderKey = [guid]::NewGuid().ToString('N')
-$env:Simulation__CardNetworkKey = [guid]::NewGuid().ToString('N')
-$env:Simulation__BankChargeKey = [guid]::NewGuid().ToString('N')
-```
-
-Keep these values private to the simulator (REST Client examples are in `apps/api/ClearCase.Api.http`);
-they are never given to the customer UI. In the transaction list, open and submit each case below,
-using a description of at least 15 characters. Submission opens the timeline; then return to
-**Your disputes** to verify all categories are present. A fresh submission adds one initial event.
-
-| Journey | Seeded transaction / reason | Privileged simulation commands, then refresh the customer details |
-| --- | --- | --- |
-| Card purchase | `00000000-0000-0000-0000-000000000001` / `duplicateCharge` | Initiate, ForwardToAcquirer, MerchantAccept, RequestSettlement, ExecuteSettlement, Close |
-| Debit order | `00000000-0000-0000-0000-000000000002` / `duplicateCollection` | StartReview, VerifyMandate, RequestReversal, ExecuteReversal, Close |
-| Bank charge | `00000000-0000-0000-0000-000000000003` / `incorrectFee` | StartReview, Approve, RequestAdjustment, ExecuteAdjustment, Close |
-
-Before each execution command, refresh to verify requested is **not confirmed**. Only an explicit
-successful mock result shows simulated confirmation; no real money moves. For the bank rejection
-path, use another posted synthetic fee (for example transaction ending `000006`), then StartReview,
-Reject, Close. The detailed card representment and debit investigation examples below remain available.
-Seed dates are fixed, so eligibility changes with time; automated tests inject a deterministic clock.
-
-**Migration / rollback:** `AddBankChargeTracking` adds one nullable adjustment-reference column,
-a unique reference index and a customer/creation/reference listing index. Existing rows/history and
-routes remain compatible. Development auto-migrates; other environments use the documented explicit
-migration procedure. Clear the bank simulation key to disable processing immediately. Before fee
-processing, downgrade to `20261113063056_AddChargebacks` and revert code. Once operations exist,
-retain the column/current reader or restore an approved pre-PR disposable-demo backup; do not drop
-pending/unknown operation references. No new library, external integration or global state store is used.
-
-Focused checks:
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter FullyQualifiedName~DisputeTrackingTests
-Set-Location apps/web
-npm run test:ci -- --include=src/app/disputes/dispute-pages.spec.ts --include=src/app/disputes/dispute-form.spec.ts
-```
-
-## Current limitations
-
-### PR-08 debit-order processing simulation
-
-`POST /api/v1/disputes/{id}/debit-order-simulations` accepts `{ "command": "StartReview" }`.
-It is mapped **only** in Development/Testing, requires the authenticated case owner **and**
-`X-Simulation-Key` matching server configuration `Simulation:DebitOrderKey`. No configured key,
-a missing key, or an incorrect key returns 403; Production/Staging have no route (404), even
-when a key is configured. The key is never sent to Angular, logged, stored in a case, or checked in.
-Generate a fresh local value in the API shell before starting:
-
-```powershell
-$env:Simulation__DebitOrderKey = [guid]::NewGuid().ToString('N')
-dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
-```
-
-Keep the key private to the local simulator. Do not put real customer data in demo environments.
-Use the REST Client examples in `apps/api/ClearCase.Api.http` with that environment variable.
-Ordinary customer requests cannot process cases. GET details remains customer-owned, without the key.
-The existing submission confirmation can now refresh case, decision, financial status and the full
-timeline; it has no processing controls.
-
-| Command | Required state / checks | Result |
-| --- | --- | --- |
-| `StartReview` | `Submitted` or legacy `ManualReview`, debit order only | `UnderReview` |
-| `VerifyMandate` | `UnderReview`; fresh PR-07 mandate and eligibility evaluation | `MandateVerified` for ordinary eligible collections; otherwise remains `UnderReview` with an investigation event |
-| `CompleteInvestigation` | `UnderReview`; explicit simulated investigation, fresh eligible mandate/policy | `MandateVerified`; never overrides missing/mismatched data, valid DebiCheck exclusion or enhanced-review policy |
-| `RequestReversal` | `MandateVerified`; recheck current eligibility | `ReversalRequested` / decision `Approved` / financial `Requested`, durable `MOCK-DO-{caseId}` operation reference |
-| `ExecuteReversal` | `ReversalRequested` / financial `Requested`; recheck current eligibility | Mock `Confirmed`: `ReversalConfirmed` / financial `Confirmed`; mock `Failed` or `Unknown`: remain `ReversalRequested` / financial `Failed` or `OutcomeUnknown` |
-| `ReconcileReversal` | `ReversalRequested` / financial `OutcomeUnknown` | Query the same `MOCK-DO-{caseId}` reference; remain unknown or record its authoritative confirmed/failed result; never send another reversal |
-| `Reject` | `UnderReview`, `MandateVerified`, or a definitively failed simulated reversal | `Rejected` / decision `Rejected`; no financial confirmation |
-| `Close` | `Rejected` or `ReversalConfirmed` only | `Closed`, preserving decision and financial outcome |
-
-Authorization, amount and cancellation complaints require explicit investigation, even when the
-reader reports a matching mandate. Missing information cannot be waived by a command. A specialist
-queue, evidence capture and enhanced-review approval are deferred; affected cases remain under review
-or can be explicitly rejected in this simulation. Submission behavior and legacy aliases are unchanged.
-
-Invalid transitions and repeated processing return 409 `debitOrder.invalidTransition`; bad commands
-return 400 `debitOrder.invalidCommand` with `/command` field errors. Missing/inaccessible cases return
-404 `dispute.notFound`. The generated Development OpenAPI describes the actual route and response.
-
-`IDebitOrderProcessingGateway` is implemented by a deterministic, side-effect-free mock (default:
-confirmed). Tests inject its failed/unknown outcomes. Approval never confirms funds. SQLite acquires
-the writer lock **before** reading processing state, and commits case updates, the unique operation
-reference and each `DisputeEvent` together. Racing requests serialize; a committed gateway outcome
-cannot be executed again, including after restart. An unknown outcome cannot be executed, rejected
-or closed; `ReconcileReversal` queries the same stable reference until the result is authoritative.
-
-This transaction boundary is safe **only because the mock has no external side effects**. A database
-rollback can recompute the pure mock using the same reference; it cannot move money twice. Never
-replace it with an external banking call inside this transaction. Case events now persist in the
-transactional outbox and are dispatched to the local publisher; Kafka transport is available as an
-opt-in development adapter. No real bank integration or external money movement is implemented.
-
-**Migration / rollback:** `AddDebitOrderOperationReference` adds one nullable column and unique index.
-Existing cases/events are preserved. Development applies it on startup; other environments require
-the documented explicit migration process. Disable simulation immediately by clearing the key.
-Before any new states are persisted, the migration can be downgraded to `20261112185347_AddDisputes`
-and code reverted (tested with legacy rows). After processing, old binaries cannot read the new enum
-values: retain this reader and disable commands, or restore a verified pre-PR backup of the disposable
-demo database. Do not downgrade retained processing history or discard unknown operation references.
-
-**Demo:** submit `duplicateCollection` for synthetic EFT transaction ending `000002`, then run
-`StartReview`, `VerifyMandate`, `RequestReversal`, `ExecuteReversal`, `Close`, refreshing the existing
-confirmation after each command. Approval/requested is visibly not confirmation. Transaction `000008`
-demonstrates missing mandate; reason `unauthorisedDebitOrder` on `000002` demonstrates explicit
-investigation. Seed date-based eligibility changes as time passes; tests use a fixed clock.
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~DebitOrderProcessingTests|FullyQualifiedName~SqliteDisputeStoreTests"
-Set-Location apps/web
-npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
-```
-
-### PR-09 card chargeback and representment simulation
-
-`POST /api/v1/disputes/{id}/chargeback-simulations` reuses the owned dispute resource and accepts
-`{ "command": "Initiate" }`. Like debit-order processing, it exists only in Development/Testing
-and requires both authentication and `X-Simulation-Key`. This workflow uses its own server setting,
-`Simulation:CardNetworkKey`; the debit-order key does not grant card privileges.
-Generate a private local key before starting the API:
-
-```powershell
-$env:Simulation__CardNetworkKey = [guid]::NewGuid().ToString('N')
-dotnet run --project apps/api/src/ClearCase.Api --urls http://localhost:5100
-```
-
-Missing/unconfigured/wrong keys return 403. Production/Staging have no simulation endpoint or mock
-gateway registration, even if a key is configured. No processing controls or keys are added to Angular.
-
-| Command | Required chargeback state | Result |
-| --- | --- | --- |
-| `Initiate` | No chargeback; owned submitted/manual-review card dispute with freshly eligible transaction | `Initiated` on mock acknowledgement; case `UnderReview`, decision `Pending`, financial `NotInitiated` |
-| `ForwardToAcquirer` | `Initiated` | Mock network forwards to acquirer; `MerchantReview` |
-| `MerchantAccept` | `MerchantReview` | `MerchantAccepted`, decision `Approved`; financial remains `NotInitiated` |
-| `MerchantContest` | `MerchantReview` | `MerchantContested`, decision still `Pending`; contest is not a customer loss |
-| `ReceiveRepresentment` | `MerchantContested` with valid metadata | `RepresentmentReceived` |
-| `ReviewRepresentment` | `RepresentmentReceived` with stored evidence | `IssuerReview` |
-| `Approve` / `Reject` | `IssuerReview` | `DecisionIssued`; final dispute decision `Approved` (customer favoured) or `Rejected`, no financial confirmation |
-| `RequestSettlement` | Merchant acceptance or issuer approval; financial `NotInitiated` | Financial `Requested` only |
-| `ExecuteSettlement` | Approved decision and financial `Requested` | Explicit mock result sets financial `Confirmed`, `Failed` or `OutcomeUnknown` |
-| `Close` | Approved and financially confirmed, or rejected without settlement | Chargeback and case `Closed`, preserving decision and financial status |
-
-`Chargeback` is linked one-to-one to the dispute. Its stable `MOCK-CB-{caseId}` reference is reserved
-locally, **not proof of network acknowledgement**. The reason code comes from the existing card complaint
-catalog, not real Visa/Mastercard scheme codes. GET dispute details adds an optional `chargeback` object:
-`reference`, `reasonCode`, `status`, `lastOperationOutcome`, and optional `evidence`. Other cases omit it.
-The existing confirmation/refresh display shows chargeback progress separately from the case decision
-and financial status; a card settlement is not labelled a debit-order reversal.
-
-Representment accepts only synthetic metadata, for example:
-
-```json
-{
-  "command": "ReceiveRepresentment",
-  "evidence": {
-    "id": "aaaaaaaa-1111-4222-8333-444455556666",
-    "kind": "Receipt"
-  }
-}
-```
-
-The ID must be a nonempty GUID. Kinds are `Receipt`, `DeliveryConfirmation`, or `AuthorizationRecord`;
-`receivedAt` comes from the server clock. Metadata is required for representment and forbidden on other
-commands. No file is uploaded or verified, and no filename, content or storage URL is accepted/exposed.
-Actual evidence storage/authorization remains future work.
-
-The deterministic `ICardNetworkGateway` mock handles initiation, forwarding and explicit settlement;
-tests inject failed and unknown results (unknown models a timeout). A failed/unknown operation retains
-the prior chargeback stage (`InitiationPending` if initiation never acknowledged) and exposes its
-`lastOperationOutcome`. It blocks all further processing, including repeated attempts and closure.
-An initiation/forwarding timeout never changes financial status to confirmed. Durable intent recovery is being added in PR-35;
-there is no retry loop, automatic refund, arbitration, real network call or Kafka.
-
-Each command atomically updates the case and chargeback, appends a customer-safe `DisputeEvent`, and
-appends a separate `ChargebackAuditEvent` with authenticated actor ID, correlation ID, command,
-resulting statuses, evidence metadata and timestamp. A unique `MOCK-CARD-{caseId}-{command}` operation
-reference, one chargeback per dispute, and SQLite's writer lock prevent duplicate committed operations,
-including across races/restarts. Audit UPDATE/DELETE is rejected by SQLite triggers.
-The gateway is pure and runs inside that local transaction; rollback may recompute it without external
-effects. Do not substitute a real network call here. Kafka transport and financial reconciliation
-remain separate follow-up work.
-
-Invalid fields return 400 `chargeback.invalidRequest` with JSON Pointer errors; invalid transitions
-or repeated commands return 409 `chargeback.invalidTransition`; inaccessible cases return 404
-`dispute.notFound`. A 200 processing response means the simulated outcome was recorded, **not** that
-funds succeeded. The generated Development OpenAPI includes the route, commands and explicit response
-DTOs; the architecture document distinguishes this executable slice from future network integration.
-
-**Migration / rollback:** `AddChargebacks` adds `Chargebacks`, `ChargebackAuditEvents`, constraints,
-indexes and audit triggers; existing case states, tables, timelines and routes remain compatible.
-Apply via Development startup or the existing explicit migration procedure. Clear the card simulation
-key for immediate operational backout, preserving readers and history. Before chargeback processing,
-the schema can be downgraded to `20261113060653_AddDebitOrderOperationReference`. After processing,
-retain the tables/reader or restore an approved pre-PR disposable-demo backup; downgrade would delete
-chargeback/audit records and must not be used to erase retained financial or unknown-outcome history.
-
-**Demo:** submit `duplicateCharge` for synthetic card transaction ending `000001` in a disposable
-demo database, then `Initiate`, `ForwardToAcquirer`, `MerchantAccept`, `RequestSettlement`,
-`ExecuteSettlement`, `Close`. For representment, instead use `MerchantContest`, `ReceiveRepresentment`
-with the metadata above, `ReviewRepresentment`, then `Approve` or `Reject`. Approval still requires
-the two explicit settlement steps before closure. Refresh the existing confirmation after each action.
-REST Client examples are in `apps/api/ClearCase.Api.http`. Policy windows remain demo-only.
-
-```powershell
-dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~ChargebackProcessingTests|FullyQualifiedName~DebitOrderProcessingTests|FullyQualifiedName~SqliteDisputeStoreTests"
-Set-Location apps/web
-npm run test:ci -- --include=src/app/disputes/dispute-form.spec.ts
-```
-
-### Other limitations
-
-- Local Identity accounts are not a bank identity-provider integration. Production needs controlled account provisioning, HTTPS and operational hardening; no automatic accounts or demo fallback are available.
-- The Angular pages display synthetic data only. Dispute submission creates a case record but no reversal, refund, chargeback, notification, or evidence upload.
-- Dispute submission has CSRF protection but no `Idempotency-Key` replay contract yet; submission/idempotency behavior is unchanged by PR-13.
-- SQLite persistence is local-only; production identity integration, PostgreSQL, event broker, external banking adapter, cloud resources, and deployment manifests are not included.
-- Development CORS permits only the configured local Angular origin. CORS is not enabled outside Development.
-- On 2026-11-12, `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported 16 moderate findings in development tooling; npm's suggested forced fix upgrades Angular CLI to 22, so that breaking upgrade is deferred for a dedicated dependency review.
-
-See `docs/adr/0001-bootstrap-foundation.md` for the initial scope decision. Target designs in `docs/target-design/` describe future work and are not claims about implemented behavior.
+## CI/CD
+
+- [ci.yml](.github/workflows/ci.yml) runs on pull requests and pushes to `main`. It covers
+  repository policy, the backend build, tests, migration checks and coverage, dependency audits,
+  the frontend tests and build, and the Playwright browser tests.
+- [release-simulation.yml](.github/workflows/release-simulation.yml) is a manual, demo-only
+  promotion through `clearcase-development` → `clearcase-uat` → `clearcase-production`, with
+  approval required before production. It deploys nothing; setup steps are in the workflow's
+  header comment.
+
+## Limitations
+
+- Local Identity accounts only: no bank identity provider, MFA or case assignment. Agents and
+  Supervisors can see every case.
+- All financial processing is mocked. There are no real refunds, reversals, chargebacks,
+  notifications or evidence uploads.
+- SQLite and the bundled Kafka broker are for local use. A production database, broker hosting
+  and cloud deployment are not included.
+- Coverage is collected in CI, but no minimum threshold is enforced yet.
