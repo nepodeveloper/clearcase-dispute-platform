@@ -202,6 +202,7 @@ app.MapDisputeEndpoints();
 app.MapAgentDisputeEndpoints();
 app.MapAgentDisputeCommands();
 app.MapSupervisorEscalationEndpoints();
+app.MapOutboxRecoveryEndpoints();
 app.MapDebitOrderSimulation();
 app.MapChargebackSimulation();
 app.MapBankChargeSimulation();
