@@ -36,7 +36,7 @@ public static class OutboxRecoveryEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (limit is < 1 or > 100)
-            return DisputeEndpoints.Problem(context, 400, "Invalid outbox query",
+            return ApiProblem.Create(context, 400, "Invalid outbox query",
                 "outbox.invalidQuery", "Choose a limit from 1 to 100.");
         var records = await store.ListParkedAsync(limit ?? 50, cancellationToken);
         return TypedResults.Ok(records);
@@ -48,23 +48,23 @@ public static class OutboxRecoveryEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(id, out var eventId) || eventId == Guid.Empty)
-            return DisputeEndpoints.Problem(context, 400, "Invalid event ID", "outbox.invalidId");
+            return ApiProblem.Create(context, 400, "Invalid event ID", "outbox.invalidId");
         if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var employeeId)
             || employeeId == Guid.Empty)
-            return DisputeEndpoints.Problem(context, 403, "Supervisor identity required", "auth.employeeIdentityRequired");
+            return ApiProblem.Create(context, 403, "Supervisor identity required", "auth.employeeIdentityRequired");
 
         var reason = request.Reason?.Trim() ?? string.Empty;
         if (reason.Length is < 15 or > 500)
-            return DisputeEndpoints.Problem(context, 400, "Recovery reason required",
+            return ApiProblem.Create(context, 400, "Recovery reason required",
                 "outbox.invalidReason", "Record a reason of 15–500 characters after checking broker delivery.");
 
         var outcome = await store.RequeueAsync(eventId, employeeId, reason,
             clock.GetUtcNow(), cancellationToken);
         if (outcome == OutboxRequeueOutcome.NotFound)
-            return DisputeEndpoints.Problem(context, 404, "Outbox event not found",
+            return ApiProblem.Create(context, 404, "Outbox event not found",
                 "outbox.notFound");
         if (outcome == OutboxRequeueOutcome.NotParked)
-            return DisputeEndpoints.Problem(context, 409, "Outbox event is not parked",
+            return ApiProblem.Create(context, 409, "Outbox event is not parked",
                 "outbox.notParked", "Refresh parked events. Only parked, unpublished messages can be requeued.");
 
         OutboxDispatchMetrics.Requeued.Add(1);
