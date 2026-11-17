@@ -78,11 +78,26 @@ database backed up and preserve pending rows.
 
 # ClearCase
 
-ClearCase is a starter monorepo for incrementally building a financial dispute management platform. It includes an ASP.NET Core 10 API, an Angular 21 transaction listing, health endpoints, automated tests, and CI.
+ClearCase is a local financial-dispute assessment platform with an ASP.NET Core 10 modular monolith, Angular 21 customer/Agent/Supervisor workspaces, SQLite migrations, health endpoints, automated tests and CI.
 
 **Local assessment only:** sign in with an explicitly configured synthetic ASP.NET Core Identity account. Development no longer signs callers in automatically. Do not expose Development/Testing to untrusted users or connect real customer data. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** Local cookie authentication is implemented, but bank identity-provider integration, MFA, banking integrations, real financial reversals, Kafka and AWS are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+**This is an engineering foundation, not a production dispute platform.** Local cookie authentication and an optional Kafka transport/inbox are implemented, but bank identity-provider integration, MFA, live banking integrations, production Kafka hosting and AWS deployment are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+
+## CI, release evidence and dependency security (PR-36)
+
+GitHub Actions performs Release restore/build with .NET analyzers and a high/critical
+NuGet advisory gate; .NET integration tests emit TRX and Cobertura coverage for download.
+A dedicated migration test run checks upgrade/rollback behavior and tests
+`Database.HasPendingModelChanges()` against the checked-in EF snapshot. Frontend
+CI performs clean installation, a high/critical production-dependency audit,
+Angular tests/build and browser E2E verification, retaining screenshots and reports.
+
+Coverage is collected and its presence is enforced; a numeric coverage threshold is
+**not yet enforced** because the baseline must first be measured and agreed.
+See [release evidence and rollback checklist](docs/implementation/RELEASE_EVIDENCE.md)
+for exact commands, evidence artifacts and the distinctions between implemented
+simulation capabilities and missing production banking controls.
 
 ## Prerequisites
 
@@ -217,7 +232,7 @@ npm run build
 
 The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
 
-No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. Full idempotency-key replay, staff workflows and real financial processing remain deferred, not implied by the UI.
+No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. At the time of the PR-14 frontend work, idempotency and staff workflows were deferred; subsequent PR-15 and PR-26/27/29 features implement those capabilities. Real financial processing remains unavailable.
 
 ## Submission idempotency (PR-15)
 
@@ -625,7 +640,7 @@ Rules:
 | 409 | `dispute.activeCaseExists` | An open dispute already exists for the transaction |
 | 422 | `dispute.transactionNotFound`, `dispute.invalidReason`, `dispute.transactionIneligible` | Unknown/inaccessible transaction, reason not valid for the category, or ineligible transaction (`detail` holds the customer-safe explanation) |
 
-The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Full request idempotency (`Idempotency-Key` replay) remains deferred under the revised roadmap; a retried submission returns 409 once the first succeeds. A network timeout is not proof that submission failed: check **My disputes** before retrying.
+The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Request idempotency (`Idempotency-Key` replay) was delivered in PR-15: identical normalized submissions replay the prior case, while a reused key with a different request returns 409. A network timeout is not proof that submission failed: check **My disputes** before retrying.
 
 ```powershell
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
@@ -869,7 +884,7 @@ The deterministic `ICardNetworkGateway` mock handles initiation, forwarding and 
 tests inject failed and unknown results (unknown models a timeout). A failed/unknown operation retains
 the prior chargeback stage (`InitiationPending` if initiation never acknowledged) and exposes its
 `lastOperationOutcome`. It blocks all further processing, including repeated attempts and closure.
-An initiation/forwarding timeout never changes financial status to confirmed. Recovery is deferred;
+An initiation/forwarding timeout never changes financial status to confirmed. Durable intent recovery is being added in PR-35;
 there is no retry loop, automatic refund, arbitration, real network call or Kafka.
 
 Each command atomically updates the case and chargeback, appends a customer-safe `DisputeEvent`, and
