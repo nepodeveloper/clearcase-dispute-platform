@@ -594,8 +594,6 @@ namespace ClearCase.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EventId");
-
                     b.HasIndex("EventId", "OccurredAt");
 
                     b.ToTable("OutboxRecoveryAudits", (string)null);
