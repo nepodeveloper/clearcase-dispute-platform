@@ -1,11 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ClearCase.Application.Chargebacks;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.DisputeEligibility;
+using ClearCase.Application.Disputes;
 using ClearCase.Application.Transactions;
+using ClearCase.Domain.Chargebacks;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
+using ClearCase.Infrastructure.Chargebacks;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.Data.Sqlite;
@@ -825,6 +830,169 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
             .CountAsync(item => item.EscalationId == escalationId));
         Assert.Equal(2, await verification.DisputeEvents.CountAsync(item => item.DisputeId == caseId));
         Assert.Equal(1, await verification.OutboxMessages.CountAsync(item => item.AggregateId == caseId));
+    }
+
+
+    [Theory]
+    [InlineData(TransactionType.DebitOrder)]
+    [InlineData(TransactionType.BankCharge)]
+    [InlineData(TransactionType.CardPurchase)]
+    public async Task AnActiveEscalationBlocksAllPersistedProcessingPaths(TransactionType category)
+    {
+        var caseId = await AddDisputeAsync(category,
+            "DSP-ESC-BLOCK-" + Guid.NewGuid().ToString("N"));
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+        using var creation = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "block-processing-" + Guid.NewGuid().ToString("N"),
+            "Additional investigation required",
+            "Do not process this case until the independent Supervisor review is complete."));
+        Assert.Equal(HttpStatusCode.Created, creation.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var disputes = new SqliteDisputeStore(db);
+        var customerId = Guid.Parse(CustomerId);
+        var callbackInvoked = false;
+
+        async Task<DebitOrderTransition> DebitTransition(DisputeView _) {
+            callbackInvoked = true;
+            throw new InvalidOperationException("The transition must not be invoked.");
+        }
+        async Task<BankChargeTransition> BankTransition(DisputeView _) {
+            callbackInvoked = true;
+            throw new InvalidOperationException("The transition must not be invoked.");
+        }
+        async Task<ChargebackTransition> CardTransition(DisputeView _) {
+            callbackInvoked = true;
+            throw new InvalidOperationException("The transition must not be invoked.");
+        }
+
+        switch (category)
+        {
+            case TransactionType.DebitOrder:
+                await Assert.ThrowsAsync<ActiveDisputeEscalationException>(() =>
+                    disputes.ApplyAsync(customerId, caseId, DebitOrderCommand.StartReview,
+                        DebitTransition, CreatedAt, CancellationToken.None, expectedVersion: 2));
+                break;
+            case TransactionType.BankCharge:
+                var bank = new SqliteBankChargeProcessingStore(db, disputes);
+                await Assert.ThrowsAsync<ActiveDisputeEscalationException>(() =>
+                    bank.ApplyAsync(customerId, caseId, BankChargeCommand.StartReview,
+                        CreatedAt, BankTransition, CancellationToken.None, expectedVersion: 2));
+                break;
+            case TransactionType.CardPurchase:
+                var card = new SqliteChargebackProcessingStore(db, disputes);
+                await Assert.ThrowsAsync<ActiveDisputeEscalationException>(() =>
+                    card.ApplyAsync(customerId, new ChargebackProcessingCommand(
+                            caseId, ChargebackCommand.Initiate, null, null,
+                            "escalation-block-test", 2),
+                        CreatedAt, CardTransition, CancellationToken.None));
+                break;
+        }
+        Assert.False(callbackInvoked);
+        var unchanged = await db.Disputes.AsNoTracking().SingleAsync(item => item.Id == caseId);
+        Assert.Equal(DisputeCaseStatus.ManualReview, unchanged.CaseStatus);
+        Assert.Equal(2, unchanged.Version);
+        Assert.Equal(2, await db.DisputeEvents.CountAsync(item => item.DisputeId == caseId));
+        Assert.Single(await db.OutboxMessages.Where(item => item.AggregateId == caseId).ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentSupervisorResolutionsCommitExactlyOnce()
+    {
+        var caseId = await AddDisputeAsync(TransactionType.CardPurchase,
+            "DSP-RESOLUTION-RACE-" + Guid.NewGuid().ToString("N"));
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+        using var createdResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "resolution-race-created", "Additional investigation required",
+            "Supervisor review must finish before the investigation can continue."));
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        using var created = await ReadJson(createdResponse);
+        var escalationId = created.RootElement.GetProperty("id").GetGuid();
+        using var supervisor = await CreateSignedInClientAsync("supervisor.demo");
+        using var ack = await supervisor.SendAsync(CreateAcknowledgementRequest(
+            escalationId, "resolution-race-ack"));
+        Assert.Equal(HttpStatusCode.OK, ack.StatusCode);
+
+        using var requestA = CreateResolutionRequest(escalationId, "resolution-race-a",
+            "I have reviewed this case and approved further investigation.");
+        using var requestB = CreateResolutionRequest(escalationId, "resolution-race-b",
+            "Independent reviewer has completed this second request.");
+        var outcomes = await Task.WhenAll(supervisor.SendAsync(requestA), supervisor.SendAsync(requestB));
+        try
+        {
+            Assert.Single(outcomes, response => response.StatusCode == HttpStatusCode.OK);
+            Assert.Single(outcomes, response => response.StatusCode == HttpStatusCode.Conflict);
+        }
+        finally
+        {
+            foreach (var response in outcomes) response.Dispose();
+        }
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var dispute = await db.Disputes.AsNoTracking().SingleAsync(item => item.Id == caseId);
+        Assert.Equal(DisputeCaseStatus.UnderReview, dispute.CaseStatus);
+        Assert.Equal(3, dispute.Version);
+        Assert.Equal(3, await db.DisputeEscalationAuditEvents.CountAsync(item => item.EscalationId == escalationId));
+        Assert.Equal(3, await db.DisputeEvents.CountAsync(item => item.DisputeId == caseId));
+        Assert.Equal(2, await db.OutboxMessages.CountAsync(item => item.AggregateId == caseId));
+    }
+
+    [Fact]
+    public async Task ConcurrentLegacyClosureAndSupervisorResolutionNeverReopenTheClosedCase()
+    {
+        var caseId = await AddDisputeAsync(TransactionType.CardPurchase,
+            "DSP-CLOSE-RACE-" + Guid.NewGuid().ToString("N"));
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+        using var createdResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "close-race-created", "Policy exception review",
+            "Independent assessment is needed before continuing this investigation."));
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        using var created = await ReadJson(createdResponse);
+        var escalationId = created.RootElement.GetProperty("id").GetGuid();
+        using var supervisor = await CreateSignedInClientAsync("supervisor.demo");
+        using var acknowledged = await supervisor.SendAsync(CreateAcknowledgementRequest(
+            escalationId, "close-race-ack"));
+        Assert.Equal(HttpStatusCode.OK, acknowledged.StatusCode);
+
+        async Task CloseFromLegacyWriterAsync()
+        {
+            await using var scope = _factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+            // Models the old local simulation path committing independently of the
+            // Supervisor endpoint, including its dispute version increment.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Disputes" SET "CaseStatus" = 'Closed',
+                  "DecisionStatus" = 'Rejected', "Version" = "Version" + 1
+                WHERE "Id" = {caseId}
+                """);
+        }
+
+        using var resolutionRequest = CreateResolutionRequest(
+            escalationId, "close-race-resolve",
+            "The investigation was independently reviewed and can resume if still eligible.");
+        var resolutionTask = supervisor.SendAsync(resolutionRequest);
+        await Task.WhenAll(resolutionTask, CloseFromLegacyWriterAsync());
+        using var resolution = await resolutionTask;
+        Assert.Contains(resolution.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
+
+        await using var verificationScope = _factory.Services.CreateAsyncScope();
+        var db2 = verificationScope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var dispute = await db2.Disputes.AsNoTracking().SingleAsync(item => item.Id == caseId);
+        Assert.Equal(DisputeCaseStatus.Closed, dispute.CaseStatus);
+        Assert.Equal(DisputeDecisionStatus.Rejected, dispute.DecisionStatus);
+        var escalation = await db2.DisputeEscalations.AsNoTracking()
+            .SingleAsync(item => item.Id == escalationId);
+        var resolved = resolution.StatusCode == HttpStatusCode.OK;
+        Assert.Equal(resolved ? DisputeEscalationStatus.Resolved : DisputeEscalationStatus.Acknowledged,
+            escalation.Status);
+        Assert.Equal(resolved ? 3 : 2,
+            await db2.DisputeEscalationAuditEvents.CountAsync(item => item.EscalationId == escalationId));
+        Assert.Equal(resolved ? 3 : 2,
+            await db2.DisputeEvents.CountAsync(item => item.DisputeId == caseId));
+        Assert.Equal(resolved ? 2 : 1,
+            await db2.OutboxMessages.CountAsync(item => item.AggregateId == caseId));
     }
 
     private static HttpRequestMessage CreateEscalationRequest(
