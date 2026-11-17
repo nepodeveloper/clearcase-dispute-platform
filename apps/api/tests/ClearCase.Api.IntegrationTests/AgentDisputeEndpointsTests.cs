@@ -703,6 +703,68 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
         Assert.DoesNotContain(resolutionNote, customerCase.RootElement.GetRawText(), StringComparison.Ordinal);
     }
 
+
+    [Theory]
+    [InlineData(DisputeCaseStatus.Closed, DisputeDecisionStatus.Rejected, DisputeFinancialStatus.NotInitiated)]
+    [InlineData(DisputeCaseStatus.UnderReview, DisputeDecisionStatus.Pending, DisputeFinancialStatus.NotInitiated)]
+    [InlineData(DisputeCaseStatus.ManualReview, DisputeDecisionStatus.Approved, DisputeFinancialStatus.NotInitiated)]
+    [InlineData(DisputeCaseStatus.ManualReview, DisputeDecisionStatus.Pending, DisputeFinancialStatus.Confirmed)]
+    public async Task SupervisorResolutionCannotReopenOrOverwriteAChangedCase(
+        DisputeCaseStatus caseStatus, DisputeDecisionStatus decisionStatus,
+        DisputeFinancialStatus financialStatus)
+    {
+        var caseId = await AddDisputeAsync(TransactionType.CardPurchase, "DSP-STATE-" + Guid.NewGuid().ToString("N"));
+        using var agent = await CreateSignedInClientAsync("agent.demo");
+        using var createdResponse = await agent.SendAsync(CreateEscalationRequest(
+            caseId, "state-escalation-create", "Additional investigation required",
+            "A supervisor must independently review this synthetic case."));
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        using var created = await ReadJson(createdResponse);
+        var escalationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var supervisor = await CreateSignedInClientAsync("supervisor.demo");
+        using var acknowledgeResponse = await supervisor.SendAsync(CreateAcknowledgementRequest(
+            escalationId, "state-escalation-ack"));
+        Assert.Equal(HttpStatusCode.OK, acknowledgeResponse.StatusCode);
+
+        long storedVersion;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+            var dispute = await db.Disputes.SingleAsync(item => item.Id == caseId);
+            // Models a concurrent legacy/simulation path bypassing staff command guards.
+            dispute.CaseStatus = caseStatus;
+            dispute.DecisionStatus = decisionStatus;
+            dispute.FinancialStatus = financialStatus;
+            dispute.Version++;
+            storedVersion = dispute.Version;
+            await db.SaveChangesAsync();
+        }
+
+        using var resolutionResponse = await supervisor.SendAsync(CreateResolutionRequest(
+            escalationId, "state-escalation-resolve",
+            "This synthetic case has already transitioned and must not be reopened."));
+        using var error = await ReadJson(resolutionResponse);
+        Assert.Equal(HttpStatusCode.Conflict, resolutionResponse.StatusCode);
+        Assert.Equal("supervisorEscalation.invalidTransition",
+            error.RootElement.GetProperty("code").GetString());
+
+        await using var verificationScope = _factory.Services.CreateAsyncScope();
+        var verification = verificationScope.ServiceProvider.GetRequiredService<TransactionDbContext>();
+        var savedDispute = await verification.Disputes.AsNoTracking().SingleAsync(item => item.Id == caseId);
+        Assert.Equal(caseStatus, savedDispute.CaseStatus);
+        Assert.Equal(decisionStatus, savedDispute.DecisionStatus);
+        Assert.Equal(financialStatus, savedDispute.FinancialStatus);
+        Assert.Equal(storedVersion, savedDispute.Version);
+        var savedEscalation = await verification.DisputeEscalations.AsNoTracking()
+            .SingleAsync(item => item.Id == escalationId);
+        Assert.Equal(DisputeEscalationStatus.Acknowledged, savedEscalation.Status);
+        Assert.Equal(2, await verification.DisputeEscalationAuditEvents
+            .CountAsync(item => item.EscalationId == escalationId));
+        Assert.Equal(2, await verification.DisputeEvents.CountAsync(item => item.DisputeId == caseId));
+        Assert.Equal(1, await verification.OutboxMessages.CountAsync(item => item.AggregateId == caseId));
+    }
+
     private static HttpRequestMessage CreateEscalationRequest(
         Guid caseId, string idempotencyKey, string reason, string note)
     {

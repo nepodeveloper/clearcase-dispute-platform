@@ -231,14 +231,17 @@ public sealed class SqliteSupervisorEscalationStore(
             return new(EscalationWriteOutcome.EscalationNotFound, null);
         if (escalation.CreatedByEmployeeId == command.EmployeeId)
             return new(EscalationWriteOutcome.ReviewerMustBeIndependent, null);
+        // Resolve only if the linked dispute still permits resuming an active review.
+        // Both rows are loaded and written in this transaction; the dispute version and
+        // escalation status are concurrency tokens protecting against stale updates.
+        var dispute = await context.Disputes.SingleAsync(
+            item => item.Id == escalation.DisputeId, cancellationToken);
         if (!DisputeEscalationRules.CanResolve(
-                escalation.Status, escalation.CreatedByEmployeeId, command.EmployeeId))
+                escalation.Status, escalation.CreatedByEmployeeId, command.EmployeeId,
+                dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus))
         {
             return new(EscalationWriteOutcome.InvalidTransition, null);
         }
-
-        var dispute = await context.Disputes.SingleAsync(
-            item => item.Id == escalation.DisputeId, cancellationToken);
         escalation.Status = DisputeEscalationStatus.Resolved;
         AddAuditEvent(escalation, DisputeEscalationAction.Resolved, command.EmployeeId,
             command.Note, command.IdempotencyKey, requestFingerprint, command.CorrelationId, occurredAt);
