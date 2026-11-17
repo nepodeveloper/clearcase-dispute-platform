@@ -8,10 +8,11 @@ import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { MinorUnitsMoney, PageHeading, StatusBadge } from '../ui/ui-components';
 import { AgentEscalationCreation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
 import { EscalationForm } from './escalation-form';
+import { StaffCommandPanel } from './staff-command-panel';
 
 @Component({
   selector: 'cc-investigation',
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm, StaffCommandPanel],
   template: `
     @if (loading() && dispute() === null) {
       <p class="notice" role="status">Loading persisted investigation...</p>
@@ -72,6 +73,8 @@ import { EscalationForm } from './escalation-form';
               <li><span class="dot" aria-hidden="true"></span><span>{{ event.eventType }} &middot; {{ event.occurredAt | date:'dd MMM':'UTC' }}</span></li>
             }
           </ul></section>
+          <cc-staff-command-panel [dispute]="item"
+            (completed)="commandCompleted($event)" (refreshRequested)="loadDispute()" />
           <aside class="panel info-panel"><h3>Next best action</h3>
             @if (item.activeEscalation; as escalation) {
               <p>{{ escalation.reference }} &middot; {{ escalation.status }}. This case has already been referred for specialist review.</p>
@@ -169,6 +172,11 @@ export class InvestigationPage {
     this.confirmation.set(`${result.reference} saved. The supervisor can now review it. No money has moved.`);
     this.closeDialog();
     void this.loadDispute();
+  }
+
+  protected async commandCompleted(label: string): Promise<void> {
+    this.confirmation.set(`${label} recorded. The customer's public timeline will reflect the authoritative case transition; no real funds moved.`);
+    await this.loadDispute();
   }
 
   protected async addNote(event: Event): Promise<void> {

@@ -27,6 +27,10 @@ export default defineConfig({
     { name: 'agent-desktop', testMatch: 'agent.spec.ts', use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'agent-mobile', testMatch: 'agent.spec.ts',
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'agent-decision-desktop', testMatch: 'agent-decision.spec.ts',
+      use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'agent-decision-mobile', testMatch: 'agent-decision.spec.ts',
+      use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
   ],
   webServer: [{
     command: `dotnet run --project "${resolve('..', 'api', 'src', 'ClearCase.Api')}" --configuration Release --no-launch-profile --urls http://127.0.0.1:5101`,
@@ -39,8 +43,9 @@ export default defineConfig({
       Authentication__SeedPasswords__OtherCustomer: password,
       Authentication__SeedPasswords__Agent: password,
       Authentication__SeedPasswords__Supervisor: password,
-      // Fixed seed dates must not make browser journeys expire; policy boundaries have clocked API tests.
-      DisputeEligibility__Card__DemoWindowEnabled: 'false',
+      // Realistic mock processing requires an enabled card review window; PR-38
+      // makes fresh synthetic dates relative to the clock so this stays valid.
+      DisputeEligibility__Card__DemoWindowEnabled: 'true',
     },
     reuseExistingServer: false,
     timeout: 120000,
