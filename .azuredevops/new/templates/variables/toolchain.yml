@@ -1,0 +1,4 @@
+variables:
+  dotnetSdkVersion: '10.0.x'
+  nodeVersion: '24.18.0'
+  npmVersion: '11.16.0'

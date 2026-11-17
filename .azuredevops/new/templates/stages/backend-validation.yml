@@ -1,0 +1,38 @@
+parameters:
+- name: dotnetVersion
+  type: string
+stages:
+- stage: Backend
+  displayName: .NET build, advisory scan, migration and test evidence
+  dependsOn: Governance
+  jobs:
+  - job: BuildTest
+    pool:
+      vmImage: ubuntu-latest
+    timeoutInMinutes: 40
+    steps:
+    - checkout: self
+    - task: UseDotNet@2
+      inputs:
+        packageType: sdk
+        version: ${{ parameters.dotnetVersion }}
+    - bash: |
+        set -euo pipefail
+        dotnet restore apps/api/ClearCase.slnx -p:NuGetAudit=true -p:NuGetAuditLevel=high -warnaserror:NU1903,NU1904
+        dotnet build apps/api/ClearCase.slnx --configuration Release --no-restore
+        dotnet test apps/api/ClearCase.slnx --configuration Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=backend.trx" --results-directory TestResults
+        dotnet test apps/api/ClearCase.slnx --configuration Release --no-build --filter "FullyQualifiedName~Migration" --logger "trx;LogFileName=migrations.trx" --results-directory TestResults
+        test -n "$(find TestResults -type f -name coverage.cobertura.xml -print -quit)"
+      displayName: Restore, build, test, validate migrations and collect coverage
+    - task: PublishTestResults@2
+      condition: always()
+      inputs:
+        testResultsFormat: VSTest
+        testResultsFiles: '**/*.trx'
+        searchFolder: '$(System.DefaultWorkingDirectory)/TestResults'
+        failTaskOnFailedTests: true
+        failTaskOnMissingResultsFile: true
+      displayName: Publish .NET test evidence
+    - publish: TestResults
+      artifact: backend-test-evidence
+      condition: always()
