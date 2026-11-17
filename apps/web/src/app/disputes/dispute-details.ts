@@ -73,7 +73,7 @@ export class DisputeDetails {
       description: event.description,
       occurredAt: event.occurredAt,
     })));
-  protected readonly finished = computed(() => this.dispute().caseStatus === 'Closed');
+  protected readonly finished = computed(() => isCaseClosed(this.dispute().caseStatus));
   protected readonly nextStep = computed(() => {
     const dispute = this.dispute();
     if (dispute.caseStatus === 'Closed') return 'This case is closed. You can still review its decision and history here.';
