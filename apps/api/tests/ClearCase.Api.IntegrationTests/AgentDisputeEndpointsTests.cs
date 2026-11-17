@@ -1086,7 +1086,11 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
     }
 
     private HttpClient CreateUnauthenticatedClient() =>
-        _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production")).CreateClient();
+        _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"))
+            .CreateClient(new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost")
+            });
 
     private async Task<HttpClient> CreateSignedInClientAsync(
         string username, string environment = "Testing", bool configuredTestPolicy = false)
