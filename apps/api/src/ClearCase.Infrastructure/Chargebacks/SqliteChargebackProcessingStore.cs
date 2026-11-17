@@ -2,6 +2,7 @@ using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Chargebacks;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Chargebacks;
+using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.EntityFrameworkCore;
