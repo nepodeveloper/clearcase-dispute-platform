@@ -71,7 +71,7 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(page.locator('tbody')).toContainText('ATM withdrawal fee');
   await page.getByLabel('Search transactions', { exact: true }).fill('');
 
-  await page.getByLabel('From date', { exact: true }).fill('2030-01-01');
+  await page.getByLabel('From date', { exact: true }).fill('2200-01-01');
   await page.getByLabel('To date', { exact: true }).fill('2030-01-02');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('status')).toContainText('No transactions found');
