@@ -115,16 +115,19 @@ public sealed class FinancialOperationRecoveryTests
         TransactionDbContext context, IDebitOrderProcessingGateway gateway)
     {
         var disputes = new SqliteDisputeStore(context);
-        return new SqliteFinancialOperationCoordinator(context, disputes, disputes,
-            new SqliteBankChargeProcessingStore(context, disputes),
-            new SqliteChargebackProcessingStore(context, disputes),
+        var bankCharges = new SqliteBankChargeProcessingStore(context, disputes);
+        var chargebacks = new SqliteChargebackProcessingStore(context, disputes);
+        return new SqliteFinancialOperationCoordinator(
+            new SqliteFinancialIntentStore(context, TimeProvider.System),
+            new SqliteRecordedFinancialOutcomeApplier(disputes, bankCharges, chargebacks, TimeProvider.System),
+            disputes,
             new IFinancialOperationStrategy[]
             {
                 new DebitReversalStrategy(gateway),
                 new BankChargeAdjustmentStrategy(new MockBankChargeAdjustmentGateway()),
                 new CardNetworkStrategy(new MockCardNetworkGateway())
             },
-            TimeProvider.System, NullLogger<SqliteFinancialOperationCoordinator>.Instance);
+            NullLogger<SqliteFinancialOperationCoordinator>.Instance);
     }
 
     private static async Task<Guid> SeedRequestedReversal(TransactionDbContext db)
