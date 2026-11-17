@@ -1,4 +1,5 @@
 using ClearCase.Application.Disputes;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
 
 namespace ClearCase.Infrastructure.Disputes;
@@ -11,6 +12,8 @@ public sealed class OutboxDispatcher(
 {
     // All deliveries are at-least-once. A process crash after broker acknowledgement and
     // before MarkPublished will replay the same EventId after the lease expires.
+    // Exceeding this limit parks the original immutable message without marking it published.
+    internal const int MaximumDeliveryAttempts = 8;
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromMinutes(5);
 
@@ -29,9 +32,21 @@ public sealed class OutboxDispatcher(
         }
         catch (Exception exception)
         {
+            if (lease.Message.Attempts >= MaximumDeliveryAttempts)
+            {
+                var parked = await store.ParkAsync(lease.Message.EventId, lease.LeaseId,
+                    clock.GetUtcNow(), "delivery.attemptsExhausted", cancellationToken);
+                if (parked) OutboxDispatchMetrics.Parked.Add(1);
+                logger.LogError(exception,
+                    "Outbox delivery limit reached for {EventId} ({EventType}); parked={Parked}; needs Supervisor review",
+                    lease.Message.EventId, lease.Message.EventType, parked);
+                return false;
+            }
+
             var delay = RetryDelay(lease.Message.Attempts);
-            await store.ScheduleRetryAsync(lease.Message.EventId, lease.LeaseId,
-                clock.GetUtcNow().Add(delay), cancellationToken);
+            if (await store.ScheduleRetryAsync(lease.Message.EventId, lease.LeaseId,
+                    clock.GetUtcNow().Add(delay), cancellationToken))
+                OutboxDispatchMetrics.Retried.Add(1);
             logger.LogWarning(exception,
                 "Outbox publish failed for {EventId} ({EventType}); retry after {Delay}",
                 lease.Message.EventId, lease.Message.EventType, delay);
@@ -63,4 +78,12 @@ public sealed class LocalOutboxPublisher(ILogger<LocalOutboxPublisher> logger) :
             message.EventId, message.EventType, message.AggregateId, message.AggregateVersion);
         return Task.CompletedTask;
     }
+}
+
+public static class OutboxDispatchMetrics
+{
+    private static readonly Meter Meter = new("ClearCase.Outbox", "1.0.0");
+    public static readonly Counter<long> Parked = Meter.CreateCounter<long>("clearcase.outbox.parked");
+    public static readonly Counter<long> Retried = Meter.CreateCounter<long>("clearcase.outbox.retried");
+    public static readonly Counter<long> Requeued = Meter.CreateCounter<long>("clearcase.outbox.requeued");
 }
