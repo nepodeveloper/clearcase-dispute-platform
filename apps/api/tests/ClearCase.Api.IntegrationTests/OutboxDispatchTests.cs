@@ -59,8 +59,8 @@ public sealed class OutboxDispatchTests
             new SqliteOutboxStore(first).ClaimNextAsync(now, TimeSpan.FromMinutes(2), default),
             new SqliteOutboxStore(second).ClaimNextAsync(now, TimeSpan.FromMinutes(2), default));
         var claim = Assert.Single(results.OfType<OutboxClaim>());
-        Assert.Equal(1, await first.OutboxMessages.AsNoTracking().SingleAsync()
-            .ContinueWith(task => task.Result.Attempts));
+        var stored = await first.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(1, stored.Attempts);
         Assert.False(await new SqliteOutboxStore(first).MarkPublishedAsync(
             claim.Message.EventId, Guid.NewGuid(), now, default));
         Assert.True(await new SqliteOutboxStore(second).MarkPublishedAsync(
