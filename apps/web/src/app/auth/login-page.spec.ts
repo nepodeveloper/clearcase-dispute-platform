@@ -25,7 +25,7 @@ describe('LoginPage', () => {
     expect(element.querySelector('#password')?.getAttribute('type')).toBe('text');
   });
 
-  for (const [role, destination] of [['Customer', '/'], ['Agent', '/agent/disputes'], ['Supervisor', '/agent/escalations']]) {
+  for (const [role, destination] of [['Customer', '/'], ['Agent', '/agent/disputes'], ['Supervisor', '/supervisor/escalations']]) {
     it(`submits the reactive form, clears password and opens the ${role} workspace`, async () => {
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
       const fixture = TestBed.createComponent(LoginPage);

@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
-import { MinorUnitsMoney, PageHeading, StatCard, StatusBadge } from '../ui/ui-components';
+import { defaultPageSize, MinorUnitsMoney, PageHeading, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import {
   AgentCaseStatus,
   agentCaseStatusLabel,
@@ -20,7 +20,7 @@ const finishedStatuses: readonly AgentCaseStatus[] = ['Closed', 'Rejected', 'Rev
 
 @Component({
   selector: 'cc-agent-queue',
-  imports: [RouterLink, MinorUnitsMoney, PageHeading, StatCard, StatusBadge],
+  imports: [RouterLink, MinorUnitsMoney, PageHeading, PageSizeSelect, StatCard, StatusBadge],
   template: `
     <cc-page-heading title="Dispute work queue" eyebrow="Operations workspace"
       description="Review incoming cases, prioritise investigations and refer complex issues.">
@@ -78,9 +78,12 @@ const finishedStatuses: readonly AgentCaseStatus[] = ['Closed', 'Rejected', 'Rev
       }
       <nav class="panel-footer" aria-label="Case queue pagination">
         <span>Page {{ pageNumber() }}</span>
-        <div class="paging">
-          <button type="button" aria-label="Previous page" [disabled]="pageNumber() <= 1 || loading()" (click)="previousPage()">&lsaquo;</button>
-          <button type="button" aria-label="Next page" data-testid="next" [disabled]="!hasNextPage() || loading()" (click)="nextPage()">&rsaquo;</button>
+        <div class="pager">
+          <cc-page-size [value]="pageSize()" (valueChange)="setPageSize($event)" />
+          <div class="paging">
+            <button type="button" aria-label="Previous page" [disabled]="pageNumber() <= 1 || loading()" (click)="previousPage()">&lsaquo;</button>
+            <button type="button" aria-label="Next page" data-testid="next" [disabled]="!hasNextPage() || loading()" (click)="nextPage()">&rsaquo;</button>
+          </div>
         </div>
       </nav>
     </section>`,
@@ -96,6 +99,7 @@ export class AgentQueuePage {
   protected readonly status = signal<AgentCaseStatus | ''>('');
   protected readonly category = signal<AgentDisputeCategory | ''>('');
   protected readonly pageNumber = signal(1);
+  protected readonly pageSize = signal<PageSize>(defaultPageSize);
   protected readonly loading = signal(false);
   protected readonly error = signal('');
   protected readonly page = signal<AgentDisputePage | null>(null);
@@ -117,7 +121,7 @@ export class AgentQueuePage {
     const requestId = ++this.requestId;
     this.loading.set(true);
     this.error.set('');
-    this.api.list(this.activeFilters, this.cursors[this.pageNumber() - 1] ?? null)
+    this.api.list(this.activeFilters, this.cursors[this.pageNumber() - 1] ?? null, this.pageSize())
       .pipe(takeUntilDestroyed(this.destroyRef), finalize(() => {
         if (requestId === this.requestId) this.loading.set(false);
       }))
@@ -131,6 +135,15 @@ export class AgentQueuePage {
 
   protected applyFilters(): void {
     this.activeFilters = { search: this.search(), category: this.category(), caseStatus: this.status() };
+    this.resetPaging();
+  }
+
+  protected setPageSize(size: PageSize): void {
+    this.pageSize.set(size);
+    this.resetPaging();
+  }
+
+  private resetPaging(): void {
     this.cursors = [null];
     this.pageNumber.set(1);
     this.load();

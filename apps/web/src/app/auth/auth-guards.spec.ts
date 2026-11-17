@@ -65,7 +65,7 @@ describe('authentication routing', () => {
   it('selects the backend role home and rejects external, unknown and unauthorized return URLs', () => {
     expect(loginDestination(session, '/disputes?filter=open')).toBe('/disputes?filter=open');
     for (const url of ['//evil.invalid', '/\\evil.invalid', 'https://evil.invalid', '/%2f%2fevil.invalid',
-      '/login', '/unknown', '/agent/escalations', '/disputes(aux:login)']) {
+      '/login', '/unknown', '/supervisor/escalations', '/disputes(aux:login)']) {
       expect(loginDestination(session, url)).toBe('/');
     }
     expect(loginDestination({ ...session, roles: ['Agent'] }, null)).toBe('/agent/disputes');
@@ -73,6 +73,16 @@ describe('authentication routing', () => {
       .toBe('/agent/disputes/00000000-0000-0000-0000-000000000001');
     expect(loginDestination({ ...session, roles: ['Customer'] }, '/agent/disputes/00000000-0000-0000-0000-000000000001'))
       .toBe('/');
-    expect(loginDestination({ ...session, roles: ['Supervisor'] }, '/')).toBe('/agent/escalations');
+    expect(loginDestination({ ...session, roles: ['Supervisor'] }, '/')).toBe('/supervisor/escalations');
+  });
+
+  it('redirects legacy Supervisor URLs under /agent to the Supervisor workspace', async () => {
+    const restored = TestBed.inject(AuthService).restore();
+    http.expectOne('/api/v1/auth/me').flush({}, { status: 401, statusText: 'Unauthorized' });
+    await restored;
+    const id = '00000000-0000-0000-0000-000000000010';
+    await RouterTestingHarness.create(`/agent/escalations/${id}`);
+    expect(TestBed.inject(Router).url)
+      .toBe(`/login?returnUrl=%2Fsupervisor%2Fescalations%2F${id}`);
   });
 });

@@ -47,11 +47,13 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
-  await page.getByLabel('From date', { exact: true }).fill('2026-11-01');
-  await page.getByLabel('To date', { exact: true }).fill('2026-11-10');
+  await page.getByLabel('From date', { exact: true }).fill('01 Nov 2026');
+  await page.getByLabel('To date', { exact: true }).fill('10 Nov 2026');
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
+  expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe('2026-11-01');
+  await expect(page.getByLabel('From date', { exact: true })).toHaveValue('01 Nov 2026');
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'
@@ -149,6 +151,7 @@ test('customer completes the persisted journey for all categories, with filterin
     await page.getByRole('link', { name: /View existing dispute/ }).click();
     await expect(page).toHaveURL(new RegExp(`/disputes/${dispute.id}$`));
     await page.goto('/');
+    await page.getByRole('combobox', { name: 'Rows per page', exact: true }).selectOption('10');
     await expect(page.locator('tbody tr', { hasText: transaction.description })
       .getByRole('link', { name: `View dispute for ${transaction.description}`, exact: true })).toHaveAttribute('href', `/disputes/${dispute.id}`);
   }

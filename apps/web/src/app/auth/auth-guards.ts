@@ -3,7 +3,7 @@ import { ActivatedRouteSnapshot, CanActivateFn, Router, RouterStateSnapshot, Url
 import { AuthService, AuthUser } from './auth-service';
 
 export function homeUrl(user: AuthUser): string {
-  if (user.roles.includes('Supervisor')) return '/agent/escalations';
+  if (user.roles.includes('Supervisor')) return '/supervisor/escalations';
   if (user.roles.includes('Agent')) return '/agent/disputes';
   return user.roles.includes('Customer') ? '/' : '/unauthorized';
 }
@@ -14,7 +14,7 @@ export function loginDestination(user: AuthUser, returnUrl: string | null): stri
   const customerPath = /^\/(?:disputes(?:\/[0-9a-f-]{36})?|transactions\/[0-9a-f-]{36})?$/i.test(path);
   const allowed = (customerPath && user.roles.includes('Customer'))
     || (/^\/agent\/disputes(?:\/[0-9a-f-]{36})?$/i.test(path) && user.roles.includes('Agent'))
-    || (path === '/agent/escalations' && user.roles.includes('Supervisor'));
+    || (path === '/supervisor/escalations' && user.roles.includes('Supervisor'));
   return allowed && returnUrl !== null && !/[\\\u0000-\u001f]/.test(returnUrl) ? returnUrl : homeUrl(user);
 }
 

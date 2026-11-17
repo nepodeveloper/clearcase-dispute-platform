@@ -20,7 +20,7 @@ import { SupervisorEscalation, SupervisorEscalationsApi } from './supervisor-esc
     } @else if (escalation(); as item) {
       <cc-page-heading [title]="'Escalation ' + item.reference"
         [description]="'Linked dispute ' + item.disputeReference + ' \u00b7 ' + item.reason">
-        <a back class="back" routerLink="/agent/escalations">&larr; Back to escalations</a>
+        <a back class="back" routerLink="/supervisor/escalations">&larr; Back to escalations</a>
         <cc-status-badge [label]="item.status" />
       </cc-page-heading>
       @if (confirmation()) { <p class="notice" role="status">{{ confirmation() }}</p> }

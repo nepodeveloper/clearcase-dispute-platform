@@ -5,7 +5,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
-import { StatCard, StatusBadge } from '../ui/ui-components';
+import { DateField } from '../ui/date-field';
+import { defaultPageSize, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import { TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
 import { transactionStatusLabel, transactionTypeLabel } from './transaction-type-label';
 import { DecimalMoney } from './decimal-money';
@@ -29,7 +30,7 @@ function validationMessages(error: HttpErrorResponse): string[] {
 
 @Component({
   selector: 'app-transactions-page',
-  imports: [ReactiveFormsModule, DecimalMoney, DatePipe, RouterLink, StatCard, StatusBadge],
+  imports: [ReactiveFormsModule, DateField, DecimalMoney, DatePipe, RouterLink, PageSizeSelect, StatCard, StatusBadge],
   templateUrl: './transactions-page.html',
 })
 export class TransactionsPage implements OnInit {
@@ -46,19 +47,19 @@ export class TransactionsPage implements OnInit {
     const page = this.lastPage();
     return page === null ? 'Loading' : `Page ${page.pageNumber} of ${Math.max(page.totalPages, 1)}`;
   });
-  protected readonly dateRangeError = signal<string | null>(null);
+  protected readonly dateError = signal<{ field: 'fromDate' | 'toDate'; message: string } | null>(null);
   protected readonly filters = new FormGroup({
     search: new FormControl('', { nonNullable: true }),
     transactionType: new FormControl<TransactionType | ''>('', { nonNullable: true }),
     fromDate: new FormControl('', { nonNullable: true }),
     toDate: new FormControl('', { nonNullable: true }),
   });
-  private query: TransactionQuery = { pageNumber: 1, pageSize: 20, ...this.filters.getRawValue() };
+  private query: TransactionQuery = { pageNumber: 1, pageSize: defaultPageSize, ...this.filters.getRawValue() };
   private focusAfterPageChange = false;
 
   ngOnInit(): void {
     this.filters.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.dateRangeError.set(null));
+      .subscribe(() => this.dateError.set(null));
     this.requests.pipe(
       switchMap((query) => this.api.list(query).pipe(
         map((page): ViewState => ({ kind: 'loaded', page })),
@@ -95,12 +96,17 @@ export class TransactionsPage implements OnInit {
   }
 
   protected applyFilters(): void {
-    const filters = this.filters.getRawValue();
-    if (filters.fromDate !== '' && filters.toDate !== '' && filters.fromDate > filters.toDate) {
-      this.dateRangeError.set('To date must not precede from date.');
+    const unreadable = (['fromDate', 'toDate'] as const).find(field => this.filters.controls[field].invalid);
+    if (unreadable !== undefined) {
+      this.dateError.set({ field: unreadable, message: 'Enter dates as dd MMM yyyy, for example 01 Nov 2026.' });
       return;
     }
-    this.dateRangeError.set(null);
+    const filters = this.filters.getRawValue();
+    if (filters.fromDate !== '' && filters.toDate !== '' && filters.fromDate > filters.toDate) {
+      this.dateError.set({ field: 'toDate', message: 'To date must not precede from date.' });
+      return;
+    }
+    this.dateError.set(null);
     this.focusAfterPageChange = false;
     this.query = { ...this.query, ...filters, search: filters.search.trim(), pageNumber: 1 };
     this.load();
@@ -109,6 +115,11 @@ export class TransactionsPage implements OnInit {
   protected changePage(pageNumber: number): void {
     this.focusAfterPageChange = true;
     this.query = { ...this.query, pageNumber };
+    this.load();
+  }
+
+  protected changePageSize(pageSize: PageSize): void {
+    this.query = { ...this.query, pageSize, pageNumber: 1 };
     this.load();
   }
 

@@ -109,7 +109,7 @@ test('Agent escalation is independently reviewed and private notes remain custom
   await signIn(page, 'supervisor.demo');
   const supervisorQueue = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/v1/supervisor/escalations');
-  await page.goto('/agent/escalations');
+  await page.goto('/supervisor/escalations');
   expect((await supervisorQueue).status()).toBe(200);
   await page.getByRole('link', { name: escalation.reference, exact: true }).click();
   await expect(page.getByText(escalationNote, { exact: true })).toBeVisible();

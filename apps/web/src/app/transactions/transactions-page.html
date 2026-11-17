@@ -35,16 +35,15 @@
           <option value="BankCharge">Bank charge</option>
         </select>
       </label>
-      <label class="cc-field"><span>From date</span>
-        <input class="cc-control" name="fromDate" type="date" formControlName="fromDate"></label>
-      <label class="cc-field"><span>To date</span>
-        <input class="cc-control" name="toDate" type="date" formControlName="toDate"
-          [attr.aria-invalid]="dateRangeError() ? 'true' : null"
-          [attr.aria-describedby]="dateRangeError() ? 'date-range-error' : null">
-      </label>
+      <cc-date-field label="From date" inputName="fromDate" formControlName="fromDate"
+        [ariaInvalid]="dateError()?.field === 'fromDate'"
+        [ariaDescribedBy]="dateError()?.field === 'fromDate' ? 'date-error' : null" />
+      <cc-date-field label="To date" inputName="toDate" formControlName="toDate"
+        [ariaInvalid]="dateError()?.field === 'toDate'"
+        [ariaDescribedBy]="dateError()?.field === 'toDate' ? 'date-error' : null" />
       <button class="cc-button cc-button--secondary" type="submit">Apply filters</button>
-      @if (dateRangeError(); as message) {
-        <p class="cc-form-error" id="date-range-error" role="alert">{{ message }}</p>
+      @if (dateError(); as error) {
+        <p class="cc-form-error" id="date-error" role="alert">{{ error.message }}</p>
       }
     </form>
     <p class="muted">Dates are shown in your local time. Date filters use UTC calendar days.</p>
@@ -109,9 +108,12 @@
       </div>
       <nav aria-label="Transaction pages" class="panel-footer pagination">
         <span>Page {{ view.page.pageNumber }} of {{ view.page.totalPages }}</span>
-        <div class="paging">
-          <button type="button" aria-label="Previous" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">&lsaquo;</button>
-          <button type="button" aria-label="Next" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">&rsaquo;</button>
+        <div class="pager">
+          <cc-page-size [value]="view.page.pageSize" (valueChange)="changePageSize($event)" />
+          <div class="paging">
+            <button type="button" aria-label="Previous" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">&lsaquo;</button>
+            <button type="button" aria-label="Next" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">&rsaquo;</button>
+          </div>
         </div>
       </nav>
     }
