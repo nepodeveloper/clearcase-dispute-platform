@@ -561,9 +561,9 @@ components:
       in: header
       name: Idempotency-Key
       description: >-
-        Customer-scoped key, one per submission draft (the web client sends a UUID). Optional for
-        backward compatibility; requiring it is a planned follow-up.
-      required: false
+        Customer-scoped mandatory key, one per submission draft (the web client sends a UUID).
+        Missing and invalid headers return HTTP 400 with JSON-pointer field errors.
+      required: true
       schema:
         type: string
         minLength: 1
