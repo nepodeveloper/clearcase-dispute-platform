@@ -36,7 +36,7 @@ public interface IChargebackProcessingHandler
 
 public sealed class ChargebackProcessingHandler(
     ICustomerContext customer, IChargebackProcessingStore store, ITransactionReader transactions,
-    DisputeEligibilityEvaluator evaluator, ICardNetworkGateway gateway, TimeProvider clock)
+    DisputeEligibilityEvaluator evaluator, IFinancialOperationCoordinator operations, TimeProvider clock)
     : IChargebackProcessingHandler
 {
     public Task<DisputeView?> HandleAsync(ChargebackProcessingCommand command, CancellationToken cancellationToken,
@@ -46,6 +46,20 @@ public sealed class ChargebackProcessingHandler(
         var now = clock.GetUtcNow();
         var evidence = command.EvidenceId is { } id && command.EvidenceKind is { } kind
             ? new RepresentmentEvidence(id, kind, now) : null;
+        if (Chargeback.UsesGateway(command.Command))
+        {
+            var kind = command.Command switch
+            {
+                ChargebackCommand.Initiate => FinancialOperationKind.CardNetworkInitiate,
+                ChargebackCommand.ForwardToAcquirer => FinancialOperationKind.CardNetworkForwardToAcquirer,
+                ChargebackCommand.ExecuteSettlement => FinancialOperationKind.CardNetworkSettlement,
+                _ => throw new InvalidChargebackTransitionException()
+            };
+            return operations.ExecuteAsync(new FinancialOperationRequest(
+                customerId, command.DisputeId, kind, command.ExpectedVersion, employee?.EmployeeId,
+                command.CorrelationId), cancellationToken);
+        }
+
         return store.ApplyAsync(customerId, command, now, async dispute =>
         {
             if (dispute.Category != TransactionCategory.CardPurchase || dispute.CaseStatus == DisputeCaseStatus.Closed)
@@ -64,11 +78,8 @@ public sealed class ChargebackProcessingHandler(
                 chargeback = Chargeback.Create(dispute.Id, dispute.ReasonCode);
             }
             chargeback.Validate(command.Command, dispute.DecisionStatus, dispute.FinancialStatus, evidence);
-            var outcome = Chargeback.UsesGateway(command.Command)
-                ? await gateway.ExecuteAsync(new CardNetworkRequest(
-                    chargeback.OperationReference(command.Command), chargeback.Reference, command.Command), cancellationToken)
-                : CardNetworkOutcome.Succeeded;
-            return chargeback.Apply(command.Command, dispute.DecisionStatus, dispute.FinancialStatus, evidence, outcome);
+            return chargeback.Apply(command.Command, dispute.DecisionStatus, dispute.FinancialStatus,
+                evidence, CardNetworkOutcome.Succeeded);
         }, cancellationToken, employee?.EmployeeId);
     }
 }
