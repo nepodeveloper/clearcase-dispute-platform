@@ -5,6 +5,7 @@ import { DecimalMoney } from '../transactions/decimal-money';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { Timeline, TimelineEvent } from '../ui/ui-components';
 import { ChargebackStatus, Dispute, DisputeCaseStatus } from './dispute-api';
+import { isCaseClosed } from './case-status-rules';
 
 export function disputeStatusLabel(status: DisputeCaseStatus): string {
   const labels: Record<DisputeCaseStatus, string> = {
