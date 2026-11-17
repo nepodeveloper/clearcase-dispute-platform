@@ -12,61 +12,34 @@ namespace ClearCase.Infrastructure.Chargebacks;
 public sealed class SqliteChargebackProcessingStore(TransactionDbContext context, IDisputeStore disputes)
     : IChargebackProcessingStore
 {
-    public async Task<DisputeView?> ApplyAsync(
+    public Task<DisputeView?> ApplyAsync(
         Guid customerId, ChargebackProcessingCommand command, DateTimeOffset occurredAt,
         Func<DisputeView, Task<ChargebackTransition>> transition, CancellationToken cancellationToken,
-        Guid? employeeId = null)
-    {
-        // Only a pure mock may run under this SQLite writer lock; external banking cannot join this transaction.
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var current = await disputes.ReadAsync(customerId, command.DisputeId, cancellationToken);
-        if (current is null) return null;
-        if (command.ExpectedVersion is { } expected && current.Version != expected)
-            throw new DisputeConcurrencyConflictException();
-        var hasActiveEscalation = await context.DisputeEscalations.AnyAsync(
-            item => item.DisputeId == command.DisputeId
-                && item.Status != DisputeEscalationStatus.Resolved, cancellationToken);
-        if (!DisputeEscalationRules.CanProcess(hasActiveEscalation))
-            throw new ActiveDisputeEscalationException();
-        var next = await transition(current);
-        var item = await context.Disputes.Include(item => item.Chargeback).SingleAsync(
-            item => item.Id == command.DisputeId && item.CustomerId == customerId, cancellationToken);
-        item.Chargeback ??= new PersistedChargeback();
-        item.Chargeback.Update(next.Chargeback);
-        item.CaseStatus = next.CaseStatus;
-        item.DecisionStatus = next.DecisionStatus;
-        item.FinancialStatus = next.FinancialStatus;
-        item.Version = checked(item.Version + 1);
-        context.DisputeEvents.Add(new PersistedDisputeEvent
-        {
-            Id = Guid.NewGuid(), DisputeId = item.Id, SequenceNumber = current.Timeline.Max(entry => entry.SequenceNumber) + 1,
-            EventType = $"Chargeback{command.Command}", CaseStatus = item.CaseStatus,
-            PublicDescription = next.Description, OccurredAt = occurredAt
-        });
-        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
-            item, command.Command.ToString(), occurredAt, "dispute.chargeback-transitioned.v1",
-            command.CorrelationId));
-        context.ChargebackAuditEvents.Add(new ChargebackAuditEvent
-        {
-            Id = Guid.NewGuid(), DisputeId = item.Id, OperationReference = next.Chargeback.OperationReference(command.Command),
-            Command = command.Command, ChargebackStatus = next.Chargeback.Status,
-            DecisionStatus = item.DecisionStatus, FinancialStatus = item.FinancialStatus,
-            Outcome = next.Chargeback.LastOperationOutcome, ActorId = employeeId ?? customerId, CorrelationId = command.CorrelationId,
-            EvidenceId = next.Chargeback.Evidence?.Id, EvidenceKind = next.Chargeback.Evidence?.Kind, OccurredAt = occurredAt
-        });
-        if (employeeId is { } actor)
-            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
-                item, actor, command.Command.ToString(), command.CorrelationId, occurredAt));
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new DisputeConcurrencyConflictException();
-        }
-        var updated = await disputes.ReadAsync(customerId, command.DisputeId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return updated;
-    }
+        Guid? employeeId = null) =>
+        new DisputeTransitionPersistence(context, disputes).ExecuteAsync(
+            customerId, command.DisputeId, command.ExpectedVersion, DisputeTransitionFamily.Chargeback,
+            command.Command.ToString(), occurredAt, command.CorrelationId, employeeId,
+            async current =>
+            {
+                var next = await transition(current);
+                return new DisputeTransitionPlan(next.CaseStatus, next.DecisionStatus,
+                    next.FinancialStatus, next.Description,
+                    row =>
+                    {
+                        row.Chargeback ??= new PersistedChargeback();
+                        row.Chargeback.Update(next.Chargeback);
+                    },
+                    (db, row) => db.ChargebackAuditEvents.Add(new ChargebackAuditEvent
+                    {
+                        Id = Guid.NewGuid(), DisputeId = row.Id,
+                        OperationReference = next.Chargeback.OperationReference(command.Command),
+                        Command = command.Command, ChargebackStatus = next.Chargeback.Status,
+                        DecisionStatus = row.DecisionStatus, FinancialStatus = row.FinancialStatus,
+                        Outcome = next.Chargeback.LastOperationOutcome,
+                        ActorId = employeeId ?? customerId, CorrelationId = command.CorrelationId,
+                        EvidenceId = next.Chargeback.Evidence?.Id,
+                        EvidenceKind = next.Chargeback.Evidence?.Kind, OccurredAt = occurredAt
+                    }));
+            }, cancellationToken);
+
 }
