@@ -159,17 +159,14 @@ public sealed class SqliteFinancialIntentStore(TransactionDbContext database, Ti
     public async Task<bool> RecordOutcomeAsync(
         FinancialIntentClaim claim, string outcome, CancellationToken cancellationToken)
     {
-            var recorded = await database.Set<PersistedFinancialOperation>()
-                .Where(item => item.Id == id && item.LeaseId == leaseId
-                    && item.Stage == FinancialOperationStage.Dispatched)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.Outcome, outcome)
-                    .SetProperty(item => item.Stage, FinancialOperationStage.ResultRecorded),
-                    cancellationToken);
-            return recorded == 1; // Lease was lost if not exactly one.
-        }
-
-
+        var recorded = await database.Set<PersistedFinancialOperation>()
+            .Where(item => item.Id == claim.Id && item.LeaseId == claim.LeaseId
+                && item.Stage == FinancialOperationStage.Dispatched)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Outcome, outcome)
+                .SetProperty(item => item.Stage, FinancialOperationStage.ResultRecorded),
+                cancellationToken);
+        return recorded == 1; // Lost lease must never apply stale financial results.
     }
 
     public Task<bool> WasAppliedAsync(FinancialIntentClaim claim, CancellationToken cancellationToken)
