@@ -13,7 +13,7 @@ public sealed class OutboxDispatcher(
     // All deliveries are at-least-once. A process crash after broker acknowledgement and
     // before MarkPublished will replay the same EventId after the lease expires.
     // Exceeding this limit parks the original immutable message without marking it published.
-    internal const int MaximumDeliveryAttempts = 8;
+    public const int MaximumDeliveryAttempts = 8;
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromMinutes(5);
 
