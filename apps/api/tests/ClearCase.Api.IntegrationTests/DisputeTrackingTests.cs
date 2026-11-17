@@ -423,7 +423,10 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     public async Task Queries_RequireAuthentication(string route)
     {
         using var production = _app.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
-        using var client = production.CreateClient();
+        using var client = production.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
         using var response = await client.GetAsync(route);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         using var absent = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
