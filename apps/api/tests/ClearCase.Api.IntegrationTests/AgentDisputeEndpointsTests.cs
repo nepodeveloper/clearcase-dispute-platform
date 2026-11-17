@@ -384,7 +384,7 @@ public sealed class AgentDisputeEndpointsTests : IClassFixture<SqliteWebApplicat
         using var debitDetail = await ReadJson(await agent.GetAsync($"/api/v1/agent/disputes/{debitOrderId}"));
         Assert.Equal("EftDebitOrder",
             debitDetail.RootElement.GetProperty("transaction").GetProperty("mandateType").GetString());
-        Assert.Equal(false,
+        Assert.False(
             debitDetail.RootElement.GetProperty("transaction").GetProperty("mandateAuthorised").GetBoolean());
 
         using var invalid = await agent.GetAsync("/api/v1/agent/disputes?cursor=not-a-cursor");
