@@ -327,7 +327,12 @@ public sealed class SqliteFinancialOperationCoordinator(
                 card.Validate(command, dispute.DecisionStatus, dispute.FinancialStatus, null);
                 return;
             default:
-                throw new InvalidOperationException("Invalid financial operation for this dispute state.");
+                throw kind switch
+                {
+                    FinancialOperationKind.DebitReversal => new InvalidDebitOrderTransitionException(),
+                    FinancialOperationKind.BankChargeAdjustment => new InvalidBankChargeTransitionException(),
+                    _ => new InvalidChargebackTransitionException()
+                };
         }
     }
 
