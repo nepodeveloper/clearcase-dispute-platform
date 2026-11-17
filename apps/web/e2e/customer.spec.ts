@@ -47,8 +47,11 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
-  await page.getByLabel('From date', { exact: true }).fill('2026-11-01');
-  await page.getByLabel('To date', { exact: true }).fill('2026-11-10');
+  const currentSeedDate = Date.parse(first.items[0].transactionDate);
+  const fromDate = new Date(currentSeedDate - 35 * 86_400_000).toISOString().slice(0, 10);
+  const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel('From date', { exact: true }).fill(fromDate);
+  await page.getByLabel('To date', { exact: true }).fill(toDate);
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
