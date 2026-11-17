@@ -166,7 +166,7 @@ public sealed class SqliteSupervisorEscalationStore(
             return new(EscalationWriteOutcome.VersionConflict, null);
         }
         catch (DbUpdateException exception) when (
-            IsUniqueConstraint(exception, "DisputeEscalations.DisputeId, DisputeEscalations.Status")
+            IsUniqueConstraint(exception, "DisputeEscalations.DisputeId")
             || IsUniqueConstraint(exception,
                 "DisputeEscalations.DisputeId, DisputeEscalations.CreatedByEmployeeId, DisputeEscalations.IdempotencyKey"))
         {
