@@ -31,6 +31,8 @@ public static class SqlitePersistence
         services.AddScoped<IFinancialOperationStrategy, DebitReversalStrategy>();
         services.AddScoped<IFinancialOperationStrategy, BankChargeAdjustmentStrategy>();
         services.AddScoped<IFinancialOperationStrategy, CardNetworkStrategy>();
+        services.AddScoped<IFinancialIntentStore, SqliteFinancialIntentStore>();
+        services.AddScoped<IRecordedFinancialOutcomeApplier, SqliteRecordedFinancialOutcomeApplier>();
         services.AddScoped<IFinancialOperationCoordinator, SqliteFinancialOperationCoordinator>();
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();
