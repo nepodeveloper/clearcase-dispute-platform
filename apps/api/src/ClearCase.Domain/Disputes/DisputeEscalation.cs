@@ -35,6 +35,9 @@ public static class DisputeEscalationRules
         && decisionStatus == DisputeDecisionStatus.Pending
         && financialStatus == DisputeFinancialStatus.NotInitiated;
 
+    /// <summary>Processing is suspended until the independent escalation is resolved.</summary>
+    public static bool CanProcess(bool hasActiveEscalation) => !hasActiveEscalation;
+
     public static bool CanAcknowledge(
         DisputeEscalationStatus status, Guid creatorId, Guid supervisorId) =>
         status == DisputeEscalationStatus.Open && creatorId != supervisorId;
