@@ -14,15 +14,26 @@ public sealed record FinancialOperationRequest(
     Guid CustomerId, Guid DisputeId, FinancialOperationKind Kind,
     long? ExpectedVersion, Guid? EmployeeId, string CorrelationId);
 
-/// <summary>
-/// This port supports synchronous mock exercise and independent worker recovery.
-/// Never issue the same external financial command twice after an ambiguous send.
-/// </summary>
-public interface IFinancialOperationCoordinator
+/// <summary>Separate consumer ports for foreground execution and the recovery worker.</summary>
+public interface IFinancialOperationScheduler
 {
     Task<Guid?> ScheduleAsync(FinancialOperationRequest request, CancellationToken cancellationToken);
+}
+
+public interface IFinancialOperationExecutor
+{
     Task<DisputeView?> ExecuteAsync(FinancialOperationRequest request, CancellationToken cancellationToken);
+}
+
+public interface IFinancialOperationRecovery
+{
     Task<bool> RecoverNextAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Backward-compatible composition port; consumers should inject only what they need.</summary>
+public interface IFinancialOperationCoordinator :
+    IFinancialOperationScheduler, IFinancialOperationExecutor, IFinancialOperationRecovery
+{
 }
 
 /// <summary>Provider command data deliberately excludes EF entities and HTTP request state.</summary>
