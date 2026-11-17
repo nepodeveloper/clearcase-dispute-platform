@@ -1,0 +1,6 @@
+{
+  "_note": "Illustrative resource names only. No Azure accounts or secrets are accessed.",
+  "dev": {"environment": "clearcase-development", "vault": "https://kv-clearcase-dev.example.invalid/", "identity": "mi-clearcase-dev", "approval": false},
+  "uat": {"environment": "clearcase-uat", "vault": "https://kv-clearcase-uat.example.invalid/", "identity": "mi-clearcase-uat", "approval": false},
+  "prod": {"environment": "clearcase-production", "vault": "https://kv-clearcase-prod.example.invalid/", "identity": "mi-clearcase-prod", "approval": true}
+}
