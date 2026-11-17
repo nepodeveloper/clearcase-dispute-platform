@@ -2,6 +2,7 @@ using ClearCase.Api.Authentication;
 using ClearCase.Api.Disputes;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Chargebacks;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Chargebacks;
@@ -101,6 +102,11 @@ public static class ChargebackSimulationEndpoints
         {
             return DisputeEndpoints.Problem(context, 409, "Invalid chargeback transition",
                 "chargeback.invalidTransition", "This action is not allowed or requires further review.");
+        }
+        catch (ActiveDisputeEscalationException)
+        {
+            return DisputeEndpoints.Problem(context, 409, "Supervisor review is pending",
+                "dispute.activeEscalation", "Resolve the active escalation before continuing case processing.");
         }
         catch (DisputeConcurrencyConflictException)
         {
