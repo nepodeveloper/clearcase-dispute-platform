@@ -204,7 +204,7 @@ public sealed class DisputeIdempotencyTests : IClassFixture<SqliteWebApplication
     }
 
     [Fact]
-    public async Task Post_WithoutKey_KeepsExistingDuplicateProtection()
+    public async Task Post_WithoutKey_Returns400WithoutCreatingAStatefulCase()
     {
         using var client = CreateClient();
 
@@ -212,10 +212,13 @@ public sealed class DisputeIdempotencyTests : IClassFixture<SqliteWebApplication
         using var second = await Submit(client, null, NoKeyCardId, Description);
         using var body = await ReadJson(second);
 
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        Assert.Equal("dispute.activeCaseExists", body.RootElement.GetProperty("code").GetString());
-        Assert.Equal(1, await CountDisputes(NoKeyCardId));
+        Assert.Equal(HttpStatusCode.BadRequest, first.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        Assert.Equal("dispute.invalidRequest", body.RootElement.GetProperty("code").GetString());
+        var error = Assert.Single(body.RootElement.GetProperty("errors").EnumerateArray());
+        Assert.Equal("/headers/Idempotency-Key", error.GetProperty("pointer").GetString());
+        Assert.Equal("idempotencyKey.required", error.GetProperty("code").GetString());
+        Assert.Equal(0, await CountDisputes(NoKeyCardId));
     }
 
     [Fact]

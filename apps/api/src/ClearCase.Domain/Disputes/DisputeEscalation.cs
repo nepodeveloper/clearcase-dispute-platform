@@ -30,16 +30,27 @@ public static class DisputeEscalationRules
         DisputeCaseStatus caseStatus,
         DisputeDecisionStatus decisionStatus,
         DisputeFinancialStatus financialStatus) =>
-        caseStatus is not (DisputeCaseStatus.Closed or DisputeCaseStatus.Rejected
-            or DisputeCaseStatus.ReversalConfirmed)
+        DisputeCaseRules.IsOpen(caseStatus)
+        && caseStatus is not (DisputeCaseStatus.Rejected or DisputeCaseStatus.ReversalConfirmed)
         && decisionStatus == DisputeDecisionStatus.Pending
         && financialStatus == DisputeFinancialStatus.NotInitiated;
+
+    /// <summary>Processing is suspended until the independent escalation is resolved.</summary>
+    public static bool CanProcess(bool hasActiveEscalation) => !hasActiveEscalation;
 
     public static bool CanAcknowledge(
         DisputeEscalationStatus status, Guid creatorId, Guid supervisorId) =>
         status == DisputeEscalationStatus.Open && creatorId != supervisorId;
 
     public static bool CanResolve(
-        DisputeEscalationStatus status, Guid creatorId, Guid supervisorId) =>
-        status == DisputeEscalationStatus.Acknowledged && creatorId != supervisorId;
+        DisputeEscalationStatus status, Guid creatorId, Guid supervisorId,
+        DisputeCaseStatus caseStatus, DisputeDecisionStatus decisionStatus,
+        DisputeFinancialStatus financialStatus) =>
+        status == DisputeEscalationStatus.Acknowledged
+        && creatorId != supervisorId
+        // Only an active specialist review with an undecided, financially untouched
+        // dispute can be returned to UnderReview.
+        && caseStatus == DisputeCaseStatus.ManualReview
+        && decisionStatus == DisputeDecisionStatus.Pending
+        && financialStatus == DisputeFinancialStatus.NotInitiated;
 }

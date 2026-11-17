@@ -48,6 +48,7 @@ public static class KafkaOutboxRegistration
         services.AddSingleton<IOutboxPublisher>(provider => new KafkaOutboxPublisher(
             provider.GetRequiredService<IProducer<string, string>>(), topic));
         services.AddScoped<SqliteInboxProcessor>();
+        services.AddScoped<SqliteKafkaRecordProcessor>();
         return services;
     }
 }

@@ -21,7 +21,8 @@ for (let index = 0; index < cliArgs.length; index++) {
 
 const selectedProjects = projectNames.length > 0
   ? projectNames
-  : ['authentication', 'customer-desktop', 'customer-mobile', 'agent-desktop', 'agent-mobile'];
+  : ['authentication', 'customer-desktop', 'customer-mobile', 'agent-desktop', 'agent-mobile',
+    'agent-decision-desktop', 'agent-decision-mobile'];
 
 // One process and database per project keeps login rate limits and test data from leaking between them.
 for (const project of selectedProjects) {

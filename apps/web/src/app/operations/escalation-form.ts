@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { AgentActiveEscalation, AgentDisputesApi } from './agent-disputes-api';
+import { AgentEscalationCreation, AgentDisputesApi } from './agent-disputes-api';
 
 export const ESCALATION_REASONS = [
   'Additional investigation required', 'Customer authorization dispute',
@@ -41,7 +41,7 @@ export class EscalationForm {
   readonly caseId = input.required<string>();
   readonly reference = input.required<string>();
   readonly cancelled = output();
-  readonly completed = output<AgentActiveEscalation>();
+  readonly completed = output<AgentEscalationCreation>();
   private readonly api = inject(AgentDisputesApi);
   protected readonly reasons = ESCALATION_REASONS;
   protected readonly submitting = signal(false);

@@ -37,7 +37,8 @@ public sealed class AgentDisputeCommandHandler(
         var target = await reader.ReadProcessingTargetAsync(command.DisputeId, cancellationToken);
         if (target is null) return null;
         // Escalation writes increment the version, so the processing version guard also protects races.
-        if (target.HasActiveEscalation) throw new ActiveDisputeEscalationException();
+        if (!DisputeEscalationRules.CanProcess(target.HasActiveEscalation))
+            throw new ActiveDisputeEscalationException();
         if (target.Category == TransactionCategory.CardPurchase && !command.AllowSimulatedExternalUpdates
             && command.Command is nameof(ChargebackCommand.MerchantAccept) or nameof(ChargebackCommand.MerchantContest)
                 or nameof(ChargebackCommand.ReceiveRepresentment))

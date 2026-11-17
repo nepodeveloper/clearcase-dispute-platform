@@ -34,6 +34,7 @@ internal sealed class OutboxPublisherBackgroundService(
     }
 }
 
+/// <summary>One poisoned record must not stop a partition or the application host.</summary>
 internal sealed class KafkaConsumerBackgroundService(
     IConfiguration configuration,
     IServiceScopeFactory scopeFactory,
@@ -55,20 +56,22 @@ internal sealed class KafkaConsumerBackgroundService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            ConsumeResult<string, string>? record;
+            ConsumeResult<string, string>? record = null;
             try
             {
                 record = consumer.Consume(stoppingToken);
-                var envelope = JsonSerializer.Deserialize<DisputeEventEnvelope>(record.Message.Value)
-                    ?? throw new InvalidDataException("Kafka event envelope is empty.");
-                if (envelope.EventVersion != 1 || envelope.EventId == Guid.Empty
-                    || envelope.AggregateId == Guid.Empty || envelope.AggregateVersion < 1)
-                    throw new InvalidDataException("Kafka event envelope version or identifiers are invalid.");
-
+                if (record is null) continue;
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var inbox = scope.ServiceProvider.GetRequiredService<SqliteInboxProcessor>();
-                await inbox.ProcessAsync(consumerName, envelope.ToOutboxEvent(), stoppingToken);
+                var handler = scope.ServiceProvider.GetRequiredService<SqliteKafkaRecordProcessor>();
+                var disposition = await handler.ProcessAsync(consumerName, record.Topic,
+                    record.Partition.Value, record.Offset.Value, record.Message?.Value, stoppingToken);
+                // A malformed record is committed only AFTER its quarantine metadata is durable.
+                // Valid records are committed only AFTER the inbox + effect transaction commits.
                 consumer.Commit(record);
+                if (disposition == KafkaRecordDisposition.Quarantined)
+                    logger.LogWarning(
+                        "Quarantined Kafka record at {Topic}/{Partition}/{Offset}; raw payload not logged.",
+                        record.Topic, record.Partition.Value, record.Offset.Value);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -76,7 +79,27 @@ internal sealed class KafkaConsumerBackgroundService(
             }
             catch (ConsumeException exception)
             {
+                KafkaConsumerMetrics.Failed.Add(1);
                 logger.LogWarning(exception, "Kafka consumer transport failed for {Topic}.", topic);
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+            }
+            catch (Exception exception)
+            {
+                // Includes temporary database and offset-commit failures. Do NOT acknowledge
+                // the record. Seek back to the failing offset; the durable inbox deduplicates
+                // an already-applied effect on retry/restart.
+                KafkaConsumerMetrics.Failed.Add(1);
+                logger.LogError(exception,
+                    "Kafka processing or commit failed for {Topic}/{Partition}/{Offset}.",
+                    record?.Topic ?? topic, record?.Partition.Value, record?.Offset.Value);
+                if (record is not null)
+                {
+                    try { consumer.Seek(record.TopicPartitionOffset); }
+                    catch (KafkaException rebalance)
+                    {
+                        logger.LogWarning(rebalance, "Could not seek failed record; consumer will recover on reassignment.");
+                    }
+                }
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
         }

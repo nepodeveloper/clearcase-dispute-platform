@@ -90,26 +90,16 @@ public static class TransactionEndpoints
         });
         if (!Guid.TryParse(id, out var transactionId))
         {
-            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid transaction ID",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "transaction.invalidId",
-                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey],
-                    ["errors"] = new[] { new QueryError("/id", "transactionId.invalid", "Enter a valid transaction ID.") }
-                });
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
+                "Invalid transaction ID", "transaction.invalidId",
+                errors: [new QueryError("/id", "transactionId.invalid", "Enter a valid transaction ID.")]);
         }
 
         var result = await handler.HandleAsync(transactionId, cancellationToken);
         if (result is null)
         {
-            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
-                title: "Transaction not found",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "transaction.notFound",
-                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey]
-                });
+            return ApiProblem.Create(context, StatusCodes.Status404NotFound,
+                "Transaction not found", "transaction.notFound");
         }
 
         return TypedResults.Ok(TransactionDisputeEligibilityResponse.From(transactionId, result));
@@ -126,26 +116,16 @@ public static class TransactionEndpoints
         });
         if (!Guid.TryParse(id, out var transactionId))
         {
-            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid transaction ID",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "transaction.invalidId",
-                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey],
-                    ["errors"] = new[] { new QueryError("/id", "transactionId.invalid", "Enter a valid transaction ID.") }
-                });
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
+                "Invalid transaction ID", "transaction.invalidId",
+                errors: [new QueryError("/id", "transactionId.invalid", "Enter a valid transaction ID.")]);
         }
 
         var transaction = await handler.HandleAsync(transactionId, cancellationToken);
         if (transaction is null)
         {
-            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
-                title: "Transaction not found",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "transaction.notFound",
-                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey]
-                });
+            return ApiProblem.Create(context, StatusCodes.Status404NotFound,
+                "Transaction not found", "transaction.notFound");
         }
 
         return TypedResults.Ok(new TransactionDetailsResponse(
@@ -181,14 +161,8 @@ public static class TransactionEndpoints
             errors.Add(new("/toDate", "date.invalidRange", "toDate must not precede fromDate."));
         if (errors.Count != 0)
         {
-            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid transaction query",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "transaction.invalidQuery",
-                    ["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey],
-                    ["errors"] = errors
-                });
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
+                "Invalid transaction query", "transaction.invalidQuery", errors: errors);
         }
 
         var result = await handler.HandleAsync(

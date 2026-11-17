@@ -141,7 +141,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         await LoginAsync(client, "customer.demo");
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
 
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = "00000000-0000-0000-0000-000000000001",
             reasonCode = "unrecognisedTransaction",
@@ -179,7 +179,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     {
         using var client = CreateClient("Testing", compatibilityPath: false);
         await LoginAsync(client, "customer.demo");
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = "00000000-0000-0000-0000-000000000001",
             reasonCode = "unrecognisedTransaction",
@@ -230,7 +230,7 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     {
         using var owner = CreateClient("Testing", compatibilityPath: false);
         await LoginAsync(owner, "customer.demo");
-        using var created = await owner.PostAsJsonAsync("/api/v1/disputes", new
+        using var created = await owner.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = "00000000-0000-0000-0000-000000000006",
             reasonCode = "incorrectFee",

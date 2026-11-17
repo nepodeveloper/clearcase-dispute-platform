@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentActiveEscalation, AgentDisputeDetails, AgentInvestigationNote } from './agent-disputes-api';
+import { AgentDisputeDetails, AgentEscalationCreation, AgentInvestigationNote } from './agent-disputes-api';
 import { EscalationForm } from './escalation-form';
 import { InvestigationPage } from './investigation-page';
 
@@ -141,7 +141,7 @@ describe('Agent investigation', () => {
     fixture.componentRef.setInput('caseId', caseId);
     fixture.componentRef.setInput('reference', details.reference);
     fixture.detectChanges();
-    let completed: AgentActiveEscalation | null = null;
+    let completed: AgentEscalationCreation | null = null;
     fixture.componentInstance.completed.subscribe(result => { completed = result; });
     const root = fixture.nativeElement as HTMLElement;
     const textarea = root.querySelector<HTMLTextAreaElement>('#escalation-note')!;
@@ -168,9 +168,10 @@ describe('Agent investigation', () => {
     form.dispatchEvent(new Event('submit'));
     const retry = http.expectOne(`/api/v1/agent/disputes/${caseId}/escalations`);
     expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
-    const escalation: AgentActiveEscalation = {
+    const escalation: AgentEscalationCreation = {
       id: '00000000-0000-0000-0000-000000000004',
       reference: 'ESC-00000000000000000000000000000004',
+      disputeId: caseId,
       reason: 'Additional investigation required',
       status: 'Open',
       createdAt: '2026-11-12T11:00:00Z',

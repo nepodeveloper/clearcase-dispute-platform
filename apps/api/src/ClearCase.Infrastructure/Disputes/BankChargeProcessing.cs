@@ -1,3 +1,4 @@
+using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Disputes;
 using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.Transactions;
@@ -19,48 +20,23 @@ public sealed class MockBankChargeAdjustmentGateway(
 public sealed class SqliteBankChargeProcessingStore(TransactionDbContext context, IDisputeStore disputes)
     : IBankChargeProcessingStore
 {
-    public async Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, BankChargeCommand command,
+    public Task<DisputeView?> ApplyAsync(Guid customerId, Guid disputeId, BankChargeCommand command,
         DateTimeOffset occurredAt, Func<DisputeView, Task<BankChargeTransition>> transition,
         CancellationToken cancellationToken, long? expectedVersion = null, string? correlationId = null,
-        Guid? employeeId = null)
-    {
-        // The writer lock serializes local simulations; this gateway must remain free of external side effects.
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var current = await disputes.ReadAsync(customerId, disputeId, cancellationToken);
-        if (current is null) return null;
-        if (expectedVersion is { } expected && current.Version != expected)
-            throw new DisputeConcurrencyConflictException();
-        var next = await transition(current);
-        var item = await context.Disputes.SingleAsync(
-            item => item.Id == disputeId && item.CustomerId == customerId, cancellationToken);
-        item.CaseStatus = next.State.Case;
-        item.DecisionStatus = next.State.Decision;
-        item.FinancialStatus = next.State.Financial;
-        item.Version = checked(item.Version + 1);
-        if (command == BankChargeCommand.RequestAdjustment)
-            item.BankChargeAdjustmentReference = $"MOCK-FEE-{disputeId:N}";
-        context.DisputeEvents.Add(new PersistedDisputeEvent
-        {
-            Id = Guid.NewGuid(), DisputeId = disputeId, SequenceNumber = current.Timeline.Max(entry => entry.SequenceNumber) + 1,
-            EventType = $"BankCharge{command}", CaseStatus = item.CaseStatus,
-            PublicDescription = next.Description, OccurredAt = occurredAt
-        });
-        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
-            item, command.ToString(), occurredAt, "dispute.bank-charge-transitioned.v1",
-            correlationId ?? "local"));
-        if (employeeId is { } actor)
-            context.DisputeCommandAuditEvents.Add(PersistedDisputeCommandAuditEvent.Create(
-                item, actor, command.ToString(), correlationId ?? "local", occurredAt));
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new DisputeConcurrencyConflictException();
-        }
-        var updated = await disputes.ReadAsync(customerId, disputeId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return updated;
-    }
+        Guid? employeeId = null) =>
+        new DisputeTransitionPersistence(context, disputes).ExecuteAsync(
+            customerId, disputeId, expectedVersion, DisputeTransitionFamily.BankCharge,
+            command.ToString(), occurredAt, correlationId ?? "local", employeeId,
+            async current =>
+            {
+                var next = await transition(current);
+                return new DisputeTransitionPlan(next.State.Case, next.State.Decision,
+                    next.State.Financial, next.Description,
+                    row =>
+                    {
+                        if (command == BankChargeCommand.RequestAdjustment)
+                            row.BankChargeAdjustmentReference = $"MOCK-FEE-{disputeId:N}";
+                    });
+            }, cancellationToken);
+
 }

@@ -119,7 +119,7 @@ public sealed class DisputeEligibilityEndpointsTests : IClassFixture<SqliteWebAp
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("PendingAuthorization", detailsBody.RootElement.GetProperty("status").GetString());
-        Assert.True(detailsBody.RootElement.GetProperty("isDisputable").GetBoolean());
+        Assert.False(detailsBody.RootElement.GetProperty("isDisputable").GetBoolean());
         Assert.Equal("Ineligible", eligibilityBody.RootElement.GetProperty("outcome").GetString());
     }
 

@@ -30,7 +30,7 @@ public static class SupervisorEscalationEndpoints
             .WithDescription("Stores a private agent note and publishes only safe customer progress. "
                 + "Requires an Idempotency-Key; repeated matching requests replay the original escalation.")
             .Accepts<CreateDisputeEscalationRequest>("application/json")
-            .Produces<SupervisorEscalationResponse>(StatusCodes.Status201Created)
+            .Produces<AgentEscalationCreationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -122,7 +122,7 @@ public static class SupervisorEscalationEndpoints
         }
 
         if (errors.Count != 0)
-            return DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest,
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
                 "Invalid supervisor escalation query", "supervisorEscalation.invalidQuery", errors: errors);
 
         var page = await handler.HandleAsync(new ListSupervisorEscalationsQuery(
@@ -149,7 +149,7 @@ public static class SupervisorEscalationEndpoints
             : TypedResults.Ok(SupervisorEscalationResponse.From(escalation));
     }
 
-    private static async Task<Results<Created<SupervisorEscalationResponse>, ProblemHttpResult>> Create(
+    private static async Task<Results<Created<AgentEscalationCreationResponse>, ProblemHttpResult>> Create(
         string id,
         CreateDisputeEscalationRequest request,
         [FromHeader(Name = IdempotencyKeyHeader)] string? idempotencyKey,
@@ -235,13 +235,13 @@ public static class SupervisorEscalationEndpoints
         return ActionResult(context, result);
     }
 
-    private static Results<Created<SupervisorEscalationResponse>, ProblemHttpResult> Created(
+    private static Results<Created<AgentEscalationCreationResponse>, ProblemHttpResult> Created(
         HttpContext context, Guid disputeId, SupervisorEscalationDetails escalation, bool replayed)
     {
         if (replayed)
             context.Response.Headers["Idempotent-Replayed"] = "true";
         return TypedResults.Created($"/api/v1/agent/disputes/{disputeId}",
-            SupervisorEscalationResponse.From(escalation));
+            AgentEscalationCreationResponse.From(escalation));
     }
 
     private static Results<Ok<SupervisorEscalationResponse>, ProblemHttpResult> ActionResult(
@@ -286,28 +286,28 @@ public static class SupervisorEscalationEndpoints
         };
 
     private static ProblemHttpResult InvalidId(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest, "Invalid escalation ID",
+        ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid escalation ID",
             "supervisorEscalation.invalidId",
             errors: [new("/id", "escalationId.invalid", "Enter a valid escalation ID.")]);
 
     private static ProblemHttpResult DisputeNotFound(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status404NotFound, "Dispute not found",
+        ApiProblem.Create(context, StatusCodes.Status404NotFound, "Dispute not found",
             "agentDispute.notFound");
 
     private static ProblemHttpResult NotFound(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status404NotFound, "Escalation not found",
+        ApiProblem.Create(context, StatusCodes.Status404NotFound, "Escalation not found",
             "supervisorEscalation.notFound");
 
     private static ProblemHttpResult Conflict(HttpContext context, string title, string code) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status409Conflict, title, code);
+        ApiProblem.Create(context, StatusCodes.Status409Conflict, title, code);
 
     private static ProblemHttpResult EmployeeIdentityRequired(HttpContext context) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status403Forbidden,
+        ApiProblem.Create(context, StatusCodes.Status403Forbidden,
             "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
 
     private static ProblemHttpResult InvalidRequest(
         HttpContext context, string title, string code, IReadOnlyList<QueryError> errors) =>
-        DisputeEndpoints.Problem(context, StatusCodes.Status400BadRequest, title, code, errors: errors);
+        ApiProblem.Create(context, StatusCodes.Status400BadRequest, title, code, errors: errors);
 
     private static string NormalizeNote(string? value, string pointer, List<QueryError> errors)
     {

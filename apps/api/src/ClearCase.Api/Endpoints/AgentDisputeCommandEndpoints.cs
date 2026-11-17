@@ -42,19 +42,19 @@ public static class AgentDisputeCommandEndpoints
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var employeeId)
             || employeeId == Guid.Empty)
-            return DisputeEndpoints.Problem(context, 403, "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
+            return ApiProblem.Create(context, 403, "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
         if (!Guid.TryParse(id, out var disputeId))
-            return DisputeEndpoints.Problem(context, 400, "Invalid dispute ID", "dispute.invalidId",
+            return ApiProblem.Create(context, 400, "Invalid dispute ID", "dispute.invalidId",
                 errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
 
         if (request.ExpectedVersion is not { } expectedVersion || expectedVersion <= 0)
-            return DisputeEndpoints.Problem(context, 400, "Invalid staff command", "agentDispute.invalidRequest",
+            return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest",
                 errors: [new("/expectedVersion", "expectedVersion.invalid", "Send the current positive case version.")]);
         var errors = new List<QueryError>();
         RepresentmentEvidenceValidation.Validate(request.Command, request.Evidence, errors,
             out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
-            return DisputeEndpoints.Problem(context, 400, "Invalid staff command", "agentDispute.invalidRequest", errors: errors);
+            return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest", errors: errors);
         try
         {
             var dispute = await handler.HandleAsync(new(disputeId, employeeId, request.Command,
@@ -62,34 +62,34 @@ public static class AgentDisputeCommandEndpoints
                 (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!,
                 SimulationAuthorization.IsEnabled(environment)), cancellationToken);
             return dispute is null
-                ? DisputeEndpoints.Problem(context, 404, "Dispute not found", "dispute.notFound")
+                ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
                 : TypedResults.Ok(DisputeResponse.From(dispute));
         }
         catch (InvalidAgentDisputeCommandException)
         {
-            return DisputeEndpoints.Problem(context, 400, "Invalid staff command", "agentDispute.invalidRequest",
+            return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest",
                 errors: [new("/command", "command.invalid", "Select a supported command for this case category.")]);
         }
         catch (DisputeConcurrencyConflictException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
+            return ApiProblem.Create(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
                 "The dispute changed since it was read. Refresh the case before trying again.");
         }
         catch (ActiveDisputeEscalationException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Supervisor review is pending", "dispute.activeEscalation",
+            return ApiProblem.Create(context, 409, "Supervisor review is pending", "dispute.activeEscalation",
                 "Resolve the active escalation before continuing case processing.");
         }
         catch (Exception exception) when (exception is InvalidDebitOrderTransitionException
             or InvalidBankChargeTransitionException or InvalidChargebackTransitionException)
         {
-            return DisputeEndpoints.Problem(context, 409, "Invalid dispute transition", "dispute.invalidTransition",
+            return ApiProblem.Create(context, 409, "Invalid dispute transition", "dispute.invalidTransition",
                 "This action is not allowed or requires further investigation.");
         }
         catch (DisputeProcessingUnavailableException)
         {
             logger.LogWarning("Staff command could not execute because a processing adapter is unavailable.");
-            return DisputeEndpoints.Problem(context, 503, "Processing unavailable", "dispute.processingUnavailable",
+            return ApiProblem.Create(context, 503, "Processing unavailable", "dispute.processingUnavailable",
                 "The required processing adapter is not configured. No transition was committed.");
         }
     }

@@ -41,7 +41,7 @@ public static class DisputeEndpoints
                 .WithName("CreateDispute" + suffix)
                 .WithSummary("Submit a dispute for an owned transaction")
                 .WithDescription("Re-evaluates eligibility and opens a case. It does not reverse, refund or charge back funds. "
-                    + "Send a unique Idempotency-Key (1-128 visible ASCII characters) per submission: retrying with the same key "
+                    + "A valid Idempotency-Key is REQUIRED (1-128 visible ASCII characters) for every submission: retrying with the same key "
                     + "and payload returns the original case with Idempotent-Replayed: true; the same key with a different "
                     + "payload returns 409 dispute.idempotencyKeyReused.")
                 .Accepts<CreateDisputeRequest>("application/json")
@@ -80,7 +80,7 @@ public static class DisputeEndpoints
         if (cursor is not null && !DisputeCursorCodec.TryDecode(cursor, out after))
             errors.Add(new("/cursor", "cursor.invalid", "Use a valid continuation cursor returned by this endpoint."));
         if (errors.Count != 0)
-            return Problem(context, 400, "Invalid dispute query", "dispute.invalidQuery", errors: errors);
+            return ApiProblem.Create(context, 400, "Invalid dispute query", "dispute.invalidQuery", errors: errors);
         var page = await handler.HandleAsync(new ListDisputesQuery(size, after), cancellationToken);
         return TypedResults.Ok(new DisputeListResponse(page.Items.Select(DisputeSummaryResponse.From).ToArray(),
             new DisputePageInfo(page.HasNextPage, page.HasNextPage ? DisputeCursorCodec.Encode(page.Items[^1]) : null)));
@@ -91,10 +91,10 @@ public static class DisputeEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(id, out var disputeId))
-            return Problem(context, 400, "Invalid dispute ID", "dispute.invalidId",
+            return ApiProblem.Create(context, 400, "Invalid dispute ID", "dispute.invalidId",
                 errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
         var dispute = await handler.HandleAsync(disputeId, cancellationToken);
-        return dispute is null ? Problem(context, 404, "Dispute not found", "dispute.notFound")
+        return dispute is null ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
             : TypedResults.Ok(dispute.Timeline.Select(DisputeTimelineEventResponse.From).ToArray());
     }
 
@@ -104,10 +104,13 @@ public static class DisputeEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         var errors = new List<QueryError>();
-        if (context.Request.Headers.TryGetValue(IdempotencyKeyHeader, out var keyValues)
-            && (keyValues.Count != 1 || !IsValidIdempotencyKey(keyValues[0])))
+        if (!context.Request.Headers.TryGetValue(IdempotencyKeyHeader, out var keyValues)
+            || keyValues.Count == 0)
+            errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.required",
+                "Send an Idempotency-Key header to safely retry this submission."));
+        else if (keyValues.Count != 1 || !IsValidIdempotencyKey(keyValues[0]))
             errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.invalid",
-                $"Send one Idempotency-Key of 1 to {IdempotencyKeyMaxLength} visible ASCII characters."));
+                $"Send exactly one Idempotency-Key of 1 to {IdempotencyKeyMaxLength} visible ASCII characters."));
         if (!Guid.TryParse(request.TransactionId, out var transactionId))
             errors.Add(new("/transactionId", "transactionId.invalid", "Enter a valid transaction ID."));
         var reasonCode = request.ReasonCode?.Trim() ?? string.Empty;
@@ -118,7 +121,7 @@ public static class DisputeEndpoints
             errors.Add(new("/description", "description.length",
                 $"Describe the problem in {Dispute.DescriptionMinLength} to {Dispute.DescriptionMaxLength} characters."));
         if (errors.Count != 0)
-            return Problem(context, StatusCodes.Status400BadRequest, "Invalid dispute request",
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid dispute request",
                 "dispute.invalidRequest", errors: errors);
 
         var result = await handler.HandleAsync(
@@ -134,20 +137,20 @@ public static class DisputeEndpoints
             SubmitDisputeResult.Replayed replayed => TypedResults.Created(
                 $"{context.Request.Path.Value!.TrimEnd('/')}/{replayed.Dispute.Id}",
                 DisputeResponse.From(replayed.Dispute)),
-            SubmitDisputeResult.IdempotencyKeyReused => Problem(context,
+            SubmitDisputeResult.IdempotencyKeyReused => ApiProblem.Create(context,
                 StatusCodes.Status409Conflict, "Idempotency key already used", "dispute.idempotencyKeyReused",
                 "This Idempotency-Key was already used for a different dispute request. Use a new key for a new request."),
-            SubmitDisputeResult.TransactionNotFound => Problem(context,
+            SubmitDisputeResult.TransactionNotFound => ApiProblem.Create(context,
                 StatusCodes.Status422UnprocessableEntity, "Transaction not found", "dispute.transactionNotFound",
                 errors: [new("/transactionId", "transactionId.notFound", "The transaction could not be found.")]),
-            SubmitDisputeResult.InvalidReason => Problem(context,
+            SubmitDisputeResult.InvalidReason => ApiProblem.Create(context,
                 StatusCodes.Status422UnprocessableEntity, "Invalid dispute reason", "dispute.invalidReason",
                 errors: [new("/reasonCode", "reasonCode.invalid", "Select a reason that applies to this transaction.")]),
-            SubmitDisputeResult.Ineligible ineligible => Problem(context,
+            SubmitDisputeResult.Ineligible ineligible => ApiProblem.Create(context,
                 StatusCodes.Status422UnprocessableEntity, "Transaction is not eligible for dispute",
                 "dispute.transactionIneligible", ineligible.Eligibility.Explanation,
                 extensions: new() { ["reasonCodes"] = ineligible.Eligibility.ReasonCodes }),
-            SubmitDisputeResult.ActiveDisputeExists => Problem(context,
+            SubmitDisputeResult.ActiveDisputeExists => ApiProblem.Create(context,
                 StatusCodes.Status409Conflict, "An open dispute already exists", "dispute.activeCaseExists",
                 "This transaction already has an open dispute."),
             _ => throw new InvalidOperationException("Unhandled dispute submission result.")
@@ -159,27 +162,16 @@ public static class DisputeEndpoints
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(id, out var disputeId))
-            return Problem(context, StatusCodes.Status400BadRequest, "Invalid dispute ID", "dispute.invalidId",
+            return ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid dispute ID", "dispute.invalidId",
                 errors: [new("/id", "disputeId.invalid", "Enter a valid dispute ID.")]);
 
         var dispute = await handler.HandleAsync(disputeId, cancellationToken);
         return dispute is null
-            ? Problem(context, StatusCodes.Status404NotFound, "Dispute not found", "dispute.notFound")
+            ? ApiProblem.Create(context, StatusCodes.Status404NotFound, "Dispute not found", "dispute.notFound")
             : TypedResults.Ok(DisputeResponse.From(dispute));
     }
 
     private static bool IsValidIdempotencyKey(string? key) =>
         key is { Length: > 0 and <= IdempotencyKeyMaxLength } && key.All(character => character is > ' ' and <= '~');
 
-    internal static ProblemHttpResult Problem(
-        HttpContext context, int status, string title, string code, string? detail = null,
-        IReadOnlyList<QueryError>? errors = null, Dictionary<string, object?>? extensions = null)
-    {
-        extensions ??= [];
-        extensions["code"] = code;
-        extensions["correlationId"] = context.Items[CorrelationIdMiddleware.ContextItemKey];
-        if (errors is not null)
-            extensions["errors"] = errors;
-        return TypedResults.Problem(statusCode: status, title: title, detail: detail, extensions: extensions);
-    }
 }

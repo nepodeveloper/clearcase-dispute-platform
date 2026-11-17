@@ -423,7 +423,10 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
     public async Task Queries_RequireAuthentication(string route)
     {
         using var production = _app.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
-        using var client = production.CreateClient();
+        using var client = production.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
         using var response = await client.GetAsync(route);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         using var absent = await client.PostAsJsonAsync(Route(Guid.NewGuid()), new { command = "StartReview" });
@@ -453,7 +456,7 @@ public sealed class DisputeTrackingTests : IAsyncLifetime
 
     private static async Task<JsonElement> Submit(HttpClient client, int transaction, string reason)
     {
-        using var response = await client.PostAsJsonAsync("/api/v1/disputes", new
+        using var response = await client.SubmitDisputeAsync("/api/v1/disputes", new
         {
             transactionId = $"00000000-0000-0000-0000-{transaction:D12}", reasonCode = reason,
             description = "Please investigate this transaction and explain the charge."

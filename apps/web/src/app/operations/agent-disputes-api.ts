@@ -76,6 +76,17 @@ export interface AgentActiveEscalation {
   createdAt: string;
 }
 
+/** Safe creation and idempotent replay payload; never contains Supervisor audit history. */
+export interface AgentEscalationCreation {
+  id: string;
+  reference: string;
+  disputeId: string;
+  reason: string;
+  note?: string;
+  status: 'Open' | 'Acknowledged' | 'Resolved';
+  createdAt: string;
+}
+
 export interface AgentDisputeDetails {
   id: string;
   reference: string;
@@ -152,8 +163,16 @@ export class AgentDisputesApi {
     );
   }
 
+  /** Server checks bank-employee role, CSRF, expectedVersion and Domain transition rules. */
+  command(id: string, command: string, expectedVersion: number,
+    evidence?: { id: string; kind: 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord' }) {
+    return this.http.post<unknown>(
+      `/api/v1/agent/disputes/${encodeURIComponent(id)}/commands`,
+      { command, expectedVersion, ...(evidence ? { evidence } : {}) });
+  }
+
   createEscalation(id: string, reason: string, note: string, idempotencyKey: string) {
-    return this.http.post<AgentActiveEscalation>(
+    return this.http.post<AgentEscalationCreation>(
       `/api/v1/agent/disputes/${encodeURIComponent(id)}/escalations`,
       { reason, note },
       { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) },

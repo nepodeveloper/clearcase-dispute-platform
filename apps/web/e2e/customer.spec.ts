@@ -47,8 +47,11 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
-  await page.getByLabel('From date', { exact: true }).fill('01 Nov 2026');
-  await page.getByLabel('To date', { exact: true }).fill('10 Nov 2026');
+  const currentSeedDate = Date.parse(first.items[0].transactionDate);
+  const fromDate = new Date(currentSeedDate - 10 * 86_400_000).toISOString().slice(0, 10);
+  const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel('From date', { exact: true }).fill(fromDate);
+  await page.getByLabel('To date', { exact: true }).fill(toDate);
   const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
@@ -57,7 +60,7 @@ test('customer completes the persisted journey for all categories, with filterin
   expect(filtered.pageNumber).toBe(1);
   expect(filtered.items.length).toBeGreaterThan(0);
   expect(filtered.items.every(item => item.transactionType === 'BankCharge'
-    && item.transactionDate.slice(0, 10) >= '2026-11-01' && item.transactionDate.slice(0, 10) <= '2026-11-10')).toBe(true);
+    && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
   await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
@@ -70,8 +73,8 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(page.locator('tbody')).toContainText('ATM withdrawal fee');
   await page.getByLabel('Search transactions', { exact: true }).fill('');
 
-  await page.getByLabel('From date', { exact: true }).fill('2030-01-01');
-  await page.getByLabel('To date', { exact: true }).fill('2030-01-02');
+  await page.getByLabel('From date', { exact: true }).fill('2200-01-01');
+  await page.getByLabel('To date', { exact: true }).fill('2200-01-02');
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('status')).toContainText('No transactions found');
 
@@ -180,7 +183,7 @@ test('My disputes consumes the opaque API cursor and recovers from an offline re
     const eligibility: TransactionDisputeEligibility = await (await page.request.get(`/api/v1/transactions/${transaction.id}/dispute-eligibility`)).json();
     if (eligibility.outcome === 'Ineligible') continue;
     const created = await page.request.post('/api/v1/disputes', {
-      headers: { 'X-CSRF-TOKEN': session.csrfToken },
+      headers: { 'X-CSRF-TOKEN': session.csrfToken, 'Idempotency-Key': `e2e-cursor-${transaction.id}` },
       data: { transactionId: transaction.id, reasonCode: eligibility.availableReasons[0].code, description },
     });
     expect(created.status()).toBe(201);
@@ -233,7 +236,7 @@ test('customer navigation, session expiry and ownership remain enforced', async 
     const session: AuthSession = await (await page.request.get('/api/v1/auth/me')).json();
     const eligibility: TransactionDisputeEligibility = await (await page.request.get(`/api/v1/transactions/${transactionId(12)}/dispute-eligibility`)).json();
     const response = await page.request.post('/api/v1/disputes', {
-      headers: { 'X-CSRF-TOKEN': session.csrfToken },
+      headers: { 'X-CSRF-TOKEN': session.csrfToken, 'Idempotency-Key': 'e2e-ownership-case' },
       data: { transactionId: transactionId(12), reasonCode: eligibility.availableReasons[0].code, description },
     });
     expect(response.status()).toBe(201);
@@ -253,11 +256,12 @@ test('customer navigation, session expiry and ownership remain enforced', async 
   expect((await page.request.get(`/api/v1/transactions/${owned.transactionId}/dispute-eligibility`)).status()).toBe(404);
   const other: AuthSession = await (await page.request.get('/api/v1/auth/me')).json();
   const crossCustomer = await page.request.post('/api/v1/disputes', {
-    headers: { 'X-CSRF-TOKEN': other.csrfToken },
+    headers: { 'X-CSRF-TOKEN': other.csrfToken, 'Idempotency-Key': 'e2e-ownership-cross-customer' },
     data: { transactionId: owned.transactionId, reasonCode: 'duplicateCharge', description },
   });
   expect(crossCustomer.status()).toBe(422);
   const withoutCsrf = await page.request.post('/api/v1/disputes', {
+    headers: { 'Idempotency-Key': 'e2e-no-csrf-rejection' },
     data: { transactionId: transactionId(99), reasonCode: 'duplicateCharge', description },
   });
   expect(withoutCsrf.status()).toBe(400);

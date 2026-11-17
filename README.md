@@ -1,10 +1,141 @@
+## API contract and idempotency hardening (PR-41)
+
+All new customer dispute submissions require exactly one valid `Idempotency-Key`
+header (1–128 visible ASCII characters), including the legacy `/v1` route.
+Missing or invalid headers return `400 dispute.invalidRequest` with a pointer
+to `/headers/Idempotency-Key`; no case, audit or outbox record is committed.
+A valid key still replays the original case if the normalized payload matches,
+or returns `409 dispute.idempotencyKeyReused` for a different request. Existing
+Angular drafts reuse the key on a network retry.
+
+`ApiProblem.Create` now builds the consistent RFC 9457-style error envelope
+for transaction, dispute, Agent, Supervisor and mock-processing endpoints with
+`code`, `correlationId` and JSON-pointer `errors`. `DisputeCaseRules` in
+Domain and `case-status-rules.ts` in Angular explicitly define only `Closed`
+as terminal for the case: an approved or rejected decision may still require
+financial reconciliation or case closure.
+
+## Durable financial execution intents (PR-35)
+
+Financial gateway commands are now scheduled as unique, durable
+`FinancialOperationIntents` **before** the adapter is called. The SQLite transaction
+commits the operation reference, original case version, employee/correlation identity
+and initial `Pending` state, then closes. A fenced worker claims the intent
+(`Dispatched`), invokes the existing mock adapter **outside the dispute transaction**,
+persists its result (`ResultRecorded`), and only then applies the domain transition,
+timeline, audit and outbox. The API processes the mock intent inline for existing demo
+journeys; a separate worker can resume pending work after restart using
+`FinancialOperations:WorkerEnabled=true` (off by default, and disabled in Testing).
+
+**Never blindly resend financial operations.** If a worker crashes or is cancelled
+after dispatch, the expired `Dispatched` lease becomes an **Unknown** outcome;
+recovery records it against the existing operation reference rather than calling the
+adapter again. If a result was persisted but the case update interrupted, the worker
+replays that result and writes the state once, never the gateway call. A stable operation
+reference is unique per case/command. Correlation and audit remain intact.
+
+This supports debit reversal, bank-fee adjustment and card network
+initiation/forwarding/settlement with the existing mock adapters. It does **not**
+enable real banking integrations: production has unavailable gateways and retains
+its fail-closed behavior. Gateway timeout remains ambiguous, not an assumed failure.
+Reconciliation with an authoritative bank must precede any real retry.
+
+Apply migration `20261117092000_AddFinancialOperationIntents` before starting the
+new worker. Monitor `Pending`, `Dispatched` expired leases, `ResultRecorded`
+and `OutcomeUnknown` cases. Require supervised remediation for unknown outcomes.
+Stop the worker and preserve the intent records before any downgrade; rolling back
+the table would lose financial recovery metadata and is unsafe with outstanding
+operations.
+
+## Kafka poison-record handling (PR-34)
+
+The optional Kafka consumer validates the versioned envelope before any side effect.
+Malformed JSON and invalid envelopes are written to a durable SQLite
+`KafkaQuarantinedRecords` table; only after that write commits does the consumer commit
+the Kafka offset. Quarantine records contain consumer group, topic, partition, offset,
+failure code, length, SHA-256 fingerprint and arrival time — **not raw payload or
+personal data**. Transient database and offset-commit errors do not acknowledge the
+record; the worker seeks back and retries. Valid duplicates remain inbox-idempotent.
+
+`ClearCase.Kafka` exposes counters `clearcase.kafka.processed`,
+`clearcase.kafka.duplicate`, `clearcase.kafka.quarantined` and
+`clearcase.kafka.failed` for an OpenTelemetry/Metrics listener.
+
+**Operator procedure:** alert on new quarantine rows and sustained failures; inspect
+topic/partition/offset and failure code (never paste raw payloads into logs or tickets).
+Correct schema/source issues, then republish a corrected version with the original
+`EventId` where appropriate. Consumers deduplicate it against a previously
+accepted event. Source-message recovery depends on Kafka topic retention: quarantine
+stores metadata, **not** a replayable message body or a Kafka dead-letter topic.
+Do not delete or auto-reprocess quarantined records without review.
+Apply `20261117091000_AddKafkaQuarantine` before enabling this worker.
+Rollback stops the worker first, then downgrades that migration (archive the
+quarantine metadata before rollback).
+
+## Outbox exhaustion, parking and supervised recovery (PR-42)
+
+After eight failed publish attempts, a message is parked durably rather than
+retried indefinitely. It remains unpublished and blocks later versions of the
+same dispute, preserving ordering. Authenticated Supervisors can view safe
+metadata and submit a reasoned, audited requeue through separate operational
+API endpoints; no raw event payload is ever returned. See the
+[outbox recovery runbook](docs/implementation/OUTBOX_RECOVERY.md).
+Migration `20261117100000_AddOutboxParkingAndRecoveryAudit` is additive; do not
+discard recovery metadata until all parked events are resolved.
+
+## Durable outbox dispatch (PR-33)
+
+Outbox delivery uses a database-committed, fenced lease per event. A worker atomically
+claims a due message, then publishes **outside** the transaction and marks it published
+only when the broker acknowledges it and the same lease token is still current.
+Independent workers cannot claim an unexpired lease. The previous claim expires after
+two minutes if a worker crashes; a restarted worker replays the same immutable event ID.
+An expired worker cannot acknowledge a lease owned by a different worker.
+
+On failure, the lease is released with exponential retry backoff (2s, 4s, 8s, ...
+bounded to five minutes). Later aggregate versions do not overtake an earlier
+unpublished version. The original outbox data survives the additive migration.
+Publication remains **at-least-once**, not exactly-once: a crash after broker
+acknowledgment may deliver an event again. Consumers must deduplicate by event ID.
+
+Operations: watch pending age, attempts, and expired leases; investigate repeatedly
+failing messages without manually marking them as published. Apply migration
+`20261117090000_AddOutboxDeliveryLeases` before starting the updated worker.
+Rollback requires stopping dispatch first and downgrading the migration. Keep the
+database backed up and preserve pending rows.
+
 # ClearCase
 
-ClearCase is a starter monorepo for incrementally building a financial dispute management platform. It includes an ASP.NET Core 10 API, an Angular 21 transaction listing, health endpoints, automated tests, and CI.
+ClearCase is a local financial-dispute assessment platform with an ASP.NET Core 10 modular monolith, Angular 21 customer/Agent/Supervisor workspaces, SQLite migrations, health endpoints, automated tests and CI.
 
 **Local assessment only:** sign in with an explicitly configured synthetic ASP.NET Core Identity account. Development no longer signs callers in automatically. Do not expose Development/Testing to untrusted users or connect real customer data. No real customer information or money movement is involved.
 
-**This is an engineering foundation, not a production dispute platform.** Local cookie authentication is implemented, but bank identity-provider integration, MFA, banking integrations, real financial reversals, Kafka and AWS are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+**This is an engineering foundation, not a production dispute platform.** Local cookie authentication and an optional Kafka transport/inbox are implemented, but bank identity-provider integration, MFA, live banking integrations, production Kafka hosting and AWS deployment are not. SQLite stores local transactions, dispute cases and their immutable timelines. Debit-order, card-chargeback and internal bank-charge processing are restricted local simulations only.
+
+## CI, release evidence and dependency security (PR-36)
+
+GitHub Actions performs Release restore/build with .NET analyzers and a high/critical
+NuGet advisory gate; .NET integration tests emit TRX and Cobertura coverage for download.
+A dedicated migration test run checks upgrade/rollback behavior and tests
+`Database.HasPendingModelChanges()` against the checked-in EF snapshot. Frontend
+CI performs clean installation, a high/critical production-dependency audit,
+Angular tests/build and browser E2E verification, retaining screenshots and reports.
+
+Coverage is collected and its presence is enforced; a numeric coverage threshold is
+**not yet enforced** because the baseline must first be measured and agreed.
+See [release evidence and rollback checklist](docs/implementation/RELEASE_EVIDENCE.md)
+for exact commands, evidence artifacts and the distinctions between implemented
+simulation capabilities and missing production banking controls.
+
+## Time-relative synthetic demo fixtures (PR-38)
+
+New Development/Testing demo databases seed transactions relative to the current
+UTC clock (yesterday through the preceding month) rather than a hardcoded 2026 date.
+The three dispute categories retain deterministic fixture IDs, explicit eligibility
+exceptions and a repeatable customer/Agent mock-outcome journey. All records are
+insert-only; retained databases are **not** silently rewritten. Use a fresh,
+explicitly disposable demo database to re-seed historical fixtures.
+See [demo scenarios](docs/implementation/DEMO_SCENARIOS.md).
 
 ## Prerequisites
 
@@ -139,7 +270,7 @@ npm run build
 
 The additional `customer-desktop` and `customer-mobile` Playwright projects use the existing real Angular/API runner and isolated SQLite database. Run with `npm run test:e2e -- --project customer-desktop --project customer-mobile`. Browser setup disables only the configurable synthetic card date window, routing posted cards to manual review so fixed seed dates do not expire the journey; deterministic backend tests retain window-boundary coverage. Offline retry uses the browser network setting, not mocked API responses. Screenshots are taken only after authentication; traces remain disabled.
 
-No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. Full idempotency-key replay, staff workflows and real financial processing remain deferred, not implied by the UI.
+No API, database, policy implementation, auth or event contract changed. Roll back by redeploying the PR-13 frontend; keep the API, SQLite records and secure PR-13 authentication configuration. At the time of the PR-14 frontend work, idempotency and staff workflows were deferred; subsequent PR-15 and PR-26/27/29 features implement those capabilities. Real financial processing remains unavailable.
 
 ## Submission idempotency (PR-15)
 
@@ -154,7 +285,7 @@ No API, database, policy implementation, auth or event contract changed. Roll ba
 | No key | Previous behavior (unchanged) |
 | Malformed key | `400 dispute.invalidRequest`, pointer `/headers/Idempotency-Key` |
 
-The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry and making the header mandatory are deferred.
+The Angular form sends a UUID per draft and reuses it when retrying an unchanged draft after a network or server error. Migration `AddDisputeSubmissionIdempotency` adds the `DisputeSubmissions` table only. To back out, revert the code and run `dotnet tool run dotnet-ef database update AddIdentityAuthenticationFoundation` with the same project, startup-project and connection arguments shown in the migration commands below. Key expiry remains deferred. As of PR-41 the API rejects submissions without exactly one valid Idempotency-Key; the Angular client already sends a unique draft key.
 
 ## Optimistic concurrency (PR-16)
 
@@ -207,6 +338,46 @@ The connected Agent can create one active escalation per eligible dispute with a
 Escalation moves the case to `ManualReview`; resolution moves it to `UnderReview`. Neither operation changes `decisionStatus` or `financialStatus`, and neither initiates or confirms money movement. Migration `AddSupervisorEscalations` is additive. To roll back, stop API instances, retain a database backup, revert the application, then migrate down to `AddInvestigationNotes`; this removes escalation/audit storage but preserves the case timeline and does not touch transaction data or financial operations.
 
 For a demo, create a dispute as `customer.demo`, sign in as `agent.demo` to add an internal note and escalate it, then sign in as the distinct `supervisor.demo` account to acknowledge and resolve it. Sign back in as the customer to confirm the public timeline contains only safe progress and no private notes. The isolated `agent-desktop` and `agent-mobile` browser projects exercise the connected Agent-to-Supervisor flow.
+
+## Escalation consistency across every processing path (PR-31 follow-up)
+
+All three persisted processing paths now reject mutations while an escalation is Open or
+Acknowledged. The check occurs inside the SQLite write transaction, before invoking the
+workflow transition or writing timeline, audit or outbox records. It applies to staff
+commands **and** Development/Testing-only local simulation endpoints, which return
+`409 dispute.activeEscalation` instead of bypassing the Agent-level guard.
+
+Resolution remains governed by `DisputeEscalationRules.CanResolve`, including a pending
+decision and financially untouched `ManualReview` case. New integration tests verify
+blocking across workflows, racing Supervisor resolutions, and a Supervisor resolution
+contending with a legacy case-closure writer. No database migration is needed.
+
+## Supervisor escalation hardening (PR-30)
+
+Agent creation and idempotent replay return an Agent-safe escalation DTO. It contains the
+Agent's own original note and safe status, not Supervisor resolution notes, reviewer identities,
+or private audit history. Full audit details are available only through Supervisor-authorized APIs.
+
+Supervisor resolution validates the current dispute and escalation state together in a
+transaction. The dispute must still be in `ManualReview`, with a pending decision and no
+initiated financial outcome; a closed or decided case cannot be reopened by an escalation.
+
+The `EnforceSingleActiveEscalation` migration replaces the legacy filtered unique index
+on `(DisputeId, Status)` with one on `DisputeId`, excluding resolved rows. Existing
+records are preserved; already-corrupt mixed active rows deliberately cause the migration
+to fail rather than silently deleting history. Detect and remediate such rows before
+running the migration:
+
+```sql
+SELECT "DisputeId", COUNT(*) AS active_count
+FROM "DisputeEscalations"
+WHERE "Status" <> 'Resolved'
+GROUP BY "DisputeId"
+HAVING COUNT(*) > 1;
+```
+
+Roll back via EF migration to `20261116184208_AddDisputeCommandAudit` if needed;
+the previous index schema is restored without deleting escalations.
 
 ## Staff case commands (PR-29)
 
@@ -507,7 +678,7 @@ Rules:
 | 409 | `dispute.activeCaseExists` | An open dispute already exists for the transaction |
 | 422 | `dispute.transactionNotFound`, `dispute.invalidReason`, `dispute.transactionIneligible` | Unknown/inaccessible transaction, reason not valid for the category, or ineligible transaction (`detail` holds the customer-safe explanation) |
 
-The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Full request idempotency (`Idempotency-Key` replay) remains deferred under the revised roadmap; a retried submission returns 409 once the first succeeds. A network timeout is not proof that submission failed: check **My disputes** before retrying.
+The `AddDisputes` migration is additive (`Disputes`, `DisputeEvents`, indexes, and triggers); its `Down` removes them without touching transactions. Request idempotency (`Idempotency-Key` replay) was delivered in PR-15: identical normalized submissions replay the prior case, while a reused key with a different request returns 409. A network timeout is not proof that submission failed: check **My disputes** before retrying.
 
 ```powershell
 dotnet test apps/api/tests/ClearCase.Api.IntegrationTests/ClearCase.Api.IntegrationTests.csproj --filter "FullyQualifiedName~DisputeEndpointsTests|FullyQualifiedName~SqliteDisputeStoreTests"
@@ -751,7 +922,7 @@ The deterministic `ICardNetworkGateway` mock handles initiation, forwarding and 
 tests inject failed and unknown results (unknown models a timeout). A failed/unknown operation retains
 the prior chargeback stage (`InitiationPending` if initiation never acknowledged) and exposes its
 `lastOperationOutcome`. It blocks all further processing, including repeated attempts and closure.
-An initiation/forwarding timeout never changes financial status to confirmed. Recovery is deferred;
+An initiation/forwarding timeout never changes financial status to confirmed. Durable intent recovery is being added in PR-35;
 there is no retry loop, automatic refund, arbitration, real network call or Kafka.
 
 Each command atomically updates the case and chargeback, appends a customer-safe `DisputeEvent`, and

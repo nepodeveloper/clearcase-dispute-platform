@@ -21,12 +21,43 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
+using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// HTTP proxy headers are trusted ONLY from explicitly allow-listed ingress IPs.
+// Without a configured trusted proxy, forwarded client IP/scheme headers are ignored.
+var trustedProxyAddresses = builder.Configuration.GetSection("Security:TrustedProxyIps")
+    .Get<string[]>() ?? [];
+foreach (var address in trustedProxyAddresses)
+    if (!IPAddress.TryParse(address, out _))
+        throw new InvalidOperationException("Security:TrustedProxyIps must contain literal trusted IP addresses.");
+if (trustedProxyAddresses.Length > 0)
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.KnownProxies.Clear();
+        options.KnownNetworks.Clear();
+        foreach (var address in trustedProxyAddresses)
+            options.KnownProxies.Add(IPAddress.Parse(address));
+    });
+builder.Services.AddHttpsRedirection(options =>
+{
+    options.HttpsPort = builder.Configuration.GetValue<int?>("Security:HttpsPort") ?? 443;
+    options.RedirectStatusCode = StatusCodes.Status307TemporaryRedirect;
+});
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = false;
+    options.Preload = false;
+});
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
     {
         options.Password.RequiredLength = 12;
@@ -128,6 +159,9 @@ builder.Services.AddTransactionPersistence(
     builder.Environment.IsDevelopment());
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<OutboxPublisherBackgroundService>();
+if (!builder.Environment.IsEnvironment("Testing")
+    && builder.Configuration.GetValue<bool>("FinancialOperations:WorkerEnabled"))
+    builder.Services.AddHostedService<FinancialOperationBackgroundService>();
 if (builder.Configuration.GetValue<bool>("Messaging:Kafka:Enabled"))
 {
     builder.Services.AddKafkaOutbox(builder.Configuration);
@@ -173,12 +207,22 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     var database = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
     await database.Database.MigrateAsync();
-    await SyntheticTransactionSeeder.SeedAsync(database, CancellationToken.None);
+    await SyntheticTransactionSeeder.SeedAsync(database, CancellationToken.None,
+        scope.ServiceProvider.GetRequiredService<TimeProvider>());
     await SyntheticIdentitySeeder.SeedAsync(database,
         builder.Configuration.GetSection("Authentication:SeedPasswords").Get<Dictionary<string, string?>>() ?? [],
         CancellationToken.None);
 }
 
+if (trustedProxyAddresses.Length > 0)
+    app.UseForwardedHeaders();
+// Security headers also apply to redirects, which short-circuit downstream middleware.
+app.UseMiddleware<ApiSecurityHeadersMiddleware>();
+if (app.Environment.IsProduction())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -199,6 +243,7 @@ app.MapDisputeEndpoints();
 app.MapAgentDisputeEndpoints();
 app.MapAgentDisputeCommands();
 app.MapSupervisorEscalationEndpoints();
+app.MapOutboxRecoveryEndpoints();
 app.MapDebitOrderSimulation();
 app.MapChargebackSimulation();
 app.MapBankChargeSimulation();

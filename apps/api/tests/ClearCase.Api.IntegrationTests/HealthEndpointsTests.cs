@@ -34,6 +34,8 @@ public sealed class HealthEndpointsTests : IClassFixture<SqliteWebApplicationFac
         Assert.Equal(
             "ready",
             body.RootElement.GetProperty("checks").GetProperty("application").GetString());
+        Assert.Equal("ready",
+            body.RootElement.GetProperty("checks").GetProperty("database").GetString());
     }
 
     [Fact]

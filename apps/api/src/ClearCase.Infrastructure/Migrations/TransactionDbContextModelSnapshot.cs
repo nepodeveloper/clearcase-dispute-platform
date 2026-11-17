@@ -470,6 +470,135 @@ namespace ClearCase.Infrastructure.Migrations
                     b.ToTable("DisputeSubmissions", (string)null);
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedFinancialOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DisputeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExpectedVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LeaseUntilAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OperationReference")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisputeId");
+
+                    b.HasIndex("OperationReference")
+                        .IsUnique();
+
+                    b.HasIndex("Stage", "LeaseUntilAt", "CreatedAt");
+
+                    b.ToTable("FinancialOperationIntents", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedKafkaQuarantinedRecord", b =>
+                {
+                    b.Property<string>("ConsumerName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Topic")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Partition")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Offset")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FailureCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PayloadByteLength")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("QuarantinedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConsumerName", "Topic", "Partition", "Offset");
+
+                    b.HasIndex("QuarantinedAt");
+
+                    b.ToTable("KafkaQuarantinedRecords", (string)null);
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxRecoveryAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OccurredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "OccurredAt");
+
+                    b.ToTable("OutboxRecoveryAudits", (string)null);
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", b =>
                 {
                     b.Property<Guid>("EventId")
@@ -496,8 +625,24 @@ namespace ClearCase.Infrastructure.Migrations
                     b.Property<int>("EventVersion")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LeaseUntilAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("NextAttemptAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("OccurredAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ParkedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ParkReasonCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -512,6 +657,10 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("PublishedAt", "OccurredAt");
+
+                    b.HasIndex("PublishedAt", "NextAttemptAt", "LeaseUntilAt", "OccurredAt");
+
+                    b.HasIndex("ParkedAt", "OccurredAt");
 
                     b.ToTable("OutboxMessages", (string)null);
                 });
@@ -561,7 +710,7 @@ namespace ClearCase.Infrastructure.Migrations
                     b.HasIndex("CreatedAt", "Reference")
                         .IsUnique();
 
-                    b.HasIndex("DisputeId", "Status")
+                    b.HasIndex("DisputeId")
                         .IsUnique()
                         .HasDatabaseName("IX_DisputeEscalations_DisputeId_Active")
                         .HasFilter("\"Status\" <> 'Resolved'");
@@ -884,11 +1033,29 @@ namespace ClearCase.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedFinancialOperation", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
+                        .WithMany()
+                        .HasForeignKey("DisputeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", b =>
                 {
                     b.HasOne("ClearCase.Infrastructure.Disputes.PersistedDispute", null)
                         .WithMany()
                         .HasForeignKey("AggregateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClearCase.Infrastructure.Disputes.PersistedOutboxRecoveryAudit", b =>
+                {
+                    b.HasOne("ClearCase.Infrastructure.Disputes.PersistedOutboxMessage", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

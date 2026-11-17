@@ -134,20 +134,8 @@ public sealed class SqliteSupervisorEscalationStore(
             RequestFingerprint = requestFingerprint
         });
         context.DisputeEscalations.Add(escalation);
-        dispute.CaseStatus = DisputeCaseStatus.ManualReview;
-        dispute.Version = checked(dispute.Version + 1);
-        context.DisputeEvents.Add(new PersistedDisputeEvent
-        {
-            Id = Guid.NewGuid(),
-            DisputeId = dispute.Id,
-            SequenceNumber = await NextTimelineSequenceAsync(dispute.Id, cancellationToken),
-            EventType = "SpecialistReview",
-            CaseStatus = dispute.CaseStatus,
-            PublicDescription = "Your case has been referred for additional review.",
-            OccurredAt = occurredAt
-        });
-        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
-            dispute, "SpecialistReview", occurredAt, "dispute.specialist-review.v1", command.CorrelationId));
+        await AppendSpecialistTransitionAsync(
+            dispute, resumed: false, occurredAt, command.CorrelationId, cancellationToken);
 
         try
         {
@@ -166,7 +154,7 @@ public sealed class SqliteSupervisorEscalationStore(
             return new(EscalationWriteOutcome.VersionConflict, null);
         }
         catch (DbUpdateException exception) when (
-            IsUniqueConstraint(exception, "DisputeEscalations.DisputeId, DisputeEscalations.Status")
+            IsUniqueConstraint(exception, "DisputeEscalations.DisputeId")
             || IsUniqueConstraint(exception,
                 "DisputeEscalations.DisputeId, DisputeEscalations.CreatedByEmployeeId, DisputeEscalations.IdempotencyKey"))
         {
@@ -231,32 +219,22 @@ public sealed class SqliteSupervisorEscalationStore(
             return new(EscalationWriteOutcome.EscalationNotFound, null);
         if (escalation.CreatedByEmployeeId == command.EmployeeId)
             return new(EscalationWriteOutcome.ReviewerMustBeIndependent, null);
+        // Resolve only if the linked dispute still permits resuming an active review.
+        // Both rows are loaded and written in this transaction; the dispute version and
+        // escalation status are concurrency tokens protecting against stale updates.
+        var dispute = await context.Disputes.SingleAsync(
+            item => item.Id == escalation.DisputeId, cancellationToken);
         if (!DisputeEscalationRules.CanResolve(
-                escalation.Status, escalation.CreatedByEmployeeId, command.EmployeeId))
+                escalation.Status, escalation.CreatedByEmployeeId, command.EmployeeId,
+                dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus))
         {
             return new(EscalationWriteOutcome.InvalidTransition, null);
         }
-
-        var dispute = await context.Disputes.SingleAsync(
-            item => item.Id == escalation.DisputeId, cancellationToken);
         escalation.Status = DisputeEscalationStatus.Resolved;
         AddAuditEvent(escalation, DisputeEscalationAction.Resolved, command.EmployeeId,
             command.Note, command.IdempotencyKey, requestFingerprint, command.CorrelationId, occurredAt);
-        dispute.CaseStatus = DisputeCaseStatus.UnderReview;
-        dispute.Version = checked(dispute.Version + 1);
-        context.DisputeEvents.Add(new PersistedDisputeEvent
-        {
-            Id = Guid.NewGuid(),
-            DisputeId = dispute.Id,
-            SequenceNumber = await NextTimelineSequenceAsync(dispute.Id, cancellationToken),
-            EventType = "SpecialistReviewComplete",
-            CaseStatus = dispute.CaseStatus,
-            PublicDescription = "Additional review is complete and your case will continue to be investigated.",
-            OccurredAt = occurredAt
-        });
-        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
-            dispute, "SpecialistReviewComplete", occurredAt,
-            "dispute.specialist-review-complete.v1", command.CorrelationId));
+        await AppendSpecialistTransitionAsync(
+            dispute, resumed: true, occurredAt, command.CorrelationId, cancellationToken);
         return await SaveActionAsync(escalation, transaction, command.EmployeeId,
             command.IdempotencyKey, requestFingerprint, cancellationToken);
     }
@@ -408,6 +386,35 @@ public sealed class SqliteSupervisorEscalationStore(
         };
         escalation.History.Add(auditEvent);
         context.DisputeEscalationAuditEvents.Add(auditEvent);
+    }
+
+    private async Task AppendSpecialistTransitionAsync(
+        PersistedDispute dispute, bool resumed, DateTimeOffset occurredAt,
+        string correlationId, CancellationToken cancellationToken)
+    {
+        var aggregate = new DisputeLifecycle(dispute.Id, dispute.CaseStatus, dispute.DecisionStatus,
+            dispute.FinancialStatus, dispute.Version,
+            await NextTimelineSequenceAsync(dispute.Id, cancellationToken) - 1);
+        var result = resumed
+            ? aggregate.ResumeAfterSpecialistReview(occurredAt, Guid.NewGuid())
+            : aggregate.ReferForSpecialistReview(occurredAt, Guid.NewGuid());
+        dispute.CaseStatus = result.Next.CaseStatus;
+        dispute.DecisionStatus = result.Next.DecisionStatus;
+        dispute.FinancialStatus = result.Next.FinancialStatus;
+        dispute.Version = result.Next.Version;
+        context.DisputeEvents.Add(new PersistedDisputeEvent
+        {
+            Id = result.Event.Id,
+            DisputeId = dispute.Id,
+            SequenceNumber = result.Event.SequenceNumber,
+            EventType = result.Event.EventType,
+            CaseStatus = result.Event.CaseStatus,
+            PublicDescription = result.Event.PublicDescription,
+            OccurredAt = result.Event.OccurredAt
+        });
+        context.OutboxMessages.Add(PersistedOutboxMessage.Transitioned(
+            dispute, result.Event.EventType, occurredAt, result.EnvelopeEventType,
+            correlationId));
     }
 
     private async Task<int> NextTimelineSequenceAsync(Guid disputeId, CancellationToken cancellationToken)
