@@ -8,6 +8,18 @@ APPLICATION = ROOT / "apps/api/src/ClearCase.Application"
 
 
 class VerticalSliceStructureTests(unittest.TestCase):
+    def test_queries_are_feature_scoped(self):
+        for category, name in [
+            ("Disputes/ListDisputes", "ListDisputes"),
+            ("Disputes/GetDispute", "GetDispute"),
+            ("Disputes/GetDisputeTimeline", "GetDisputeTimeline"),
+            ("Transactions/GetDisputeEligibility", "GetDisputeEligibility"),
+        ]:
+            self.assertTrue((API / f"Features/{category}/{name}Endpoint.cs").is_file())
+        router = (API / "Endpoints/DisputeEndpoints.cs").read_text()
+        for name in ("ListDisputes", "GetDispute", "GetDisputeTimeline"):
+            self.assertIn(name + "Endpoint.Map(app, prefix, suffix)", router)
+
     def test_submit_dispute_is_a_feature_slice(self):
         endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()
         handler = (APPLICATION / "Features/Disputes/SubmitDispute/SubmitDispute.cs").read_text()

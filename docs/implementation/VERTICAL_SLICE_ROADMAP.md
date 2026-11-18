@@ -8,7 +8,7 @@ not by moving EF persistence into HTTP endpoints.
 
 - [x] **PR-45:** Isolate `SubmitDispute` HTTP endpoint, command and handler; preserve
   aliases, Idempotency-Key, customer scope, CSRF, RFC Problem Details and outbox.
-- [ ] **PR-46:** Extract dispute read/query slices and eligibility query without
+- [x] **PR-46:** Extract dispute read/query slices and eligibility query without
   changing cursor semantics, read ownership or status projection.
 - [ ] **PR-47:** Isolate card, debit-order and bank-fee command entrypoints while
   retaining canonical domain transitions, version checks and financial intent fencing.
@@ -28,3 +28,9 @@ not by moving EF persistence into HTTP endpoints.
 ## Non-goals
 No new libraries, mediator, service-bus hosting, EF refactors, database migrations,
 Azure deployment, or mocks suggesting financial settlement.
+
+## PR-46 verification
+- [x] Move ListDisputes, GetDispute, timeline and eligibility endpoint and handler slices.
+- [x] Preserve existing customer ownership, cursor and public API names and aliases.
+- [x] Include Python feature directory checks.
+- [ ] GitHub CI green and human review.
