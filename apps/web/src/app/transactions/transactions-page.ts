@@ -119,6 +119,7 @@ export class TransactionsPage implements OnInit {
   }
 
   protected changePageSize(pageSize: PageSize): void {
+    this.focusAfterPageChange = true;
     this.query = { ...this.query, pageSize, pageNumber: 1 };
     this.load();
   }

@@ -1,0 +1,157 @@
+# DEMO-ONLY release promotion: GitHub Actions equivalent of
+# .azuredevops/new/pipelines/azure-release-simulation.yml (dev -> UAT -> approval -> production canary).
+# It simulates a synthetic digest and never deploys, uses cloud credentials, reads Key Vault or moves money.
+# IMPORTANT: the production approval is the required-reviewers rule on the clearcase-production
+# GitHub Environment; it cannot be set in this file and the production job fails closed without it.
+# One-time setup (Settings > Environments): create clearcase-development, clearcase-uat and
+# clearcase-production, limit all three to the main branch, and add required reviewers to production only.
+# Run: Actions > Release simulation (demo only) > Run workflow, or
+#   gh workflow run release-simulation.yml --ref main -f failureScenario=telemetry-failure
+# Artifacts are immutable per run, so start a new run instead of re-running jobs.
+name: Release simulation (demo only)
+run-name: Release simulation #${{ github.run_number }} (${{ inputs.failureScenario }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      failureScenario:
+        description: Production verification scenario
+        type: choice
+        default: success
+        options:
+          - success
+          - readiness-failure
+          - smoke-failure
+          - telemetry-failure
+
+permissions:
+  contents: read
+
+# Azure's exclusive lock: one promotion at a time; a waiting approval holds the queue.
+concurrency:
+  group: release-simulation
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Prepare immutable synthetic candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require main, validate governance and prepare the candidate
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Release simulation only promotes main (dispatched on $GITHUB_REF)."
+            exit 1
+          fi
+          python3 scripts/ci/repository_policy.py
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          mkdir -p "$RUNNER_TEMP/release"
+          python3 scripts/ci/release_simulator.py prepare --state "$RUNNER_TEMP/release/release.json" --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release/release.json
+          if-no-files-found: error
+          retention-days: 30
+
+  development:
+    name: Promote to development
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: clearcase-development
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release
+      - name: Simulate development deployment + smoke/health/monitor
+        run: python3 scripts/ci/release_simulator.py deploy --state "$RUNNER_TEMP/release/release.json" --environment dev
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-dev
+          path: ${{ runner.temp }}/release/release.json
+          if-no-files-found: error
+          retention-days: 30
+
+  uat:
+    name: Promote to UAT
+    needs: development
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: clearcase-uat
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dev
+          path: ${{ runner.temp }}/release
+      - name: Simulate UAT deployment and E2E verification
+        run: python3 scripts/ci/release_simulator.py deploy --state "$RUNNER_TEMP/release/release.json" --environment uat
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-uat
+          path: ${{ runner.temp }}/release/release.json
+          if-no-files-found: error
+          retention-days: 30
+
+  production:
+    name: Canary and verify in production
+    needs: uat
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Pauses here until a required reviewer approves (Azure ManualValidation equivalent).
+    environment: clearcase-production
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SCENARIO: ${{ inputs.failureScenario }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-uat
+          path: ${{ runner.temp }}/release
+      # An environment without required reviewers runs unattended, so fail closed unless GitHub recorded an approval.
+      - name: Require a recorded production approval
+        id: approval
+        run: |
+          set -euo pipefail
+          approvers=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" \
+            --jq '[.[] | select(.state == "approved" and any((.environments // [])[]; .name == "clearcase-production")) | .user.login] | unique | join(", ")')
+          if [ -z "$approvers" ]; then
+            echo "::error::No approval recorded for clearcase-production. Add required reviewers to the environment."
+            exit 1
+          fi
+          echo "approvers=$approvers" >> "$GITHUB_OUTPUT"
+      - name: Simulate 10% canary, smoke, health, monitoring and rollback
+        env:
+          APPROVERS: ${{ steps.approval.outputs.approvers }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/release/release.json"
+          python3 scripts/ci/release_simulator.py approve --state "$state" --approver "GitHub environment approval by $APPROVERS" --ticket "$GITHUB_RUN_ID"
+          python3 scripts/ci/release_simulator.py deploy --state "$state" --environment prod --scenario "$SCENARIO"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-production-evidence
+          path: ${{ runner.temp }}/release/release.json
+          if-no-files-found: error
+          retention-days: 30

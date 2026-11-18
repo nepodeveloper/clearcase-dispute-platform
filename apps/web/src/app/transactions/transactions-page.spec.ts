@@ -108,7 +108,7 @@ describe('TransactionsPage', () => {
     request.flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
   });
 
-  it('offers 5, 10, 20 and 50 rows per page and restarts at page one when the size changes', () => {
+  it('offers 5, 10, 20 and 50 rows per page and restarts at page one with focus on the heading when the size changes', () => {
     const fixture = render();
     const initial = http.expectOne((request) => request.url === '/api/v1/transactions');
     expect(initial.request.params.get('pageSize')).toBe('5');
@@ -123,14 +123,18 @@ describe('TransactionsPage', () => {
     const size = element.querySelector<HTMLSelectElement>('.page-size select')!;
     expect([...size.options].map(option => option.value)).toEqual(['5', '10', '20', '50']);
     expect(size.value).toBe('5');
+    size.focus();
     size.value = '10';
     size.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(element.querySelector('.page-size select')).toBeNull();
     const resized = http.expectOne((request) => request.url === '/api/v1/transactions');
     expect(resized.request.params.get('pageSize')).toBe('10');
     expect(resized.request.params.get('pageNumber')).toBe('1');
     resized.flush({ items: [item], pageNumber: 1, pageSize: 10, totalCount: 6, totalPages: 1, hasNextPage: false });
     fixture.detectChanges();
     expect(element.querySelector<HTMLSelectElement>('.page-size select')!.value).toBe('10');
+    expect(document.activeElement).toBe(element.querySelector('#transactions-heading'));
   });
 
   it('moves focus to the transaction heading after next and previous page loads', () => {
