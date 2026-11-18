@@ -28,6 +28,11 @@ public static class SqlitePersistence
         services.AddScoped<IOutboxRecoveryStore, SqliteOutboxStore>();
         services.AddScoped<IOutboxPublisher, LocalOutboxPublisher>();
         services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
+        services.AddScoped<FinancialOperationIntentStore>();
+        services.AddScoped<FinancialOperationResultApplier>();
+        services.AddScoped<IFinancialOperationStrategy, DebitReversalStrategy>();
+        services.AddScoped<IFinancialOperationStrategy, BankChargeAdjustmentStrategy>();
+        services.AddScoped<IFinancialOperationStrategy, CardNetworkStrategy>();
         services.AddScoped<IFinancialOperationCoordinator, SqliteFinancialOperationCoordinator>();
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();

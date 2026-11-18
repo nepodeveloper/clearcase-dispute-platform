@@ -38,6 +38,14 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
                 services.AddSingleton<TimeProvider>(new FixedClock());
                 services.RemoveAll<IDebitOrderProcessingGateway>();
                 services.AddSingleton<IDebitOrderProcessingGateway>(_gateway);
+                services.RemoveAll<IDebitOrderProcessingStore>();
+                services.AddScoped<IDebitOrderProcessingStore>(provider =>
+                {
+                    var context = provider.GetRequiredService<TransactionDbContext>();
+                    return new TrackingDebitOrderStore(
+                        new SqliteDisputeStore(context),
+                        _gateway);
+                });
             });
         });
     }
@@ -180,6 +188,7 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         Assert.Equal("ReversalConfirmed", confirmed.GetProperty("caseStatus").GetString());
         Assert.Single(_gateway.References);
         Assert.Equal(2, _gateway.StatusReferences.Count);
+        Assert.False(_gateway.StatusLookupStartedInsideStore);
         Assert.All(_gateway.StatusReferences, reference => Assert.Equal(_gateway.References.Single(), reference));
         Assert.Equal(7, confirmed.GetProperty("timeline").GetArrayLength());
     }
@@ -430,6 +439,8 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
         public DebitOrderGatewayOutcome ReconciledOutcome { get; set; } = DebitOrderGatewayOutcome.Unknown;
         public ConcurrentQueue<string> References { get; } = new();
         public ConcurrentQueue<string> StatusReferences { get; } = new();
+        public bool StoreApplyStarted { get; set; }
+        public bool StatusLookupStartedInsideStore { get; private set; }
 
         public Task<DebitOrderGatewayOutcome> ReverseAsync(string operationReference, CancellationToken cancellationToken)
         {
@@ -441,7 +452,31 @@ public sealed class DebitOrderProcessingTests : IAsyncLifetime
             string operationReference, CancellationToken cancellationToken)
         {
             StatusReferences.Enqueue(operationReference);
+            if (StoreApplyStarted)
+                StatusLookupStartedInsideStore = true;
             return Task.FromResult(ReconciledOutcome);
+        }
+    }
+
+    private sealed class TrackingDebitOrderStore(
+        IDebitOrderProcessingStore inner, RecordingGateway gateway) : IDebitOrderProcessingStore
+    {
+        public async Task<DisputeView?> ApplyAsync(
+            Guid customerId, Guid disputeId, DebitOrderCommand command,
+            Func<DisputeView, Task<DebitOrderTransition>> transition, DateTimeOffset occurredAt,
+            CancellationToken cancellationToken, long? expectedVersion = null,
+            string? correlationId = null, Guid? employeeId = null)
+        {
+            gateway.StoreApplyStarted = true;
+            try
+            {
+                return await inner.ApplyAsync(customerId, disputeId, command, transition, occurredAt,
+                    cancellationToken, expectedVersion, correlationId, employeeId);
+            }
+            finally
+            {
+                gateway.StoreApplyStarted = false;
+            }
         }
     }
 }
