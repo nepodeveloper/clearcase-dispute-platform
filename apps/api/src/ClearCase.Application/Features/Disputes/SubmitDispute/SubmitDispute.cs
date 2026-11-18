@@ -101,15 +101,3 @@ public sealed class SubmitDisputeHandler(
     private static string NewReference() =>
         "DSP-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(6));
 }
-
-public interface IGetDisputeHandler
-{
-    Task<DisputeView?> HandleAsync(Guid disputeId, CancellationToken cancellationToken);
-}
-
-public sealed class GetDisputeHandler(ICustomerContext customerContext, IDisputeStore disputeStore)
-    : IGetDisputeHandler
-{
-    public Task<DisputeView?> HandleAsync(Guid disputeId, CancellationToken cancellationToken) =>
-        disputeStore.ReadAsync(customerContext.CustomerId, disputeId, cancellationToken);
-}
