@@ -16,7 +16,7 @@ public sealed class FinancialOperationStrategyTests
         FinancialOperationKind kind, ChargebackCommand expected)
     {
         var gateway = new RecordingCardGateway();
-        var strategy = new CardNetworkStrategy(gateway);
+        var strategy = new CardNetworkStrategy(gateway, null!, TimeProvider.System);
         var id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var operation = new FinancialOperationExecution(id, kind, "CARD-OP-123");
 
@@ -33,7 +33,7 @@ public sealed class FinancialOperationStrategyTests
     public async Task DebitStrategy_DoesNotNeedDatabaseOrProviderNetwork()
     {
         var gateway = new RecordingDebitGateway();
-        var strategy = new DebitReversalStrategy(gateway);
+        var strategy = new DebitReversalStrategy(gateway, null!, TimeProvider.System);
         var result = await strategy.ExecuteAsync(
             new FinancialOperationExecution(Guid.NewGuid(), FinancialOperationKind.DebitReversal, "OP-1"),
             CancellationToken.None);
@@ -47,9 +47,9 @@ public sealed class FinancialOperationStrategyTests
     public void UnavailableGateways_FailClosedBeforeIntentScheduling()
     {
         var unavailable = new UnavailableDisputeProcessingGateway();
-        Assert.False(new DebitReversalStrategy(unavailable).IsAvailable);
-        Assert.False(new BankChargeAdjustmentStrategy(unavailable).IsAvailable);
-        Assert.False(new CardNetworkStrategy(unavailable).IsAvailable);
+        Assert.False(new DebitReversalStrategy(unavailable, null!, TimeProvider.System).IsAvailable);
+        Assert.False(new BankChargeAdjustmentStrategy(unavailable, null!, TimeProvider.System).IsAvailable);
+        Assert.False(new CardNetworkStrategy(unavailable, null!, TimeProvider.System).IsAvailable);
     }
 
     private sealed class RecordingCardGateway : ICardNetworkGateway

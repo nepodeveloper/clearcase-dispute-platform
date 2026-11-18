@@ -36,7 +36,7 @@ class VerticalSliceStructureTests(unittest.TestCase):
         ]:
             self.assertTrue((API / f"Features/{category}/{name}").is_file())
         # The canonical transition writer remains shared, outside HTTP slices.
-        self.assertTrue((ROOT / "apps/api/src/ClearCase.Infrastructure/Disputes/DisputeTransitionPersistence.cs").is_file())
+        self.assertTrue((ROOT / "apps/api/src/ClearCase.Infrastructure/Persistence/Disputes/DisputeTransitionPersistence.cs").is_file())
 
     def test_feature_local_validation_and_explicit_registration(self):
         validator = (API / "Features/Disputes/SubmitDispute/SubmitDisputeRequestValidator.cs").read_text()

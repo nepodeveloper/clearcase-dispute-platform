@@ -44,20 +44,15 @@ public sealed class DebitOrderProcessingHandler(
         if (command == DebitOrderCommand.ExecuteReversal)
             return ExecuteCheckedAsync(customerId, disputeId, expectedVersion,
                 employee?.EmployeeId, correlationId ?? "local", cancellationToken);
+        if (command == DebitOrderCommand.ReconcileReversal)
+            return ReconcileCheckedAsync(customerId, disputeId, expectedVersion,
+                employee?.EmployeeId, correlationId ?? "local", cancellationToken);
 
         return store.ApplyAsync(customerId, disputeId, command, async dispute =>
         {
             if (dispute.Category != TransactionCategory.DebitOrder)
                 throw new InvalidDebitOrderTransitionException();
             var state = new DebitOrderState(dispute.CaseStatus, dispute.DecisionStatus, dispute.FinancialStatus);
-            if (command == DebitOrderCommand.ReconcileReversal)
-            {
-                var reference = dispute.ReversalOperationReference
-                    ?? throw new InvalidOperationException("A requested reversal must have an operation reference.");
-                return state.ReconcileReversal(
-                    await gateway.GetReversalStatusAsync(reference, cancellationToken));
-            }
-
             var transaction = await transactions.ReadForEligibilityAsync(
                 customerId, dispute.TransactionId, cancellationToken);
             var eligible = transaction is not null
@@ -65,6 +60,32 @@ public sealed class DebitOrderProcessingHandler(
                     == DisputeEligibilityOutcome.EligibleToSubmit;
             return state.Apply(command, eligible, dispute.ReasonCode != "duplicateCollection");
         }, clock.GetUtcNow(), cancellationToken, expectedVersion, correlationId, employee?.EmployeeId);
+    }
+
+    private async Task<DisputeView?> ReconcileCheckedAsync(
+        Guid customerId, Guid disputeId, long? expectedVersion, Guid? employeeId,
+        string correlationId, CancellationToken cancellationToken)
+    {
+        var dispute = await disputeReader.ReadAsync(customerId, disputeId, cancellationToken);
+        if (dispute is null) return null;
+        if (dispute.Category != TransactionCategory.DebitOrder)
+            throw new InvalidDebitOrderTransitionException();
+        if (expectedVersion is { } requestedVersion && requestedVersion != dispute.Version)
+            throw new DisputeConcurrencyConflictException();
+
+        var operationReference = dispute.ReversalOperationReference
+            ?? throw new InvalidOperationException("A requested reversal must have an operation reference.");
+        var outcome = await gateway.GetReversalStatusAsync(operationReference, cancellationToken);
+        return await store.ApplyAsync(customerId, disputeId, DebitOrderCommand.ReconcileReversal, current =>
+        {
+            if (current.Category != TransactionCategory.DebitOrder
+                || current.ReversalOperationReference != operationReference)
+                throw new DisputeConcurrencyConflictException();
+            var state = new DebitOrderState(
+                current.CaseStatus, current.DecisionStatus, current.FinancialStatus);
+            return Task.FromResult(state.ReconcileReversal(outcome));
+        }, clock.GetUtcNow(), cancellationToken, expectedVersion ?? dispute.Version,
+        correlationId, employeeId);
     }
 
     private async Task<DisputeView?> ExecuteCheckedAsync(

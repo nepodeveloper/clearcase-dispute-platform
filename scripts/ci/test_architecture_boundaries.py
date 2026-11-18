@@ -154,7 +154,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_transition_requires_every_protected_operation(self):
         relative = (
-            "ClearCase.Infrastructure/Disputes/"
+            "ClearCase.Infrastructure/Persistence/Disputes/"
             "DisputeTransitionPersistence.cs"
         )
         body = self.source_body(relative)
@@ -174,7 +174,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_commented_outbox_write_does_not_pass(self):
         relative = (
-            "ClearCase.Infrastructure/Disputes/"
+            "ClearCase.Infrastructure/Persistence/Disputes/"
             "DisputeTransitionPersistence.cs"
         )
         body = self.source_body(relative)
@@ -189,7 +189,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_string_literal_outbox_write_does_not_pass(self):
         relative = (
-            "ClearCase.Infrastructure/Disputes/"
+            "ClearCase.Infrastructure/Persistence/Disputes/"
             "DisputeTransitionPersistence.cs"
         )
         body = self.source_body(relative)

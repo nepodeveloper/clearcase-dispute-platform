@@ -194,7 +194,7 @@ def verify(root: Path = ROOT) -> list[str]:
             errors.append("Dispute submission bypasses feature validator")
         if not contains_invocation(body, r"\bApiProblem\s*\.\s*Create\s*\("):
             errors.append("Dispute submission bypasses common problem response")
-    transition = source / "ClearCase.Infrastructure/Disputes/DisputeTransitionPersistence.cs"
+    transition = source / "ClearCase.Infrastructure/Persistence/Disputes/DisputeTransitionPersistence.cs"
     if transition.is_file():
         body = csharp_source_code(transition.read_text(encoding="utf-8"))
         requirements = (
