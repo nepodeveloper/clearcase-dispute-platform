@@ -38,6 +38,20 @@ class VerticalSliceStructureTests(unittest.TestCase):
         # The canonical transition writer remains shared, outside HTTP slices.
         self.assertTrue((ROOT / "apps/api/src/ClearCase.Infrastructure/Disputes/DisputeTransitionPersistence.cs").is_file())
 
+    def test_feature_local_validation_and_explicit_registration(self):
+        validator = (API / "Features/Disputes/SubmitDispute/SubmitDisputeRequestValidator.cs").read_text()
+        endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()
+        registration = (API / "Features/CustomerFeatureEndpointRegistration.cs").read_text()
+        program = (API / "Program.cs").read_text()
+        self.assertIn('Idempotency-Key', validator)
+        self.assertIn('transactionId.invalid', validator)
+        self.assertIn('description.length', validator)
+        self.assertIn('SubmitDisputeRequestValidator.Validate', endpoint)
+        self.assertIn('ApiProblem.Create', endpoint)
+        self.assertIn('app.MapDisputeEndpoints()', registration)
+        self.assertIn('app.MapTransactionEndpoints()', registration)
+        self.assertIn('app.MapCustomerFeatures()', program)
+
     def test_submit_dispute_is_a_feature_slice(self):
         endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()
         handler = (APPLICATION / "Features/Disputes/SubmitDispute/SubmitDispute.cs").read_text()

@@ -12,7 +12,7 @@ not by moving EF persistence into HTTP endpoints.
   changing cursor semantics, read ownership or status projection.
 - [x] **PR-47:** Isolate card, debit-order and bank-fee command entrypoints while
   retaining canonical domain transitions, version checks and financial intent fencing.
-- [ ] **PR-48:** Introduce feature-local validation and shared endpoint registration
+- [x] **PR-48:** Introduce feature-local validation and shared endpoint registration
   conventions without breaking response/error codes.
 - [ ] **PR-49:** Add architecture/feature structure tests and CI rules, and document
   safe expansion rules for future slices.
@@ -41,3 +41,10 @@ Azure deployment, or mocks suggesting financial settlement.
   financial operation intents remain separate from HTTP endpoints.
 - [x] Add structural coverage for protected financial command paths.
 - [ ] GitHub regression suite green and human review.
+
+## PR-48 verification
+- [x] Submission input validation now lives beside its use case with identical error codes.
+- [x] Customer query/command registration is composed through a dedicated feature registrar.
+- [x] Existing ApiProblem/Create remains the sole common HTTP error format.
+- [x] Structural check covers the feature validator and composition root.
+- [ ] GitHub CI and peer review passed.
