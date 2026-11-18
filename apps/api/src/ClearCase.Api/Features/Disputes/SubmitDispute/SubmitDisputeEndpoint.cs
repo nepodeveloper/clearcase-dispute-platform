@@ -2,9 +2,7 @@ using ClearCase.Api.Authentication;
 using ClearCase.Api.Disputes;
 using ClearCase.Api.Endpoints;
 using ClearCase.Api.Middleware;
-using ClearCase.Api.Transactions;
 using ClearCase.Application.Disputes;
-using ClearCase.Domain.Disputes;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,7 +13,6 @@ public static class SubmitDisputeEndpoint
 {
     private const string IdempotencyKeyHeader = "Idempotency-Key";
     private const string IdempotentReplayedHeader = "Idempotent-Replayed";
-    private const int IdempotencyKeyMaxLength = 128;
 
     public static void Map(IEndpointRouteBuilder app, string prefix, string suffix)
     {
@@ -42,29 +39,13 @@ public static class SubmitDisputeEndpoint
         HttpContext context, ISubmitDisputeHandler handler, CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "private, no-store";
-        var errors = new List<QueryError>();
-        if (!context.Request.Headers.TryGetValue(IdempotencyKeyHeader, out var keyValues)
-            || keyValues.Count == 0)
-            errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.required",
-                "Send an Idempotency-Key header to safely retry this submission."));
-        else if (keyValues.Count != 1 || !IsValidIdempotencyKey(keyValues[0]))
-            errors.Add(new("/headers/" + IdempotencyKeyHeader, "idempotencyKey.invalid",
-                $"Send exactly one Idempotency-Key of 1 to {IdempotencyKeyMaxLength} visible ASCII characters."));
-        if (!Guid.TryParse(request.TransactionId, out var transactionId))
-            errors.Add(new("/transactionId", "transactionId.invalid", "Enter a valid transaction ID."));
-        var reasonCode = request.ReasonCode?.Trim() ?? string.Empty;
-        if (reasonCode.Length == 0)
-            errors.Add(new("/reasonCode", "reasonCode.required", "Select a dispute reason."));
-        var description = request.Description?.Trim() ?? string.Empty;
-        if (description.Length is < Dispute.DescriptionMinLength or > Dispute.DescriptionMaxLength)
-            errors.Add(new("/description", "description.length",
-                $"Describe the problem in {Dispute.DescriptionMinLength} to {Dispute.DescriptionMaxLength} characters."));
-        if (errors.Count != 0)
+        var validation = SubmitDisputeRequestValidator.Validate(request, context.Request.Headers);
+        if (validation.Errors.Count != 0)
             return ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid dispute request",
-                "dispute.invalidRequest", errors: errors);
+                "dispute.invalidRequest", errors: validation.Errors);
 
         var result = await handler.HandleAsync(
-            new SubmitDisputeCommand(transactionId, reasonCode, description, idempotencyKey,
+            new SubmitDisputeCommand(validation.TransactionId, validation.ReasonCode, validation.Description, idempotencyKey,
                 (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!), cancellationToken);
         if (result is SubmitDisputeResult.Replayed)
             context.Response.Headers[IdempotentReplayedHeader] = "true";
@@ -96,6 +77,4 @@ public static class SubmitDisputeEndpoint
         };
     }
 
-    private static bool IsValidIdempotencyKey(string? key) =>
-        key is { Length: > 0 and <= IdempotencyKeyMaxLength } && key.All(character => character is > ' ' and <= '~');
 }

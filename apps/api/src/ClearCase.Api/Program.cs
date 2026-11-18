@@ -1,4 +1,5 @@
 using ClearCase.Api.Endpoints;
+using ClearCase.Api.Features;
 using ClearCase.Api.Disputes;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
@@ -238,8 +239,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
-app.MapTransactionEndpoints();
-app.MapDisputeEndpoints();
+app.MapCustomerFeatures();
 app.MapAgentDisputeEndpoints();
 app.MapAgentDisputeCommands();
 app.MapSupervisorEscalationEndpoints();
