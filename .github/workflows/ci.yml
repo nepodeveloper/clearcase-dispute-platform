@@ -23,6 +23,7 @@ jobs:
       - name: Validate policy and test fail-closed controls
         run: |
           python3 scripts/ci/repository_policy.py
+          python3 scripts/ci/architecture_guard.py
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
 
   backend:
