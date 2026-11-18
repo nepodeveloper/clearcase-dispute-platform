@@ -20,6 +20,24 @@ class VerticalSliceStructureTests(unittest.TestCase):
         for name in ("ListDisputes", "GetDispute", "GetDisputeTimeline"):
             self.assertIn(name + "Endpoint.Map(app, prefix, suffix)", router)
 
+    def test_financial_commands_preserve_shared_domain_boundaries(self):
+        command_paths = [
+            ("Chargebacks/ProcessChargeback", "ChargebackProcessingHandler.cs"),
+            ("DebitOrders/ProcessDebitOrder", "DebitOrderProcessingHandler.cs"),
+            ("BankCharges/ProcessBankCharge", "BankChargeProcessingHandler.cs"),
+        ]
+        for category, name in command_paths:
+            self.assertTrue((APPLICATION / f"Features/{category}/{name}").is_file())
+        for category, name in [
+            ("Chargebacks/SimulateChargeback", "ChargebackSimulationEndpoints.cs"),
+            ("DebitOrders/SimulateDebitOrder", "DebitOrderSimulationEndpoints.cs"),
+            ("BankCharges/SimulateBankCharge", "BankChargeSimulationEndpoints.cs"),
+            ("AgentDisputes/ProcessAgentCommand", "AgentDisputeCommandEndpoints.cs"),
+        ]:
+            self.assertTrue((API / f"Features/{category}/{name}").is_file())
+        # The canonical transition writer remains shared, outside HTTP slices.
+        self.assertTrue((ROOT / "apps/api/src/ClearCase.Infrastructure/Disputes/DisputeTransitionPersistence.cs").is_file())
+
     def test_submit_dispute_is_a_feature_slice(self):
         endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()
         handler = (APPLICATION / "Features/Disputes/SubmitDispute/SubmitDispute.cs").read_text()

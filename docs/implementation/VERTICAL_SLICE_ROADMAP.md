@@ -10,7 +10,7 @@ not by moving EF persistence into HTTP endpoints.
   aliases, Idempotency-Key, customer scope, CSRF, RFC Problem Details and outbox.
 - [x] **PR-46:** Extract dispute read/query slices and eligibility query without
   changing cursor semantics, read ownership or status projection.
-- [ ] **PR-47:** Isolate card, debit-order and bank-fee command entrypoints while
+- [x] **PR-47:** Isolate card, debit-order and bank-fee command entrypoints while
   retaining canonical domain transitions, version checks and financial intent fencing.
 - [ ] **PR-48:** Introduce feature-local validation and shared endpoint registration
   conventions without breaking response/error codes.
@@ -34,3 +34,10 @@ Azure deployment, or mocks suggesting financial settlement.
 - [x] Preserve existing customer ownership, cursor and public API names and aliases.
 - [x] Include Python feature directory checks.
 - [ ] GitHub CI green and human review.
+
+## PR-47 verification
+- [x] Move card, debit-order, bank-fee command handlers and endpoint files into feature scopes.
+- [x] Keep namespaces and DI untouched; shared transition persistence, outbox, and durable
+  financial operation intents remain separate from HTTP endpoints.
+- [x] Add structural coverage for protected financial command paths.
+- [ ] GitHub regression suite green and human review.
