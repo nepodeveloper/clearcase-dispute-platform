@@ -15,7 +15,15 @@
         @for (link of links(); track link.url) {
           <a [routerLink]="link.url" [class.active]="section() === link.section"
             [attr.aria-current]="section() === link.section ? 'page' : null" (click)="menuOpen.set(false)">
-            <span class="nav-icon" aria-hidden="true">{{ link.icon }}</span>{{ link.label }}
+            <svg class="nav-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              @switch (link.section) {
+                @case ('transactions') { <path d="M4 7h16M4 12h16M4 17h10" /> }
+                @case ('disputes') { <path d="M12 3 3 8v2h18V8l-9-5ZM5 10v8M10 10v8M14 10v8M19 10v8M3 21h18" /> }
+                @case ('agent') { <path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1ZM6 6h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM8 12h8M8 16h5" /> }
+                @case ('supervisor') { <path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6l-8-3ZM9 12l2 2 4-4" /> }
+              }
+            </svg>{{ link.label }}
           </a>
         }
       </nav>
@@ -43,6 +51,13 @@
         </div>
       }
     </header>
+    @if (sessionTimeout.warning()) {
+      <div class="session-banner" role="status">
+        <p>Your session will expire in {{ sessionTimeout.expiresIn() }} due to inactivity.</p>
+        <button class="cc-button cc-button--secondary" type="button" [disabled]="sessionTimeout.busy()"
+          (click)="staySignedIn()">Stay signed in</button>
+      </div>
+    }
     <main #main id="main-content" tabindex="-1">
       @if (auth.user() === null && auth.loading()) { <p role="status">Checking your session...</p> }
       @if (auth.user() && auth.error()) { <p class="cc-form-error" role="alert">{{ auth.error() }}</p> }

@@ -36,6 +36,7 @@ describe('DisputeForm', () => {
   let element: HTMLElement;
 
   beforeEach(() => {
+    sessionStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([sessionInterceptor])),
@@ -56,7 +57,10 @@ describe('DisputeForm', () => {
     element = fixture.nativeElement as HTMLElement;
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    http.verify();
+  });
 
   it('lists the eligible reasons', () => {
     const options = Array.from(element.querySelectorAll('option')).map((option) => option.textContent?.trim());
@@ -200,6 +204,66 @@ describe('DisputeForm', () => {
 
     expect(element.querySelector('[data-testid="dispute-error"]')?.textContent)
       .toContain('still a pending authorization');
+  });
+
+  describe('draft preservation', () => {
+    const key = `clearcase.draft.${transactionId}`;
+
+    function remount(): HTMLElement {
+      const next = TestBed.createComponent(DisputeForm);
+      next.componentRef.setInput('transactionId', transactionId);
+      next.componentRef.setInput('reasons', [
+        { code: 'unrecognisedTransaction', label: 'I do not recognise this transaction' },
+        { code: 'duplicateCharge', label: 'I was charged more than once' },
+      ]);
+      next.detectChanges();
+      return next.nativeElement as HTMLElement;
+    }
+
+    it('keeps only the reason and description per transaction in sessionStorage and restores them', () => {
+      fill('duplicateCharge', 'Half-written explanation');
+
+      expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual({
+        reasonCode: 'duplicateCharge', description: 'Half-written explanation',
+      });
+      const restored = remount();
+      expect((restored.querySelector('#dispute-reason') as HTMLSelectElement).value).toBe('duplicateCharge');
+      expect((restored.querySelector('#dispute-description') as HTMLTextAreaElement).value)
+        .toBe('Half-written explanation');
+    });
+
+    it('ignores a stored reason that is no longer offered', () => {
+      sessionStorage.setItem(key, JSON.stringify({ reasonCode: 'retired', description: 'Kept text' }));
+      const restored = remount();
+
+      expect((restored.querySelector('#dispute-reason') as HTMLSelectElement).value).toBe('');
+      expect((restored.querySelector('#dispute-description') as HTMLTextAreaElement).value).toBe('Kept text');
+    });
+
+    it('clears the draft after a successful submission', () => {
+      fill('unrecognisedTransaction', description);
+      expect(sessionStorage.getItem(key)).not.toBeNull();
+      submit();
+      http.expectOne('/api/v1/disputes').flush(created, { status: 201, statusText: 'Created' });
+
+      expect(sessionStorage.getItem(key)).toBeNull();
+    });
+
+    it('keeps the draft when the submission fails', () => {
+      fill('unrecognisedTransaction', description);
+      submit();
+      http.expectOne('/api/v1/disputes').flush({}, { status: 503, statusText: 'Unavailable' });
+
+      expect(sessionStorage.getItem(key)).not.toBeNull();
+    });
+
+    it('keeps working when storage is unavailable', () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+
+      expect(() => remount()).not.toThrow();
+      expect(() => fill('duplicateCharge', description)).not.toThrow();
+    });
   });
 
   function fill(reasonCode: string, text: string): void {

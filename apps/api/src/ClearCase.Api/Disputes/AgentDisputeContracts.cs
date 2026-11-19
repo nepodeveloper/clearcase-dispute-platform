@@ -56,9 +56,10 @@ public sealed record AgentDisputeDetailResponse(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentCardWorkflowResponse? CardWorkflow,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentEscalationResponse? ActiveEscalation,
     IReadOnlyList<AgentTimelineEventResponse> Timeline,
-    IReadOnlyList<InvestigationNoteResponse> Notes)
+    IReadOnlyList<InvestigationNoteResponse> Notes,
+    IReadOnlyList<AvailableStaffActionResponse> AvailableActions)
 {
-    public static AgentDisputeDetailResponse From(AgentDisputeDetails detail) =>
+    public static AgentDisputeDetailResponse From(AgentDisputeDetails detail, bool simulatedExternalUpdatesAllowed) =>
         new(detail.Id, detail.Reference, detail.CustomerReference, detail.Category.ToString(),
             detail.ReasonCode, detail.CustomerStatement, detail.EligibilityOutcome.ToString(),
             detail.EligibilityPolicyVersion, detail.CaseStatus.ToString(), detail.DecisionStatus.ToString(),
@@ -68,7 +69,16 @@ public sealed record AgentDisputeDetailResponse(
             detail.CardWorkflow is { } workflow ? AgentCardWorkflowResponse.From(workflow) : null,
             detail.ActiveEscalation is { } escalation ? AgentEscalationResponse.From(escalation) : null,
             detail.Timeline.Select(AgentTimelineEventResponse.From).ToArray(),
-            detail.Notes.Select(InvestigationNoteResponse.From).ToArray());
+            detail.Notes.Select(InvestigationNoteResponse.From).ToArray(),
+            StaffActionCatalog.For(detail, simulatedExternalUpdatesAllowed)
+                .Select(AvailableStaffActionResponse.From).ToArray());
+}
+
+public sealed record AvailableStaffActionResponse(
+    string Command, string Label, string Description, bool MovesMoney, bool Terminal)
+{
+    public static AvailableStaffActionResponse From(AvailableStaffAction action) =>
+        new(action.Command, action.Label, action.Description, action.MovesMoney, action.Terminal);
 }
 
 public sealed record AgentEscalationResponse(

@@ -36,8 +36,7 @@ public static class AgentDisputeCommandEndpoints
 
     private static async Task<Results<Ok<DisputeResponse>, ProblemHttpResult>> Process(
         string id, AgentDisputeCommandRequest request, IAgentDisputeCommandHandler handler,
-        HttpContext context, IWebHostEnvironment environment, ILogger<AgentDisputeCommandHandler> logger,
-        CancellationToken cancellationToken)
+        HttpContext context, IWebHostEnvironment environment, CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "private, no-store";
         if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var employeeId)
@@ -55,42 +54,13 @@ public static class AgentDisputeCommandEndpoints
             out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
             return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest", errors: errors);
-        try
-        {
-            var dispute = await handler.HandleAsync(new(disputeId, employeeId, request.Command,
-                expectedVersion, evidenceId, evidenceKind,
-                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!,
-                SimulationAuthorization.IsEnabled(environment)), cancellationToken);
-            return dispute is null
-                ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
-                : TypedResults.Ok(DisputeResponse.From(dispute));
-        }
-        catch (InvalidAgentDisputeCommandException)
-        {
-            return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest",
-                errors: [new("/command", "command.invalid", "Select a supported command for this case category.")]);
-        }
-        catch (DisputeConcurrencyConflictException)
-        {
-            return ApiProblem.Create(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
-                "The dispute changed since it was read. Refresh the case before trying again.");
-        }
-        catch (ActiveDisputeEscalationException)
-        {
-            return ApiProblem.Create(context, 409, "Supervisor review is pending", "dispute.activeEscalation",
-                "Resolve the active escalation before continuing case processing.");
-        }
-        catch (Exception exception) when (exception is InvalidDebitOrderTransitionException
-            or InvalidBankChargeTransitionException or InvalidChargebackTransitionException)
-        {
-            return ApiProblem.Create(context, 409, "Invalid dispute transition", "dispute.invalidTransition",
-                "This action is not allowed or requires further investigation.");
-        }
-        catch (DisputeProcessingUnavailableException)
-        {
-            logger.LogWarning("Staff command could not execute because a processing adapter is unavailable.");
-            return ApiProblem.Create(context, 503, "Processing unavailable", "dispute.processingUnavailable",
-                "The required processing adapter is not configured. No transition was committed.");
-        }
+        // Domain failures (conflict, escalation, invalid transition, unavailable adapter) are mapped by DomainExceptionHandler.
+        var dispute = await handler.HandleAsync(new(disputeId, employeeId, request.Command,
+            expectedVersion, evidenceId, evidenceKind,
+            (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!,
+            SimulationAuthorization.IsEnabled(environment)), cancellationToken);
+        return dispute is null
+            ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
+            : TypedResults.Ok(DisputeResponse.From(dispute));
     }
 }

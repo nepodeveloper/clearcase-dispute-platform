@@ -130,9 +130,26 @@ app-root {
 
 .nav-icon {
   width: 1.2rem;
+  height: 1.2rem;
+  flex: none;
   color: inherit;
-  font-size: 1rem;
-  text-align: center;
+}
+
+.session-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cc-space-3);
+  padding: var(--cc-space-3) clamp(1rem, 2.5vw, 2rem);
+  border-bottom: 1px solid var(--cc-border);
+  color: var(--cc-warning);
+  background: var(--cc-warning-bg);
+  font-weight: 700;
+}
+
+.session-banner p {
+  margin: 0;
 }
 
 .main-column {

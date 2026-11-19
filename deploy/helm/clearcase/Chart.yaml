@@ -1,0 +1,11 @@
+apiVersion: v2
+name: clearcase
+description: ClearCase dispute platform - ASP.NET Core API and Angular web tier behind an Ingress load balancer.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - disputes
+  - banking
+  - demo

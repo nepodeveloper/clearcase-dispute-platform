@@ -73,6 +73,16 @@ describe('CSRF session interceptor', () => {
     expect(navigate).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/' } });
   });
 
+  it('does not redirect again when a late 401 arrives while already on the sign-in page', () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    vi.spyOn(router, 'url', 'get').mockReturnValue('/login');
+    client.get('/api/v1/transactions').subscribe({ error: () => undefined });
+    http.expectOne('/api/v1/transactions').flush({}, { status: 401, statusText: 'Unauthorized' });
+    expect(csrf.csrfToken()).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('does not clear the session when an external service returns 401', () => {
     client.get('https://external.invalid/api/v1/auth/me').subscribe({ error: () => undefined });
     http.expectOne('https://external.invalid/api/v1/auth/me').flush({}, { status: 401, statusText: 'Unauthorized' });

@@ -56,6 +56,16 @@ export class AuthService {
     }
   }
 
+  /** Renews the sliding server session and CSRF token without toggling the global busy state. */
+  async refresh(): Promise<boolean> {
+    try {
+      this.accept(await firstValueFrom(this.http.get<AuthSession>('/api/v1/auth/me')));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async logout(): Promise<boolean> {
     this.busy.set(true);
     this.failure.set('');

@@ -1,0 +1,40 @@
+# Example production-style values. Copy, adjust and keep OUT of source control if they contain environment specifics.
+# Production mode has no demo accounts or mock gateways, so it needs real identity and banking integrations first
+# (see docs/PRODUCTION-READINESS.md). The chart will not scale the API past one replica while it uses SQLite.
+mock:
+  enabled: false
+
+api:
+  image:
+    repository: ghcr.io/nepodeveloper/clearcase-api
+    digest: ""            # pin an immutable sha256:... digest produced by the package-images workflow
+  trustedProxyNetworks: ["10.42.0.0/16"]   # your ingress controller's pod network
+  otlpEndpoint: http://otel-collector.observability:4317
+  persistence:
+    size: 10Gi
+    storageClass: premium-rwo
+
+web:
+  image:
+    repository: ghcr.io/nepodeveloper/clearcase-web
+    digest: ""
+  replicaCount: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 8
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clearcase.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: clearcase-tls
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx

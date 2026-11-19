@@ -89,29 +89,11 @@ public static class ChargebackSimulationEndpoints
             out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
             return ApiProblem.Create(context, 400, "Invalid representment metadata", "chargeback.invalidRequest", errors: errors);
-        try
-        {
-            var dispute = await handler.HandleAsync(new ChargebackProcessingCommand(
-                disputeId, command, evidenceId, evidenceKind,
-                (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!, request.ExpectedVersion), cancellationToken);
-            return dispute is null
-                ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
-                : TypedResults.Ok(DisputeResponse.From(dispute));
-        }
-        catch (InvalidChargebackTransitionException)
-        {
-            return ApiProblem.Create(context, 409, "Invalid chargeback transition",
-                "chargeback.invalidTransition", "This action is not allowed or requires further review.");
-        }
-        catch (ActiveDisputeEscalationException)
-        {
-            return ApiProblem.Create(context, 409, "Supervisor review is pending",
-                "dispute.activeEscalation", "Resolve the active escalation before continuing case processing.");
-        }
-        catch (DisputeConcurrencyConflictException)
-        {
-            return ApiProblem.Create(context, 409, "Dispute version conflict", "dispute.concurrencyConflict",
-                "The dispute changed since it was read. Refresh the case before trying again.");
-        }
+        var dispute = await handler.HandleAsync(new ChargebackProcessingCommand(
+            disputeId, command, evidenceId, evidenceKind,
+            (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!, request.ExpectedVersion), cancellationToken);
+        return dispute is null
+            ? ApiProblem.Create(context, 404, "Dispute not found", "dispute.notFound")
+            : TypedResults.Ok(DisputeResponse.From(dispute));
     }
 }

@@ -57,12 +57,14 @@ public static class SqlitePersistence
         if (path.StartsWith(staticDirectory, comparison))
             throw new InvalidOperationException("The SQLite database must not be stored in the web root.");
 
-        if (development)
+        // Non-development databases must already exist unless migrations are explicitly allowed to create them.
+        var mayCreate = development || configuration.GetValue<bool>("Persistence:MigrateOnStartup");
+        if (mayCreate)
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         return new SqliteConnectionStringBuilder
         {
             DataSource = path,
-            Mode = development ? SqliteOpenMode.ReadWriteCreate : SqliteOpenMode.ReadWrite,
+            Mode = mayCreate ? SqliteOpenMode.ReadWriteCreate : SqliteOpenMode.ReadWrite,
             ForeignKeys = true,
             DefaultTimeout = timeout,
             Pooling = false

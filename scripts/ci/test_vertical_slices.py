@@ -42,7 +42,8 @@ class VerticalSliceStructureTests(unittest.TestCase):
         validator = (API / "Features/Disputes/SubmitDispute/SubmitDisputeRequestValidator.cs").read_text()
         endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()
         registration = (API / "Features/CustomerFeatureEndpointRegistration.cs").read_text()
-        program = (API / "Program.cs").read_text()
+        program = (API / "Hosting/WebApplicationExtensions.cs").read_text()
+        entrypoint = (API / "Program.cs").read_text()
         self.assertIn('Idempotency-Key', validator)
         self.assertIn('transactionId.invalid', validator)
         self.assertIn('description.length', validator)
@@ -51,6 +52,7 @@ class VerticalSliceStructureTests(unittest.TestCase):
         self.assertIn('app.MapDisputeEndpoints()', registration)
         self.assertIn('app.MapTransactionEndpoints()', registration)
         self.assertIn('app.MapCustomerFeatures()', program)
+        self.assertIn('app.MapClearCaseEndpoints()', entrypoint)
 
     def test_submit_dispute_is_a_feature_slice(self):
         endpoint = (API / "Features/Disputes/SubmitDispute/SubmitDisputeEndpoint.cs").read_text()

@@ -1,0 +1,23 @@
+ClearCase {{ .Chart.AppVersion }} installed as "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+{{- if .Values.mock.enabled }}
+
+MOCK MODE: synthetic data, mock financial gateways, demo accounts. Never load real customer data.
+
+Open the app:
+{{- if .Values.ingress.enabled }}
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+  (needs an ingress controller; on kind use the ingress-nginx kind manifest and ports 80/443 mapped to the host)
+{{- end }}
+  or, without an ingress:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "clearcase.fullname" . }}-web 8080:{{ .Values.web.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "clearcase.fullname" . }}-api 5100:80   # API directly
+
+Demo account passwords (customer.demo=customer, customer.other=otherCustomer, agent.demo=agent, supervisor.demo=supervisor):
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "clearcase.secretName" . }} -o jsonpath='{.data.agent}' | base64 -d
+{{- else }}
+
+Production mode: the API runs in the Production environment (no demo data, no mock gateways, Secure cookies).
+Financial adapters stay "unavailable" until real integrations are configured, and accounts must come from your identity setup.
+{{- end }}
+
+Verify: helm -n {{ .Release.Namespace }} test {{ .Release.Name }}

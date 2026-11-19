@@ -1,40 +1,29 @@
 import { Routes } from '@angular/router';
-import { TransactionDetailsPage } from './transactions/transaction-details-page';
-import { TransactionsPage } from './transactions/transactions-page';
-import { DisputesPage } from './disputes/disputes-page';
-import { DisputeDetailsPage } from './disputes/dispute-details-page';
 import { authGuard, loginGuard } from './auth/auth-guards';
-import { LoginPage } from './auth/login-page';
-import { WorkspacePage } from './auth/workspace-page';
-import { AgentQueuePage } from './operations/agent-queue-page';
-import { InvestigationPage } from './operations/investigation-page';
-import { SupervisorQueuePage } from './operations/supervisor-queue-page';
-import { SupervisorDetailPage } from './operations/supervisor-detail-page';
-import { NotFoundPage } from './not-found-page';
 
 export const routes: Routes = [
-  { path: 'login', title: 'Sign in | ClearCase', component: LoginPage, canActivate: [loginGuard],
+  { path: 'login', title: 'Sign in | ClearCase', loadComponent: () => import('./auth/login-page').then(m => m.LoginPage), canActivate: [loginGuard],
     data: { label: 'Sign in' } },
-  { path: '', title: 'Transactions | ClearCase', component: TransactionsPage, pathMatch: 'full',
+  { path: '', title: 'Transactions | ClearCase', loadComponent: () => import('./transactions/transactions-page').then(m => m.TransactionsPage), pathMatch: 'full',
     canActivate: [authGuard], data: { role: 'Customer', label: 'Transactions', section: 'transactions' } },
-  { path: 'transactions/:id', title: 'Transaction details | ClearCase', component: TransactionDetailsPage,
+  { path: 'transactions/:id', title: 'Transaction details | ClearCase', loadComponent: () => import('./transactions/transaction-details-page').then(m => m.TransactionDetailsPage),
     canActivate: [authGuard], data: { role: 'Customer', label: 'Transaction details', section: 'transactions' } },
-  { path: 'disputes', title: 'My disputes | ClearCase', component: DisputesPage,
+  { path: 'disputes', title: 'My disputes | ClearCase', loadComponent: () => import('./disputes/disputes-page').then(m => m.DisputesPage),
     canActivate: [authGuard], data: { role: 'Customer', label: 'My disputes', section: 'disputes' } },
-  { path: 'disputes/:id', title: 'Dispute timeline | ClearCase', component: DisputeDetailsPage,
+  { path: 'disputes/:id', title: 'Dispute timeline | ClearCase', loadComponent: () => import('./disputes/dispute-details-page').then(m => m.DisputeDetailsPage),
     canActivate: [authGuard], data: { role: 'Customer', label: 'Dispute timeline', section: 'disputes' } },
-  { path: 'agent/disputes', title: 'Agent work queue | ClearCase', component: AgentQueuePage,
+  { path: 'agent/disputes', title: 'Agent work queue | ClearCase', loadComponent: () => import('./operations/agent-queue-page').then(m => m.AgentQueuePage),
     canActivate: [authGuard], data: { role: 'Agent', label: 'Agent work queue', section: 'agent' } },
-  { path: 'agent/disputes/:id', title: 'Case investigation | ClearCase', component: InvestigationPage,
+  { path: 'agent/disputes/:id', title: 'Case investigation | ClearCase', loadComponent: () => import('./operations/investigation-page').then(m => m.InvestigationPage),
     canActivate: [authGuard], data: { role: 'Agent', label: 'Case investigation', section: 'agent' } },
-  { path: 'supervisor/escalations', title: 'Supervisor queue | ClearCase', component: SupervisorQueuePage,
+  { path: 'supervisor/escalations', title: 'Supervisor queue | ClearCase', loadComponent: () => import('./operations/supervisor-queue-page').then(m => m.SupervisorQueuePage),
     canActivate: [authGuard], data: { role: 'Supervisor', label: 'Supervisor queue', section: 'supervisor' } },
-  { path: 'supervisor/escalations/:id', title: 'Supervisor review | ClearCase', component: SupervisorDetailPage,
+  { path: 'supervisor/escalations/:id', title: 'Supervisor review | ClearCase', loadComponent: () => import('./operations/supervisor-detail-page').then(m => m.SupervisorDetailPage),
     canActivate: [authGuard], data: { role: 'Supervisor', label: 'Supervisor review', section: 'supervisor' } },
   // Legacy Supervisor URLs kept so existing bookmarks and links keep working.
   { path: 'agent/escalations', redirectTo: 'supervisor/escalations', pathMatch: 'full' },
   { path: 'agent/escalations/:id', redirectTo: 'supervisor/escalations/:id' },
-  { path: 'unauthorized', title: 'Access denied | ClearCase', component: WorkspacePage, canActivate: [authGuard],
+  { path: 'unauthorized', title: 'Access denied | ClearCase', loadComponent: () => import('./auth/workspace-page').then(m => m.WorkspacePage), canActivate: [authGuard],
     data: { denied: true, label: 'Access denied' } },
-  { path: '**', title: 'Page not found | ClearCase', component: NotFoundPage, data: { label: 'Page not found' } },
+  { path: '**', title: 'Page not found | ClearCase', loadComponent: () => import('./not-found-page').then(m => m.NotFoundPage), data: { label: 'Page not found' } },
 ];

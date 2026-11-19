@@ -4,18 +4,19 @@ import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router
 import { filter } from 'rxjs';
 import { AuthService, AuthUser } from './auth/auth-service';
 import { homeUrl } from './auth/auth-guards';
+import { SessionTimeoutService } from './auth/session-timeout-service';
 
-interface NavigationLink { label: string; url: string; icon: string; section: string }
+interface NavigationLink { label: string; url: string; section: string }
 
 function navigationLinks(user: AuthUser): NavigationLink[] {
   const links: NavigationLink[] = [];
   if (user.roles.includes('Customer')) links.push(
-    { label: 'Transactions', url: '/', icon: '\u25a4', section: 'transactions' },
-    { label: 'My disputes', url: '/disputes', icon: '\u25a6', section: 'disputes' });
+    { label: 'Transactions', url: '/', section: 'transactions' },
+    { label: 'My disputes', url: '/disputes', section: 'disputes' });
   if (user.roles.includes('Agent'))
-    links.push({ label: 'Agent work queue', url: '/agent/disputes', icon: '\u2637', section: 'agent' });
+    links.push({ label: 'Agent work queue', url: '/agent/disputes', section: 'agent' });
   if (user.roles.includes('Supervisor'))
-    links.push({ label: 'Supervisor queue', url: '/supervisor/escalations', icon: '\u25c8', section: 'supervisor' });
+    links.push({ label: 'Supervisor queue', url: '/supervisor/escalations', section: 'supervisor' });
   return links;
 }
 
@@ -28,6 +29,7 @@ export class App {
   private readonly injector = inject(Injector);
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
+  protected readonly sessionTimeout = inject(SessionTimeoutService);
   protected readonly home = computed(() => {
     const user = this.auth.user();
     return user === null ? '/login' : homeUrl(user);
@@ -60,6 +62,11 @@ export class App {
 
   protected async logout(): Promise<void> {
     if (await this.auth.logout()) await this.router.navigateByUrl('/login');
+  }
+
+  protected async staySignedIn(): Promise<void> {
+    if (!await this.sessionTimeout.extend() && this.auth.user() === null)
+      await this.router.navigate(['/login'], { queryParams: { returnUrl: this.router.url } });
   }
 
   protected openMenu(): void {
