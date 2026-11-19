@@ -6,6 +6,8 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditLevel>high</NuGetAuditLevel>
+    <!-- Reproducible restores: packages.lock.json is committed and CI restores in locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- Nullable dereferences and uninitialized reference properties block releases. -->
     <WarningsAsErrors>$(WarningsAsErrors);CS8602;CS8618</WarningsAsErrors>
   </PropertyGroup>

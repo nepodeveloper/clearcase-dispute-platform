@@ -38,17 +38,40 @@ public static class KafkaOutboxRegistration
         if (string.IsNullOrWhiteSpace(bootstrapServers))
             throw new InvalidOperationException("Messaging:Kafka:BootstrapServers is required when Kafka is enabled.");
         var topic = configuration["Messaging:Kafka:Topic"] ?? "disputes.case-events.v1";
-        services.AddSingleton<IProducer<string, string>>(_ => new ProducerBuilder<string, string>(new ProducerConfig
+        services.AddSingleton<IProducer<string, string>>(_ =>
         {
-            BootstrapServers = bootstrapServers,
-            EnableIdempotence = true,
-            Acks = Acks.All,
-            MessageSendMaxRetries = 5
-        }).Build());
+            var producer = new ProducerConfig
+            {
+                BootstrapServers = bootstrapServers,
+                EnableIdempotence = true,
+                Acks = Acks.All,
+                MessageSendMaxRetries = 5
+            };
+            KafkaClientSecurity.Apply(producer, configuration);
+            return new ProducerBuilder<string, string>(producer).Build();
+        });
         services.AddSingleton<IOutboxPublisher>(provider => new KafkaOutboxPublisher(
             provider.GetRequiredService<IProducer<string, string>>(), topic));
         services.AddScoped<SqliteInboxProcessor>();
         services.AddScoped<SqliteKafkaRecordProcessor>();
+        services.AddScoped<IKafkaRecordProcessor>(provider => provider.GetRequiredService<SqliteKafkaRecordProcessor>());
         return services;
+    }
+}
+
+/// <summary>Applies optional TLS/SASL settings so brokers outside local development can require authentication.</summary>
+public static class KafkaClientSecurity
+{
+    public static void Apply(ClientConfig client, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Messaging:Kafka");
+        if (Enum.TryParse<SecurityProtocol>(section["SecurityProtocol"], true, out var protocol))
+            client.SecurityProtocol = protocol;
+        if (Enum.TryParse<SaslMechanism>(section["SaslMechanism"], true, out var mechanism))
+            client.SaslMechanism = mechanism;
+        if (!string.IsNullOrWhiteSpace(section["SaslUsername"]))
+            client.SaslUsername = section["SaslUsername"];
+        if (!string.IsNullOrWhiteSpace(section["SaslPassword"]))
+            client.SaslPassword = section["SaslPassword"];
     }
 }

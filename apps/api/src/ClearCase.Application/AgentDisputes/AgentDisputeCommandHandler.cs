@@ -26,8 +26,7 @@ public interface IAgentDisputeCommandHandler
 }
 
 public sealed class AgentDisputeCommandHandler(
-    IAgentDisputeReader reader, IDebitOrderProcessingHandler debitOrders,
-    IBankChargeProcessingHandler bankCharges, IChargebackProcessingHandler chargebacks)
+    IAgentDisputeReader reader, IEnumerable<ICategoryCommandProcessor> processors)
     : IAgentDisputeCommandHandler
 {
     public async Task<DisputeView?> HandleAsync(AgentDisputeCommand command, CancellationToken cancellationToken)
@@ -39,27 +38,63 @@ public sealed class AgentDisputeCommandHandler(
         // Escalation writes increment the version, so the processing version guard also protects races.
         if (!DisputeEscalationRules.CanProcess(target.HasActiveEscalation))
             throw new ActiveDisputeEscalationException();
-        if (target.Category == TransactionCategory.CardPurchase && !command.AllowSimulatedExternalUpdates
-            && command.Command is nameof(ChargebackCommand.MerchantAccept) or nameof(ChargebackCommand.MerchantContest)
-                or nameof(ChargebackCommand.ReceiveRepresentment))
-            throw new DisputeProcessingUnavailableException();
-        var employee = new EmployeeDisputeScope(target.CustomerId, command.EmployeeId);
-        return target.Category switch
-        {
-            TransactionCategory.DebitOrder => await debitOrders.HandleAsync(
-                command.DisputeId, Parse<DebitOrderCommand>(command.Command), cancellationToken,
-                command.ExpectedVersion, command.CorrelationId, employee),
-            TransactionCategory.BankCharge => await bankCharges.HandleAsync(
-                command.DisputeId, Parse<BankChargeCommand>(command.Command), cancellationToken,
-                command.ExpectedVersion, command.CorrelationId, employee),
-            TransactionCategory.CardPurchase => await chargebacks.HandleAsync(new(
-                command.DisputeId, Parse<ChargebackCommand>(command.Command), command.EvidenceId,
-                command.EvidenceKind, command.CorrelationId, command.ExpectedVersion), cancellationToken, employee),
-            _ => throw new InvalidAgentDisputeCommandException()
-        };
+        var processor = processors.SingleOrDefault(item => item.Category == target.Category)
+            ?? throw new InvalidAgentDisputeCommandException();
+        return await processor.HandleAsync(
+            command, new EmployeeDisputeScope(target.CustomerId, command.EmployeeId), cancellationToken);
     }
+}
 
-    private static T Parse<T>(string? value) where T : struct, Enum =>
+/// <summary>Runs a staff command for one transaction category; adding a category means adding a processor.</summary>
+public interface ICategoryCommandProcessor
+{
+    TransactionCategory Category { get; }
+
+    Task<DisputeView?> HandleAsync(
+        AgentDisputeCommand command, EmployeeDisputeScope employee, CancellationToken cancellationToken);
+}
+
+public sealed class DebitOrderCommandProcessor(IDebitOrderProcessingHandler handler) : ICategoryCommandProcessor
+{
+    public TransactionCategory Category => TransactionCategory.DebitOrder;
+
+    public Task<DisputeView?> HandleAsync(
+        AgentDisputeCommand command, EmployeeDisputeScope employee, CancellationToken cancellationToken) =>
+        handler.HandleAsync(command.DisputeId, CommandParser.Parse<DebitOrderCommand>(command.Command),
+            cancellationToken, command.ExpectedVersion, command.CorrelationId, employee);
+}
+
+public sealed class BankChargeCommandProcessor(IBankChargeProcessingHandler handler) : ICategoryCommandProcessor
+{
+    public TransactionCategory Category => TransactionCategory.BankCharge;
+
+    public Task<DisputeView?> HandleAsync(
+        AgentDisputeCommand command, EmployeeDisputeScope employee, CancellationToken cancellationToken) =>
+        handler.HandleAsync(command.DisputeId, CommandParser.Parse<BankChargeCommand>(command.Command),
+            cancellationToken, command.ExpectedVersion, command.CorrelationId, employee);
+}
+
+public sealed class ChargebackCommandProcessor(IChargebackProcessingHandler handler) : ICategoryCommandProcessor
+{
+    public TransactionCategory Category => TransactionCategory.CardPurchase;
+
+    public Task<DisputeView?> HandleAsync(
+        AgentDisputeCommand command, EmployeeDisputeScope employee, CancellationToken cancellationToken)
+    {
+        var parsed = CommandParser.Parse<ChargebackCommand>(command.Command);
+        // Merchant-side events are simulated, so they are refused wherever simulations are disabled.
+        if (!command.AllowSimulatedExternalUpdates
+            && parsed is ChargebackCommand.MerchantAccept or ChargebackCommand.MerchantContest
+                or ChargebackCommand.ReceiveRepresentment)
+            throw new DisputeProcessingUnavailableException();
+        return handler.HandleAsync(new(command.DisputeId, parsed, command.EvidenceId,
+            command.EvidenceKind, command.CorrelationId, command.ExpectedVersion), cancellationToken, employee);
+    }
+}
+
+internal static class CommandParser
+{
+    public static T Parse<T>(string? value) where T : struct, Enum =>
         Enum.TryParse<T>(value, out var command) && Enum.IsDefined(command) && command.ToString() == value
             ? command : throw new InvalidAgentDisputeCommandException();
 }

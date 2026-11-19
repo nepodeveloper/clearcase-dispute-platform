@@ -138,6 +138,7 @@ public static class AgentDisputeEndpoints
         string id,
         HttpContext context,
         IGetAgentDisputeHandler handler,
+        IWebHostEnvironment environment,
         CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "private, no-store";
@@ -147,7 +148,8 @@ public static class AgentDisputeEndpoints
         var dispute = await handler.HandleAsync(disputeId, cancellationToken);
         return dispute is null
             ? DisputeNotFound(context)
-            : TypedResults.Ok(AgentDisputeDetailResponse.From(dispute));
+            : TypedResults.Ok(AgentDisputeDetailResponse.From(
+                dispute, SimulationAuthorization.IsEnabled(environment)));
     }
 
     private static async Task<Results<Ok<InvestigationNoteResponse[]>, ProblemHttpResult>> ListNotes(

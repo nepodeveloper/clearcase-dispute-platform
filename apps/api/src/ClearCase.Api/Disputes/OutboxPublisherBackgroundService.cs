@@ -44,14 +44,16 @@ internal sealed class KafkaConsumerBackgroundService(
     {
         var topic = configuration["Messaging:Kafka:Topic"] ?? "disputes.case-events.v1";
         var consumerName = configuration["Messaging:Kafka:ConsumerGroup"] ?? "clearcase-local-v1";
-        using var consumer = new ConsumerBuilder<string, string>(new ConsumerConfig
+        var consumerConfig = new ConsumerConfig
         {
             BootstrapServers = configuration["Messaging:Kafka:BootstrapServers"],
             GroupId = consumerName,
             EnableAutoCommit = false,
             EnableAutoOffsetStore = false,
             AutoOffsetReset = AutoOffsetReset.Earliest
-        }).Build();
+        };
+        KafkaClientSecurity.Apply(consumerConfig, configuration);
+        using var consumer = new ConsumerBuilder<string, string>(consumerConfig).Build();
         consumer.Subscribe(topic);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -62,7 +64,7 @@ internal sealed class KafkaConsumerBackgroundService(
                 record = consumer.Consume(stoppingToken);
                 if (record is null) continue;
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var handler = scope.ServiceProvider.GetRequiredService<SqliteKafkaRecordProcessor>();
+                var handler = scope.ServiceProvider.GetRequiredService<IKafkaRecordProcessor>();
                 var disposition = await handler.ProcessAsync(consumerName, record.Topic,
                     record.Partition.Value, record.Offset.Value, record.Message?.Value, stoppingToken);
                 // A malformed record is committed only AFTER its quarantine metadata is durable.

@@ -52,10 +52,17 @@ public static class KafkaConsumerMetrics
     public static readonly Counter<long> Failed = Meter.CreateCounter<long>("clearcase.kafka.failed");
 }
 
+public interface IKafkaRecordProcessor
+{
+    Task<KafkaRecordDisposition> ProcessAsync(
+        string consumerName, string topic, int partition, long offset, string? value,
+        CancellationToken cancellationToken);
+}
+
 public sealed class SqliteKafkaRecordProcessor(
     TransactionDbContext database,
     SqliteInboxProcessor inbox,
-    TimeProvider clock)
+    TimeProvider clock) : IKafkaRecordProcessor
 {
     public async Task<KafkaRecordDisposition> ProcessAsync(
         string consumerName, string topic, int partition, long offset, string? value,
