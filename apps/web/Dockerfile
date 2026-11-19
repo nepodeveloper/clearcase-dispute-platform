@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM node:26 AS build
+# Matches the Node version pinned in CI and the README.
+FROM node:24.18.0 AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
