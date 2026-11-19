@@ -56,7 +56,7 @@ jobs:
           --minimum ClearCase.Api=75 --overall 80
       - name: Upload backend release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-release-evidence
           path: TestResults/
@@ -96,7 +96,7 @@ jobs:
         run: npm run test:e2e
       - name: Upload UI screenshots and test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-evidence
           path: |
