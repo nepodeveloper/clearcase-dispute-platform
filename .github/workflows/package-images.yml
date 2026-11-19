@@ -60,7 +60,7 @@ jobs:
           tags: |
             type=sha,format=long
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
