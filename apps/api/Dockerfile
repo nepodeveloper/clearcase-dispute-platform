@@ -12,7 +12,7 @@ COPY apps/api/src apps/api/src
 RUN dotnet publish apps/api/src/ClearCase.Api/ClearCase.Api.csproj \
     --configuration Release --no-restore --output /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
 # SQLite database and data-protection keys live on a volume mounted at /data.
