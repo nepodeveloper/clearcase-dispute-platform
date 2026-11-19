@@ -1,0 +1,6 @@
+* @nepodeveloper
+/apps/api/src/ClearCase.Domain/ @nepodeveloper
+/apps/api/src/ClearCase.Infrastructure/Migrations/ @nepodeveloper
+/deploy/ @nepodeveloper
+/.github/ @nepodeveloper
+/scripts/ci/ @nepodeveloper

@@ -1,0 +1,16 @@
+**/bin
+**/obj
+**/node_modules
+**/.angular
+**/dist
+**/playwright-report
+**/test-results
+**/TestResults
+**/App_Data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+.git
+.github
+.vs
+*.md

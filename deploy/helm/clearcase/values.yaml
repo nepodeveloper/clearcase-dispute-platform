@@ -1,0 +1,110 @@
+# ClearCase Helm values.
+#
+# SQLite limit: the API stores data in a single SQLite file on a ReadWriteOnce volume, so it runs as ONE
+# replica with the Recreate strategy. The stateless web tier scales and is load balanced by the Ingress.
+# Scaling the API horizontally needs a shared database (for example PostgreSQL) - see docs/operations/kubernetes.md.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# mock=true runs the API in the Development environment: synthetic transactions, mock financial gateways,
+# generated demo accounts and no HTTPS redirect. It is for local/demo clusters only, never real customer data.
+mock:
+  enabled: true
+
+api:
+  image:
+    repository: ghcr.io/nepodeveloper/clearcase-api
+    tag: ""            # defaults to the chart appVersion
+    digest: ""         # sha256:... pins the image immutably and wins over tag
+    pullPolicy: IfNotPresent
+  replicaCount: 1      # must stay 1 while the database is SQLite (the chart refuses more)
+  port: 8080
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  # Ranges allowed to set X-Forwarded-* headers (your ingress controller's pod network). Without this the
+  # API sees only the proxy address, so per-client rate limits are shared by all users. Tighten in production.
+  trustedProxyNetworks:
+    - 10.0.0.0/8
+  rateLimitRequestsPerMinute: 600
+  financialWorkerEnabled: false
+  otlpEndpoint: ""     # for example http://otel-collector.observability:4317
+  migrations:
+    enabled: true      # init container runs `--migrate-only` (ignored in mock mode, which migrates on start)
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    existingClaim: ""
+  extraEnv: []
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+web:
+  image:
+    repository: ghcr.io/nepodeveloper/clearcase-web
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  port: 8080
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { memory: 128Mi }
+  # ClusterIP behind the Ingress. LoadBalancer exposes the web tier directly through a cloud load balancer.
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+autoscaling:            # web tier only
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true         # web tier; keeps one pod serving during node drains
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clearcase.localtest.me
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: clearcase-tls
+
+# Demo account passwords. Leave existingSecret empty to generate random ones (kept across upgrades); otherwise
+# reference a Secret with keys: customer, otherCustomer, agent, supervisor.
+secrets:
+  existingSecret: ""
+
+kafka:
+  enabled: false
+  bootstrapServers: ""
+  securityProtocol: ""
+  saslMechanism: ""
+  existingSecret: ""    # keys: username, password
+
+networkPolicy:
+  enabled: false
+  ingressControllerNamespace: ingress-nginx
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+# Identity UID/GID of the non-root users baked into the images (aspnet image `app` user and nginx-unprivileged).
+securityIds:
+  api: 1654
+  web: 101
+
+labels: {}

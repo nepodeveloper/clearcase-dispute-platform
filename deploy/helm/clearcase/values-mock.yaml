@@ -1,0 +1,27 @@
+# Local/demo cluster (kind, minikube, Docker Desktop). Synthetic data and mock gateways only.
+#   helm install clearcase deploy/helm/clearcase -n clearcase --create-namespace -f deploy/helm/clearcase/values-mock.yaml
+mock:
+  enabled: true
+
+api:
+  image:
+    repository: clearcase-api
+    tag: local
+    pullPolicy: IfNotPresent
+  # Pod-network range of a typical kind/minikube cluster so forwarded client addresses are honoured.
+  trustedProxyNetworks: ["10.0.0.0/8", "172.16.0.0/12"]
+  financialWorkerEnabled: true
+
+web:
+  image:
+    repository: clearcase-web
+    tag: local
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clearcase.localtest.me   # public DNS name that resolves to 127.0.0.1
+  tls:
+    enabled: false

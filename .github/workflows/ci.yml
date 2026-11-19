@@ -36,8 +36,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Restore with NuGet high/critical advisory gate
-        run: dotnet restore apps/api/ClearCase.slnx -p:NuGetAudit=true -p:NuGetAuditLevel=high -warnaserror:NU1903,NU1904
+      - name: Restore with NuGet high/critical advisory gate (locked to committed lock files)
+        run: dotnet restore apps/api/ClearCase.slnx --locked-mode -p:NuGetAudit=true -p:NuGetAuditLevel=high -warnaserror:NU1903,NU1904
       - name: Build with analyzers
         run: dotnet build apps/api/ClearCase.slnx --configuration Release --no-restore
       - name: Test and generate coverage/TRX evidence
@@ -49,6 +49,11 @@ jobs:
         run: |
           test -n "$(find TestResults -type f -name 'coverage.cobertura.xml' -print -quit)"
           grep -l '<coverage ' $(find TestResults -type f -name 'coverage.cobertura.xml') >/dev/null
+      - name: Enforce minimum line coverage (merged across test projects)
+        run: >
+          python3 scripts/ci/check_coverage.py
+          --minimum ClearCase.Domain=85 --minimum ClearCase.Application=80
+          --minimum ClearCase.Api=75 --overall 80
       - name: Upload backend release evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,3 +103,112 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
           retention-days: 14
+
+  helm:
+    name: Helm chart lint and schema validation
+    needs: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KUBECONFORM_VERSION: v0.6.7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: Lint the chart in mock and production-style modes
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/clearcase
+          helm lint "$chart" -f "$chart/values-mock.yaml" --strict
+          helm lint "$chart" -f "$chart/values-production.example.yaml" --strict
+      - name: Render and validate manifests against the Kubernetes schemas
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/clearcase
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz kubeconform
+          helm template clearcase "$chart" -f "$chart/values-mock.yaml" | ./kubeconform -strict -summary -kubernetes-version 1.30.0
+          helm template clearcase "$chart" -f "$chart/values-production.example.yaml" | ./kubeconform -strict -summary -kubernetes-version 1.30.0
+      - name: Guard rails must refuse unsafe values (fail closed)
+        run: |
+          set -uo pipefail
+          chart=deploy/helm/clearcase
+          expect_failure() {
+            if helm template clearcase "$chart" -f "$chart/values-mock.yaml" "$@" >/dev/null 2>&1; then
+              echo "::error::Chart accepted unsafe values: $*"
+              exit 1
+            fi
+          }
+          expect_failure --set api.replicaCount=2            # SQLite allows a single API writer
+          expect_failure --set mock.enabled=false            # production needs TLS
+          expect_failure --set kafka.enabled=true            # Kafka needs bootstrap servers
+
+  containers:
+    name: Container images build
+    needs: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image (locked NuGet restore, non-root runtime)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: clearcase-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build web image (production Angular build served by unprivileged nginx)
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          push: false
+          tags: clearcase-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  kubernetes-smoke:
+    name: Kubernetes smoke test with mock data (kind)
+    needs: [helm, containers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build images for the local cluster
+        run: |
+          set -euo pipefail
+          docker build -f apps/api/Dockerfile -t clearcase-api:local .
+          docker build -t clearcase-web:local apps/web
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: clearcase
+      - name: Load images and install the chart in mock mode
+        run: |
+          set -euo pipefail
+          kind load docker-image clearcase-api:local clearcase-web:local --name clearcase
+          helm install clearcase deploy/helm/clearcase -n clearcase --create-namespace \
+            -f deploy/helm/clearcase/values-mock.yaml --set ingress.enabled=false --wait --timeout 5m
+      - name: In-cluster smoke test (readiness and anonymous rejection)
+        run: helm test clearcase -n clearcase --timeout 3m
+      - name: Sign in with generated demo credentials and read mock transactions
+        run: |
+          set -euo pipefail
+          password=$(kubectl -n clearcase get secret clearcase-accounts -o jsonpath='{.data.customer}' | base64 -d)
+          kubectl -n clearcase port-forward svc/clearcase-api 5100:80 >/dev/null 2>&1 &
+          trap 'kill %1' EXIT
+          for attempt in $(seq 1 20); do curl -fsS http://127.0.0.1:5100/health/ready >/dev/null && break; sleep 1; done
+          jar=$(mktemp)
+          curl -fsS -c "$jar" -H 'Content-Type: application/json' \
+            -d "{\"username\":\"customer.demo\",\"password\":\"$password\"}" http://127.0.0.1:5100/api/v1/auth/login >/dev/null
+          count=$(curl -fsS -b "$jar" http://127.0.0.1:5100/api/v1/transactions | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')
+          echo "Mock transactions visible to customer.demo: $count"
+          test "$count" -gt 0
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n clearcase get all,pvc,events
+          kubectl -n clearcase describe pods
+          kubectl -n clearcase logs -l app.kubernetes.io/part-of=clearcase --all-containers --tail=200

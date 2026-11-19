@@ -39,6 +39,8 @@ apps/web/           Angular app (src/) and Playwright browser tests (e2e/)
 .azuredevops/       Equivalent Azure DevOps pipelines
 scripts/ci/         Repository policy and release-simulation scripts
 infra/azure/        Azure infrastructure blueprint (Bicep)
+deploy/helm/        Helm chart (Ingress load balancer, mock mode for local clusters)
+docs/               Production-readiness register, Kubernetes guide and operations runbook
 ```
 
 ## Prerequisites
@@ -157,8 +159,11 @@ $env:Messaging__Kafka__BootstrapServers = 'localhost:9092'
 ## CI/CD
 
 - [ci.yml](.github/workflows/ci.yml) runs on pull requests and pushes to `main`. It covers
-  repository policy, the backend build, tests, migration checks and coverage, dependency audits,
-  the frontend tests and build, and the Playwright browser tests.
+  repository policy, the backend build (locked NuGet restore), tests, migration checks and coverage gates,
+  dependency audits, the frontend tests and build, the Playwright browser tests, Helm lint and schema validation,
+  container image builds and a Kubernetes smoke test on kind with mock data.
+- [security.yml](.github/workflows/security.yml) runs CodeQL and dependency review;
+  [package-images.yml](.github/workflows/package-images.yml) is a manual workflow that pushes attested images to GHCR.
 - [release-simulation.yml](.github/workflows/release-simulation.yml) is a manual, demo-only
   promotion through `clearcase-development` → `clearcase-uat` → `clearcase-production`, with
   approval required before production. It deploys nothing; setup steps are in the workflow's
@@ -172,4 +177,6 @@ $env:Messaging__Kafka__BootstrapServers = 'localhost:9092'
   notifications or evidence uploads.
 - SQLite and the bundled Kafka broker are for local use. A production database, broker hosting
   and cloud deployment are not included.
-- Coverage is collected in CI, but no minimum threshold is enforced yet.
+- Coverage is gated in CI (merged line coverage: Domain 85%, Application 80%, API 75%, overall 80%).
+- Production readiness gaps (identity provider, shared database, maker-checker, real banking adapters) are tracked in
+  [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md).
