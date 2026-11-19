@@ -52,7 +52,7 @@ jobs:
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
           mkdir -p "$RUNNER_TEMP/release"
           python3 scripts/ci/release_simulator.py prepare --state "$RUNNER_TEMP/release/release.json" --commit "$GITHUB_SHA"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-candidate
           path: ${{ runner.temp }}/release/release.json
@@ -75,7 +75,7 @@ jobs:
           path: ${{ runner.temp }}/release
       - name: Simulate development deployment + smoke/health/monitor
         run: python3 scripts/ci/release_simulator.py deploy --state "$RUNNER_TEMP/release/release.json" --environment dev
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-dev
@@ -99,7 +99,7 @@ jobs:
           path: ${{ runner.temp }}/release
       - name: Simulate UAT deployment and E2E verification
         run: python3 scripts/ci/release_simulator.py deploy --state "$RUNNER_TEMP/release/release.json" --environment uat
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-uat
@@ -148,7 +148,7 @@ jobs:
           state="$RUNNER_TEMP/release/release.json"
           python3 scripts/ci/release_simulator.py approve --state "$state" --approver "GitHub environment approval by $APPROVERS" --ticket "$GITHUB_RUN_ID"
           python3 scripts/ci/release_simulator.py deploy --state "$state" --environment prod --scenario "$SCENARIO"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-production-evidence
