@@ -3,7 +3,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { AgentDisputeDetails } from './agent-disputes-api';
 import { StaffCommandPanel } from './staff-command-panel';
-import { suggestedStaffActions } from './agent-dispute-commands';
 
 const id = '00000000-0000-0000-0000-000000000091';
 const basic: AgentDisputeDetails = {
@@ -14,6 +13,12 @@ const basic: AgentDisputeDetails = {
   createdAt: '2026-11-17T08:00:00Z', version: 4,
   transaction: { description: 'Account fee', amountMinorUnits: '1000', currency: 'ZAR',
     transactionDate: '2026-11-16T08:00:00Z' },
+  availableActions: [
+    { command: 'Approve', label: 'Approve dispute', description: 'Record the approval decision. No money moves.',
+      movesMoney: false, terminal: true },
+    { command: 'Reject', label: 'Reject dispute', description: 'Record the rejection decision.',
+      movesMoney: false, terminal: true },
+  ],
   timeline: [], notes: [],
 };
 
@@ -86,17 +91,24 @@ describe('Staff command UI', () => {
     expect(refreshes).toBe(1);
   });
 
-  it('recommends safe sequential paths for all three categories', () => {
-    expect(suggestedStaffActions({ ...basic, category: 'DebitOrder',
-      caseStatus: 'ReversalConfirmed', financialStatus: 'Confirmed' }).map(x => x.command))
-      .toEqual(['Close']);
-    expect(suggestedStaffActions({ ...basic, category: 'BankCharge', decisionStatus: 'Approved',
-      financialStatus: 'Requested' }).map(x => x.command)).toEqual(['ExecuteAdjustment']);
-    expect(suggestedStaffActions({ ...basic, category: 'CardPurchase',
-      cardWorkflow: { reference: 'CB-1', reasonCode: 'unrecognisedTransaction',
-        status: 'MerchantAccepted', lastOperationOutcome: 'Succeeded' },
-      decisionStatus: 'Approved', financialStatus: 'Requested' }).map(x => x.command))
-      .toEqual(['ExecuteSettlement']);
-    expect(suggestedStaffActions({ ...basic, caseStatus: 'Closed' })).toEqual([]);
+  it('renders only the commands supplied by the server, including mock money markers', () => {
+    const fixture = render({ ...basic, category: 'DebitOrder', financialStatus: 'OutcomeUnknown',
+      availableActions: [{ command: 'ReconcileReversal', label: 'Reconcile reversal',
+        description: 'Reconcile the unknown reversal outcome.', movesMoney: true, terminal: false }] });
+    const root = fixture.nativeElement as HTMLElement;
+    const buttons = Array.from(root.querySelectorAll('button')).map(button => button.textContent?.trim());
+    expect(buttons).toEqual(['Reconcile reversal']);
+    root.querySelector('button')!.click();
+    fixture.detectChanges();
+    expect(root.textContent).toContain('Mock operation only.');
+    expect(root.textContent).not.toContain('records a decision or closure');
+  });
+
+  it('shows runbook guidance when the server offers no command', () => {
+    const fixture = render({ ...basic, availableActions: [] });
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('button')).toBeNull();
+    expect(root.querySelector('[role="status"]')?.textContent).toContain('No staff command is currently available');
+    expect(root.textContent).toContain('supervisor or runbook');
   });
 });

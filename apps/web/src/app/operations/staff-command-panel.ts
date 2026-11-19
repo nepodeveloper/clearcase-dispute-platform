@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
-import { StaffAction, suggestedStaffActions } from './agent-dispute-commands';
+import { AgentDisputeDetails, AgentDisputesApi, EvidenceKind } from './agent-disputes-api';
+import { StaffAction, toStaffAction } from './agent-dispute-commands';
 
 @Component({
   selector: 'cc-staff-command-panel',
@@ -16,7 +16,7 @@ import { StaffAction, suggestedStaffActions } from './agent-dispute-commands';
       @if (dispute().activeEscalation) {
         <p class="notice" role="status">Processing is paused while the Supervisor escalation is active.</p>
       } @else if (actions().length === 0) {
-        <p class="muted" role="status">No further staff command is currently available. If the outcome is unknown or failed, investigate and reconcile before attempting another financial operation.</p>
+        <p class="muted" role="status">No staff command is currently available for this case. If the outcome is unknown, follow the supervisor or runbook procedure to reconcile before attempting another financial operation.</p>
       } @else {
         <div class="form-stack">
           @for (action of actions(); track action.command) {
@@ -39,7 +39,7 @@ import { StaffAction, suggestedStaffActions } from './agent-dispute-commands';
           @if (action.command === 'ReceiveRepresentment') {
             <label for="evidence-kind">Synthetic evidence type</label>
             <select id="evidence-kind" class="cc-control" [value]="evidenceKind()"
-              [disabled]="pending()" (change)="evidenceKind.set($any($event.target).value)">
+              [disabled]="pending()" (change)="selectEvidenceKind($event)">
               <option value="Receipt">Receipt</option>
               <option value="DeliveryConfirmation">Delivery confirmation</option>
               <option value="AuthorizationRecord">Authorization record</option>
@@ -70,12 +70,20 @@ export class StaffCommandPanel {
   readonly completed = output<string>();
   readonly refreshRequested = output<void>();
   private readonly api = inject(AgentDisputesApi);
-  protected readonly actions = computed(() => suggestedStaffActions(this.dispute()));
+  protected readonly actions = computed(() => this.dispute().availableActions.map(toStaffAction));
   protected readonly selected = signal<StaffAction | null>(null);
   protected readonly pending = signal(false);
   protected readonly error = signal('');
   protected readonly needsRefresh = signal(false);
-  protected readonly evidenceKind = signal<'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord'>('Receipt');
+  protected readonly evidenceKind = signal<EvidenceKind>('Receipt');
+
+  protected selectEvidenceKind(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    const value = target.value;
+    if (value === 'Receipt' || value === 'DeliveryConfirmation' || value === 'AuthorizationRecord')
+      this.evidenceKind.set(value);
+  }
 
   protected choose(action: StaffAction): void {
     if (this.pending()) return;

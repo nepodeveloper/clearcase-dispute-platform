@@ -32,7 +32,10 @@ describe('Agent queue', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    vi.useRealTimers();
+    http.verify();
+  });
 
   function render() {
     const fixture = TestBed.createComponent(AgentQueuePage);
@@ -102,6 +105,35 @@ describe('Agent queue', () => {
     resized.flush({ items: [item], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
     expect(root.textContent).toContain('Page 1');
+  });
+
+  it('shows how long each case has been open and flags aging cases in text', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-15T10:00:00Z'));
+    const fixture = render();
+    respond({
+      items: [
+        { ...item, id: 'fresh', reference: 'DSP-FRESH', createdAt: '2026-11-15T08:00:00Z' },
+        { ...item, id: 'edge', reference: 'DSP-EDGE', createdAt: '2026-11-10T10:00:00Z' },
+        { ...item, id: 'young', reference: 'DSP-YOUNG', createdAt: '2026-11-12T10:00:00Z' },
+        { ...item, id: 'old', reference: 'DSP-OLD', createdAt: '2026-11-09T09:00:00Z' },
+      ],
+      pageInfo: { hasNextPage: false },
+    });
+    fixture.detectChanges();
+    const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'));
+    const row = (reference: string) => rows.find(r => r.textContent?.includes(reference))!;
+
+    expect(row('DSP-FRESH').textContent).toContain('Opened today');
+    expect(row('DSP-YOUNG').textContent).toContain('Open for 3 days');
+    expect(row('DSP-YOUNG').querySelector('.tag-warning')).toBeNull();
+    expect(row('DSP-EDGE').textContent).toContain('Open for 5 days');
+    expect(row('DSP-EDGE').querySelector('.tag-warning')).toBeNull();
+    expect(row('DSP-OLD').textContent).toContain('Open for 6 days');
+    expect(row('DSP-OLD').querySelector('.tag-warning')?.textContent)
+      .toContain('Aging');
+    expect(row('DSP-OLD').querySelector('.tag-warning .cc-sr-only')?.textContent)
+      .toContain('more than 5 days');
   });
 
   it('shows a retry after a transient queue failure', () => {

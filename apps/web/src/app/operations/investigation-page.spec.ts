@@ -32,6 +32,10 @@ describe('Agent investigation', () => {
       mandateAuthorised: false,
       mandateMatchesCollection: false,
     },
+    availableActions: [{
+      command: 'StartReview', label: 'Start review', description: 'Begin investigating this debit order.',
+      movesMoney: false, terminal: false,
+    }],
     timeline: [{
       id: '00000000-0000-0000-0000-000000000002',
       sequenceNumber: 1,
@@ -88,6 +92,7 @@ describe('Agent investigation', () => {
     expect(root.querySelector('[aria-label="Customer-visible case timeline"]')?.textContent)
       .not.toContain('Merchant verification is pending');
     expect(root.textContent).toContain('Escalate case');
+    expect(Array.from(root.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Start review')).toBe(true);
     expect(root.querySelector('#escalation-note')).toBeNull();
   });
 

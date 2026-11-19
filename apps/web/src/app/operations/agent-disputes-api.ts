@@ -13,6 +13,7 @@ export type AgentCaseStatus =
   | 'Rejected';
 export type AgentDecisionStatus = 'Pending' | 'Approved' | 'Rejected';
 export type AgentFinancialStatus = 'NotInitiated' | 'Requested' | 'Confirmed' | 'Failed' | 'OutcomeUnknown';
+export type EvidenceKind = 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord';
 
 export function agentCaseStatusLabel(status: AgentCaseStatus): string {
   const labels: Record<AgentCaseStatus, string> = {
@@ -87,6 +88,15 @@ export interface AgentEscalationCreation {
   createdAt: string;
 }
 
+/** Staff command the server currently permits for the case; the client never derives workflow rules. */
+export interface AgentAvailableAction {
+  command: string;
+  label: string;
+  description: string;
+  movesMoney: boolean;
+  terminal: boolean;
+}
+
 export interface AgentDisputeDetails {
   id: string;
   reference: string;
@@ -120,6 +130,7 @@ export interface AgentDisputeDetails {
     lastOperationOutcome: string;
   };
   activeEscalation?: AgentActiveEscalation;
+  availableActions: AgentAvailableAction[];
   timeline: AgentTimelineEvent[];
   notes: AgentInvestigationNote[];
 }
@@ -165,7 +176,7 @@ export class AgentDisputesApi {
 
   /** Server checks bank-employee role, CSRF, expectedVersion and Domain transition rules. */
   command(id: string, command: string, expectedVersion: number,
-    evidence?: { id: string; kind: 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord' }) {
+    evidence?: { id: string; kind: EvidenceKind }) {
     return this.http.post<unknown>(
       `/api/v1/agent/disputes/${encodeURIComponent(id)}/commands`,
       { command, expectedVersion, ...(evidence ? { evidence } : {}) });

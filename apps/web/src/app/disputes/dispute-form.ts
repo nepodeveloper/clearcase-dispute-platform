@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, input, output, signal } from '@angular/core';
+import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -14,13 +14,14 @@ type SubmissionState =
 
 export const descriptionMinLength = 15;
 export const descriptionMaxLength = 2000;
+const draftKey = (transactionId: string): string => `clearcase.draft.${transactionId}`;
 
 @Component({
   selector: 'app-dispute-form',
   imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './dispute-form.html',
 })
-export class DisputeForm {
+export class DisputeForm implements OnInit {
   readonly transactionId = input.required<string>();
   readonly reasons = input.required<DisputeReason[]>();
   readonly activeDisputeExists = output<void>();
@@ -43,7 +44,50 @@ export class DisputeForm {
 
   constructor() {
     this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.serverErrors.set({}));
+      .subscribe(() => {
+        this.serverErrors.set({});
+        this.saveDraft();
+      });
+  }
+
+  ngOnInit(): void {
+    this.restoreDraft();
+  }
+
+  // Only the reason and free-text draft are kept, per transaction and per tab; never credentials or tokens.
+  private restoreDraft(): void {
+    try {
+      const stored = sessionStorage.getItem(draftKey(this.transactionId()));
+      if (stored === null) return;
+      const draft: unknown = JSON.parse(stored);
+      if (typeof draft !== 'object' || draft === null) return;
+      const reasonCode = 'reasonCode' in draft && typeof draft.reasonCode === 'string'
+        && this.reasons().some(reason => reason.code === draft.reasonCode) ? draft.reasonCode : '';
+      const description = 'description' in draft && typeof draft.description === 'string'
+        ? draft.description.slice(0, descriptionMaxLength) : '';
+      this.form.setValue({ reasonCode, description }, { emitEvent: false });
+    } catch {
+      // Storage can be blocked or hold malformed data; the form simply starts empty.
+    }
+  }
+
+  private saveDraft(): void {
+    if (this.state().kind === 'submitted') return;
+    const { reasonCode, description } = this.form.getRawValue();
+    try {
+      if (reasonCode === '' && description === '') sessionStorage.removeItem(draftKey(this.transactionId()));
+      else sessionStorage.setItem(draftKey(this.transactionId()), JSON.stringify({ reasonCode, description }));
+    } catch {
+      // Draft preservation is best-effort and must never block editing.
+    }
+  }
+
+  private clearDraft(): void {
+    try {
+      sessionStorage.removeItem(draftKey(this.transactionId()));
+    } catch {
+      // Best-effort cleanup.
+    }
   }
 
   protected submit(): void {
@@ -61,6 +105,7 @@ export class DisputeForm {
       .subscribe({
         next: (dispute) => {
           this.state.set({ kind: 'submitted', dispute });
+          this.clearDraft();
           void this.router.navigate(['/disputes', dispute.id]);
         },
         error: (error: unknown) => {

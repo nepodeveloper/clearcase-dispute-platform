@@ -17,6 +17,8 @@ const caseStatuses: readonly AgentCaseStatus[] = ['Submitted', 'ManualReview', '
   'ReversalRequested', 'ReversalConfirmed', 'Closed', 'Rejected'];
 const categories: readonly AgentDisputeCategory[] = ['CardPurchase', 'DebitOrder', 'BankCharge'];
 const finishedStatuses: readonly AgentCaseStatus[] = ['Closed', 'Rejected', 'ReversalConfirmed'];
+/** Cases open for more than this many days are flagged as aging in the queue. */
+export const agingThresholdDays = 5;
 
 @Component({
   selector: 'cc-agent-queue',
@@ -67,7 +69,10 @@ const finishedStatuses: readonly AgentCaseStatus[] = ['Closed', 'Rejected', 'Rev
               <td><span class="tag" [class.tag-cyan]="item.category === 'DebitOrder'" [class.tag-violet]="item.category === 'BankCharge'">{{ typeLabel(item.category) }}</span></td>
               <td class="money">{{ item.amountMinorUnits | minorUnitsMoney }}</td>
               <td><cc-status-badge [label]="statusLabel(item.caseStatus)" [status]="item.caseStatus" /></td>
-              <td>{{ age(item.createdAt) }} days</td>
+              <td>{{ ageLabel(item.createdAt) }}
+                @if (isAging(item.createdAt)) {
+                  <span class="tag tag-warning">Aging<span class="cc-sr-only"> case, open for more than {{ agingThresholdDays }} days</span></span>
+                }</td>
               <td><a class="row-action" [routerLink]="['/agent/disputes', item.id]" [attr.aria-label]="'Investigate ' + item.reference">Investigate &rarr;</a></td>
             </tr>
           }</tbody>
@@ -95,6 +100,7 @@ export class AgentQueuePage {
   protected readonly statusLabel = agentCaseStatusLabel;
   protected readonly statuses = caseStatuses;
   protected readonly categories = categories;
+  protected readonly agingThresholdDays = agingThresholdDays;
   protected readonly search = signal('');
   protected readonly status = signal<AgentCaseStatus | ''>('');
   protected readonly category = signal<AgentDisputeCategory | ''>('');
@@ -174,5 +180,14 @@ export class AgentQueuePage {
 
   protected age(date: string): number {
     return Math.max(0, Math.floor((Date.now() - Date.parse(date)) / 86400000));
+  }
+
+  protected ageLabel(date: string): string {
+    const days = this.age(date);
+    return days === 0 ? 'Opened today' : `Open for ${days} ${days === 1 ? 'day' : 'days'}`;
+  }
+
+  protected isAging(date: string): boolean {
+    return this.age(date) > agingThresholdDays;
   }
 }

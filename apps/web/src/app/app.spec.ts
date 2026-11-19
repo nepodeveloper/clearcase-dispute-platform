@@ -1,9 +1,11 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
 import { AuthService } from './auth/auth-service';
+import { sessionInterceptor } from './auth/session-interceptor';
+import { sessionClock, SessionTimeoutService, sessionLifetimeMs, sessionWarningMs } from './auth/session-timeout-service';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -87,6 +89,52 @@ describe('App', () => {
     expect(document.activeElement).toBe(last);
     last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(controls[0]);
+  });
+
+  it('shows a non-modal status banner near session expiry and refreshes on demand', async () => {
+    let now = 5_000_000;
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideHttpClient(withInterceptors([sessionInterceptor])), provideHttpClientTesting(), provideRouter([]),
+        { provide: sessionClock, useValue: () => now }],
+    }).compileComponents();
+    const http = TestBed.inject(HttpTestingController);
+    const restore = TestBed.inject(AuthService).restore();
+    http.expectOne('/api/v1/auth/me').flush({
+      username: 'customer.demo', actorType: 'customer', roles: ['Customer'], csrfToken: 'csrf',
+    });
+    await restore;
+    const timeout = TestBed.inject(SessionTimeoutService);
+    timeout.recordActivity();
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.session-banner')).toBeNull();
+
+    now += sessionLifetimeMs - sessionWarningMs;
+    timeout.tick();
+    fixture.detectChanges();
+    const banner = element.querySelector('.session-banner')!;
+    expect(banner.getAttribute('role')).toBe('status');
+    expect(banner.textContent).toContain('5 minutes');
+
+    const stay = Array.from(banner.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Stay signed in')!;
+    stay.click();
+    http.expectOne('/api/v1/auth/me').flush({
+      username: 'customer.demo', actorType: 'customer', roles: ['Customer'], csrfToken: 'csrf-2',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(element.querySelector('.session-banner')).toBeNull();
+  });
+
+  it('renders decorative SVG navigation icons', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const icons = (fixture.nativeElement as HTMLElement).querySelectorAll('#primary-navigation svg.nav-icon');
+    expect(icons.length).toBe(2);
+    icons.forEach(icon => expect(icon.getAttribute('aria-hidden')).toBe('true'));
   });
 
   it('shows only operations navigation for an authenticated employee', async () => {
