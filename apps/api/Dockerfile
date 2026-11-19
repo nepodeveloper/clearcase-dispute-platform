@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build from the repository root: docker build -f apps/api/Dockerfile -t clearcase-api .
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY global.json Directory.Build.props ./
 COPY apps/api/src/ClearCase.Domain/*.csproj apps/api/src/ClearCase.Domain/packages.lock.json apps/api/src/ClearCase.Domain/
