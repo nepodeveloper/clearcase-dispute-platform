@@ -29,7 +29,7 @@
     "@playwright/test": "1.65.1",
     "jsdom": "^31.0.1",
     "prettier": "^3.8.1",
-    "typescript": "~7.0.2",
+    "typescript": "~6.0.3",
     "vitest": "^5.1.0"
   }
 }
