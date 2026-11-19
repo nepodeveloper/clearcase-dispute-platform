@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Require main, validate governance and prepare the candidate
@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 10
     environment: clearcase-development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v8
@@ -90,7 +90,7 @@ jobs:
     timeout-minutes: 10
     environment: clearcase-uat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v8
@@ -121,7 +121,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SCENARIO: ${{ inputs.failureScenario }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v8
