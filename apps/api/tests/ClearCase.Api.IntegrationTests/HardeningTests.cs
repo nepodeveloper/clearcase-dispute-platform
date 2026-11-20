@@ -93,13 +93,15 @@ public sealed class HostingHardeningTests
     [InlineData("employee-command-correlation")]
     public async Task ValidCorrelationIdIsEchoedUnchanged(string supplied)
     {
-        using var app = new WebApplicationFactory<Program>();
+        await using var app = new SqliteWebApplicationFactory();
+        await app.InitializeAsync();
         using var client = app.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
         request.Headers.TryAddWithoutValidation("X-Correlation-ID", supplied);
 
         using var response = await client.SendAsync(request);
 
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(supplied, response.Headers.GetValues("X-Correlation-ID").Single());
     }
 
@@ -109,13 +111,15 @@ public sealed class HostingHardeningTests
     [InlineData("emoji-\u2764")]
     public async Task CorrelationIdWithUnexpectedCharactersIsReplaced(string supplied)
     {
-        using var app = new WebApplicationFactory<Program>();
+        await using var app = new SqliteWebApplicationFactory();
+        await app.InitializeAsync();
         using var client = app.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
         request.Headers.TryAddWithoutValidation("X-Correlation-ID", supplied);
 
         using var response = await client.SendAsync(request);
 
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var returned = response.Headers.GetValues("X-Correlation-ID").Single();
         Assert.NotEqual(supplied, returned);
         Assert.Matches("^[0-9a-f]{32}$", returned);
@@ -124,13 +128,15 @@ public sealed class HostingHardeningTests
     [Fact]
     public async Task OverlongCorrelationIdIsReplaced()
     {
-        using var app = new WebApplicationFactory<Program>();
+        await using var app = new SqliteWebApplicationFactory();
+        await app.InitializeAsync();
         using var client = app.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
         request.Headers.TryAddWithoutValidation("X-Correlation-ID", new string('a', 65));
 
         using var response = await client.SendAsync(request);
 
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Matches("^[0-9a-f]{32}$", response.Headers.GetValues("X-Correlation-ID").Single());
     }
 
