@@ -54,7 +54,6 @@ public static class AgentDisputeCommandEndpoints
             out var evidenceId, out var evidenceKind);
         if (errors.Count != 0)
             return ApiProblem.Create(context, 400, "Invalid staff command", "agentDispute.invalidRequest", errors: errors);
-        // Domain failures (conflict, escalation, invalid transition, unavailable adapter) are mapped by DomainExceptionHandler.
         var dispute = await handler.HandleAsync(new(disputeId, employeeId, request.Command,
             expectedVersion, evidenceId, evidenceKind,
             (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!,

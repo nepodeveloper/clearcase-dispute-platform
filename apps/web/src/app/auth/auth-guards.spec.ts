@@ -19,7 +19,6 @@ describe('authentication routing', () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => {
-    // Landing on the sign-in page loads its optional help block, which is not under test here.
     http.match('/api/v1/support').forEach(request => request.flush({}, { status: 401, statusText: 'Unauthorized' }));
     http.verify();
   });

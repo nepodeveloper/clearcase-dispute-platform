@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace ClearCase.Api.Features.AgentDisputes.AssignDispute;
 
-/// <summary>Staff workload slice: claiming or releasing a case never changes its processing or version.</summary>
 public static class DisputeAssignmentEndpoints
 {
     public static void Map(IEndpointRouteBuilder app)

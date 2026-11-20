@@ -17,7 +17,6 @@ public static class CustomerEvidenceRules
     private static readonly CustomerEvidenceFileType Png = new("image/png");
     private static readonly CustomerEvidenceFileType Jpeg = new("image/jpeg");
 
-    /// <summary>Identifies PDF, PNG and JPEG by their leading signature bytes; anything else is unsupported.</summary>
     public static CustomerEvidenceFileType? Sniff(ReadOnlySpan<byte> content)
     {
         if (content.StartsWith("%PDF-"u8)) return Pdf;
@@ -26,7 +25,6 @@ public static class CustomerEvidenceRules
         return null;
     }
 
-    /// <summary>Display-only name: no directory part, no control or reserved characters, bounded length.</summary>
     public static string SanitizeFileName(string? original)
     {
         var name = original ?? string.Empty;

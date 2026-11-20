@@ -80,7 +80,6 @@ const statusTones: Readonly<Record<string, string>> = {
   ManualReview: 'review',
   Open: 'warning', Submitted: 'warning',
   Rejected: 'error',
-  // Service-level and financial operation states: always shown with text, never by colour alone.
   OnTrack: 'success', DueSoon: 'warning', Breached: 'error',
   Succeeded: 'success', Failed: 'error', Unknown: 'warning',
 };

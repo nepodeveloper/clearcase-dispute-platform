@@ -7,10 +7,6 @@ namespace ClearCase.Api.Hosting;
 
 public static class ObservabilityExtensions
 {
-    /// <summary>
-    /// Registers OpenTelemetry traces and metrics. Data is exported only when an OTLP endpoint is
-    /// configured (OTEL_EXPORTER_OTLP_ENDPOINT or Observability:OtlpEndpoint), so local runs stay quiet.
-    /// </summary>
     public static WebApplicationBuilder AddClearCaseObservability(this WebApplicationBuilder builder)
     {
         var endpoint = builder.Configuration["Observability:OtlpEndpoint"]

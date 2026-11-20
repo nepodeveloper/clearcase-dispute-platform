@@ -5,10 +5,6 @@ namespace ClearCase.Api.Hosting;
 
 public static class BackgroundWorkExtensions
 {
-    /// <summary>
-    /// Hosted workers never run under the Testing environment. The outbox publisher can be switched off
-    /// (BackgroundWorkers:Outbox=false) so API replicas and a dedicated worker replica can share one image.
-    /// </summary>
     public static WebApplicationBuilder AddClearCaseBackgroundWork(this WebApplicationBuilder builder)
     {
         var services = builder.Services;

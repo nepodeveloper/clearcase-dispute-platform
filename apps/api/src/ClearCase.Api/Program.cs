@@ -2,7 +2,6 @@ using ClearCase.Api.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// A deployment job can run `ClearCase.Api.dll --migrate-only` to create/upgrade the schema and exit.
 if (args.Contains(WebApplicationExtensions.MigrateOnlyArgument, StringComparer.Ordinal))
     builder.Configuration["Persistence:MigrateOnStartup"] = "true";
 

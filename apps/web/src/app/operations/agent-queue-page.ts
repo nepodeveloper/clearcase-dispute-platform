@@ -302,7 +302,6 @@ export class AgentQueuePage {
     this.load();
   }
 
-  /** Dropdown choices apply straight away. */
   protected setStatus(value: string): void {
     this.status.set(caseStatuses.find(item => item === value) ?? '');
     this.applyFilters();
@@ -313,13 +312,10 @@ export class AgentQueuePage {
     this.applyFilters();
   }
 
-  /** Assignment is a quick filter, so choosing a value searches straight away. */
   protected setAssignment(value: string): void {
     this.assignment.set(assignmentOptions.find(option => option.value === value)?.value ?? 'all');
     this.applyFilters();
   }
-
-  // Assignment
 
   protected isMine(employeeId: string): boolean {
     return this.auth.user()?.employeeId === employeeId;
@@ -369,8 +365,6 @@ export class AgentQueuePage {
     });
   }
 
-  // Bulk assignment: one claim per selected row; case state is never touched.
-
   protected toggleRow(id: string, checked: boolean): void {
     this.selected.update(ids => { const next = new Set(ids); if (checked) next.add(id); else next.delete(id); return next; });
   }
@@ -399,8 +393,6 @@ export class AgentQueuePage {
     this.selected.set(new Set());
     this.bulkBusy.set(false);
   }
-
-  // Saved filters
 
   protected savePreset(): void {
     const name = this.presetName().trim();
@@ -443,8 +435,6 @@ export class AgentQueuePage {
     writeQueueFilterPresets(next);
     this.presetMessage.set(`Deleted "${name}".`);
   }
-
-  // Keyboard shortcuts
 
   @HostListener('document:keydown', ['$event'])
   protected onKeydown(event: KeyboardEvent): void {

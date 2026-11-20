@@ -7,7 +7,6 @@ import { AgentDisputesApi } from './agent-disputes-api';
 
 type ListState = { kind: 'loading' } | { kind: 'error' } | { kind: 'loaded'; items: CustomerEvidence[] };
 
-/** Read-only list of the documents the customer uploaded for a case, with authenticated downloads. */
 @Component({
   selector: 'cc-staff-evidence',
   imports: [DatePipe],

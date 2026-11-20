@@ -4,7 +4,6 @@ import { SupportApi, SupportContact } from './support-api';
 
 type ViewState = { kind: 'loading' } | { kind: 'error' } | { kind: 'loaded'; contact: SupportContact };
 
-/** Support contact details from the server. In `quiet` mode a failure renders nothing instead of an error. */
 @Component({
   selector: 'cc-support-contact',
   template: `
@@ -36,7 +35,6 @@ export class SupportContactPanel implements OnInit {
   readonly heading = input('Contact support');
   readonly reference = input<string>();
   readonly quiet = input(false);
-  /** Sign-in page: there is no session, so a 401 must not be handled as an expired session. */
   readonly anonymous = input(false);
   private readonly api = inject(SupportApi);
   private readonly destroyRef = inject(DestroyRef);

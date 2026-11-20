@@ -20,7 +20,6 @@ export interface NotificationFeed {
 
 export type FeedState = 'idle' | 'loading' | 'loaded' | 'error';
 
-/** The unread count is checked lightly in the background, never while the page is hidden. */
 export const notificationPollMs = 60_000;
 const feedLimit = 50;
 
@@ -43,7 +42,6 @@ export class NotificationsService {
   readonly markingRead = this.marking.asReadonly();
   readonly markError = this.markFailed.asReadonly();
 
-  /** Begins background unread-count checks; safe to call repeatedly. */
   start(): void {
     if (this.timer !== null) return;
     void this.pollUnread();
@@ -53,7 +51,6 @@ export class NotificationsService {
     this.document.addEventListener('visibilitychange', this.onVisibility);
   }
 
-  /** Stops polling and forgets the previous user's notifications. */
   stop(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;

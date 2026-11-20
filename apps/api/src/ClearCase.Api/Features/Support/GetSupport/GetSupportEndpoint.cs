@@ -8,7 +8,6 @@ public sealed record SupportContactResponse(
     string Hours,
     string ResponseTime);
 
-/// <summary>Synthetic support details from the Support:* configuration; no secrets are involved.</summary>
 public static class GetSupportEndpoint
 {
     private const string DefaultEmail = "support@clearcase.example";

@@ -13,10 +13,6 @@ public static class WebApplicationExtensions
 {
     public const string MigrateOnlyArgument = "--migrate-only";
 
-    /// <summary>
-    /// Development always migrates and seeds synthetic data. Other environments migrate only when
-    /// Persistence:MigrateOnStartup is true or the process is run with --migrate-only (for a deployment job).
-    /// </summary>
     public static async Task PrepareDatabaseAsync(this WebApplication app, string[] args)
     {
         var migrateOnly = args.Contains(MigrateOnlyArgument, StringComparer.Ordinal);

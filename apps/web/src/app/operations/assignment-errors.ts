@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { problemCode } from '../disputes/dispute-api';
 
-/** Short, user-facing reason why an assignment claim or release was refused. */
 export function assignmentFailureReason(error: unknown): string {
   const code = problemCode(error);
   const status = error instanceof HttpErrorResponse ? error.status : 0;

@@ -15,7 +15,6 @@ export type AgentCaseStatus =
 export type AgentDecisionStatus = 'Pending' | 'Approved' | 'Rejected';
 export type AgentFinancialStatus = 'NotInitiated' | 'Requested' | 'Confirmed' | 'Failed' | 'OutcomeUnknown';
 export type EvidenceKind = 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord';
-/** Computed by the server from the case age; `Complete` once the case is Closed or Rejected. */
 export type SlaStatus = 'OnTrack' | 'DueSoon' | 'Breached' | 'Complete';
 export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
 export type FinancialOperationStatus = 'Pending' | 'InFlight' | 'Succeeded' | 'Failed' | 'Unknown';
@@ -25,7 +24,6 @@ export interface AgentAssignee {
   displayName: string;
 }
 
-/** Read-only view of a durable financial operation; payloads are never exposed. */
 export interface AgentFinancialOperation {
   kind: string;
   operationReference: string;
@@ -118,7 +116,6 @@ export interface AgentEscalationCreation {
   createdAt: string;
 }
 
-/** Staff command the server currently permits for the case; the client never derives workflow rules. */
 export interface AgentAvailableAction {
   command: string;
   label: string;
@@ -196,7 +193,6 @@ export class AgentDisputesApi {
     );
   }
 
-  /** Workload assignment only: it never changes the case state or its version. */
   claim(id: string) {
     return this.http.post<AgentDisputeDetails>(`/api/v1/agent/disputes/${encodeURIComponent(id)}/assignment`, {});
   }

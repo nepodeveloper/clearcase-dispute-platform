@@ -60,7 +60,6 @@ describe('Agent investigation', () => {
   });
 
   afterEach(() => {
-    // The evidence panel loads on its own; tests that do not care about it leave an empty list.
     http.match(request => request.url.endsWith('/evidence'))
       .forEach(request => { if (!request.cancelled) request.flush({ items: [] }); });
     http.verify();

@@ -27,7 +27,6 @@ internal static class CustomerEvidencePersistenceModel
     }
 }
 
-/// <summary>Customer-supplied file kept in the database; storage is by id, the name is display-only.</summary>
 public sealed class PersistedCustomerEvidence
 {
     public Guid Id { get; set; }

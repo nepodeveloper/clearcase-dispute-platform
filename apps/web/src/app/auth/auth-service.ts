@@ -9,7 +9,6 @@ export interface AuthUser {
   actorType: 'customer' | 'bankEmployee';
   roles: AuthRole[];
   customerId?: string | null;
-  /** Present for bank employees when the identity endpoint supplies it; used only to label "assigned to me". */
   employeeId?: string | null;
 }
 export interface AuthSession extends AuthUser { csrfToken: string }
@@ -60,7 +59,6 @@ export class AuthService {
     }
   }
 
-  /** Renews the sliding server session and CSRF token without toggling the global busy state. */
   async refresh(): Promise<boolean> {
     try {
       this.accept(await firstValueFrom(this.http.get<AuthSession>('/api/v1/auth/me')));

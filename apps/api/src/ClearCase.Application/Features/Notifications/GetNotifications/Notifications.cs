@@ -8,7 +8,6 @@ public sealed record CustomerNotification(
 
 public sealed record CustomerNotificationFeed(int UnreadCount, IReadOnlyList<CustomerNotification> Items);
 
-/// <summary>Notifications are derived from the customer's own timeline events; nothing is delivered outside the app.</summary>
 public interface ICustomerNotificationStore
 {
     Task<CustomerNotificationFeed> ReadAsync(Guid customerId, int limit, CancellationToken cancellationToken);

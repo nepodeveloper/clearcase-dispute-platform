@@ -29,7 +29,6 @@ public sealed record DisputeSlaPolicy(TimeSpan ReviewWindow, TimeSpan DueSoonWin
             dueAt - now <= DueSoonWindow ? DisputeSlaStatus.DueSoon : DisputeSlaStatus.OnTrack);
     }
 
-    /// <summary>The customer-facing target; absent once the case is finished.</summary>
     public DateTimeOffset? ExpectedResolutionBy(DisputeCaseStatus caseStatus, DateTimeOffset createdAt) =>
         IsFinished(caseStatus) ? null : DueAt(createdAt);
 

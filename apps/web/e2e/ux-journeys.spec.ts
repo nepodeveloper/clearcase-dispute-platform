@@ -50,8 +50,6 @@ test('customer journey: expected date, evidence, notifications, support and with
   await expect(page.getByRole('heading', { name: 'Contact support' })).toBeVisible();
   await expect(page.getByRole('link', { name: /@/ }).first()).toBeVisible();
 
-  // Layout regression: documents sit directly under the timeline and support under the summary column,
-  // not in a separate row that leaves a blank gap beneath a shorter column.
   const timeline = (await page.locator('section[aria-labelledby="case-timeline-heading"]').boundingBox())!;
   const documents = (await page.locator('section[aria-labelledby="evidence-heading"]').boundingBox())!;
   expect(documents.y - (timeline.y + timeline.height)).toBeLessThan(40);
@@ -59,7 +57,6 @@ test('customer journey: expected date, evidence, notifications, support and with
   const support = (await page.locator('aside[aria-labelledby="support-heading"]').boundingBox())!;
   expect(support.y - (goodToKnow.y + goodToKnow.height)).toBeLessThan(40);
 
-  // Evidence: the pre-check rejects unsupported files, a real PDF is scanned, stored and listed.
   await expect(page.getByTestId('evidence-empty')).toBeVisible();
   await page.locator('#evidence-file').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('plain') });
   await page.getByRole('button', { name: /^Upload/ }).click();
@@ -79,7 +76,6 @@ test('customer journey: expected date, evidence, notifications, support and with
   expect(download.headers()['x-content-type-options']).toBe('nosniff');
   expect(download.headers()['content-disposition']).toContain('attachment');
 
-  // Notifications: the submission produced an unread update that can be cleared.
   await page.goto('/');
   await expect(page.getByTestId('notification-badge')).toBeVisible();
   await page.getByTestId('notification-bell').click();
@@ -91,7 +87,6 @@ test('customer journey: expected date, evidence, notifications, support and with
   expect((await marked).status()).toBe(204);
   await expect(page.getByTestId('notification-badge')).toHaveCount(0);
 
-  // Withdrawal on a second case; the first stays open for the staff journey.
   const withdrawn = await submitDispute(page, 2);
   await page.getByTestId('withdraw-dispute').click();
   const dialog = page.getByRole('dialog', { name: 'Withdraw this dispute?' });
@@ -104,14 +99,12 @@ test('customer journey: expected date, evidence, notifications, support and with
   await expect(page.getByTestId('withdraw-dispute')).toHaveCount(0);
   await expect(page.getByTestId('evidence-closed')).toBeVisible();
 
-  // Ownership: another customer cannot see or download this customer's evidence.
   await signOut(page);
   await signIn(page, 'customer.other');
   const evidenceList = await page.request.get(`/api/v1/disputes/${kept.id}/evidence`);
   expect(evidenceList.status()).toBe(404);
   await signOut(page);
 
-  // Staff can read the customer's evidence.
   await signIn(page, 'agent.demo');
   await page.request.get(`/api/v1/agent/disputes/${kept.id}/evidence`).then(async response => {
     expect(response.status()).toBe(200);
@@ -120,7 +113,6 @@ test('customer journey: expected date, evidence, notifications, support and with
 });
 
 test('staff journey: claim, filter, shortcuts, operation status and customer evidence', async ({ page }) => {
-  // Create a case with evidence as the customer, then work it as an agent.
   await signIn(page, 'customer.demo');
   const dispute = await submitDispute(page, 3);
   await page.locator('#evidence-file').setInputFiles(pdf);
@@ -151,7 +143,6 @@ test('staff journey: claim, filter, shortcuts, operation status and customer evi
   await unassigned;
   await expect(page.locator('tbody tr', { hasText: dispute.reference })).toHaveCount(0);
 
-  // Keyboard shortcut: "/" focuses the search box when focus is not already in a field.
   await page.locator('h1').focus();
   await page.keyboard.press('/');
   await expect(page.getByRole('searchbox', { name: 'Search cases' })).toBeFocused();
@@ -170,7 +161,6 @@ test('staff journey: claim, filter, shortcuts, operation status and customer evi
 });
 
 test('theme preference is applied and remembered, including on the sign-in page', async ({ page }) => {
-  // No sign-in: the toggle is available before authentication and the login endpoint allows 5 attempts a minute.
   await page.goto('/login');
   await page.getByRole('group', { name: 'Colour theme' }).getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

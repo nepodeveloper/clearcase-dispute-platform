@@ -7,7 +7,6 @@ namespace ClearCase.Application.Disputes;
 public sealed record WithdrawDisputeCommand(
     Guid DisputeId, long ExpectedVersion, string? Reason, string CorrelationId);
 
-/// <summary>Persists a withdrawal through the canonical case transition writer.</summary>
 public interface IDisputeWithdrawalStore
 {
     Task<DisputeView?> WithdrawAsync(
@@ -17,7 +16,6 @@ public interface IDisputeWithdrawalStore
 
 public interface IWithdrawDisputeHandler
 {
-    /// <summary>Returns null when the dispute is not found or not owned by the caller.</summary>
     Task<DisputeView?> HandleAsync(WithdrawDisputeCommand command, CancellationToken cancellationToken);
 }
 

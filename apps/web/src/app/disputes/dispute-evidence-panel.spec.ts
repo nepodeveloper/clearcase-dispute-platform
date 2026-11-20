@@ -177,7 +177,6 @@ describe('DisputeEvidencePanel', () => {
       it(`explains ${code} and lets the customer try again`, () => {
         const request = startUpload();
         request.flush({ code }, { status, statusText: 'Error' });
-        // A refused limit means the list was stale, so it is reloaded.
         if (code === 'evidence.limitReached') http.expectOne(listUrl).flush({ items: [stored] });
         fixture.detectChanges();
         expect(root.querySelector('#evidence-error [role="alert"]')?.textContent).toContain(message);

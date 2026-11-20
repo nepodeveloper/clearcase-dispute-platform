@@ -48,7 +48,6 @@ server {
         try_files $uri =404;
     }
 
-    # SPA fallback; the Angular router resolves the client-side URL.
     location / {
         try_files $uri $uri/ /index.html;
     }

@@ -4,14 +4,9 @@ using ClearCase.Domain.Transactions;
 
 namespace ClearCase.Application.AgentDisputes;
 
-/// <summary>A staff command the case can accept now. The command handler still re-validates every request.</summary>
 public sealed record AvailableStaffAction(
     string Command, string Label, string Description, bool MovesMoney = false, bool Terminal = false);
 
-/// <summary>
-/// Single server-side source for which staff commands are offered for a case, so clients render
-/// the list instead of mirroring the category workflows.
-/// </summary>
 public static class StaffActionCatalog
 {
     private static readonly HashSet<string> ExternalUpdateCommands =

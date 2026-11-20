@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace ClearCase.Api.Features.Evidence;
 
-/// <summary>Customer-supplied dispute evidence; distinct from merchant representment evidence.</summary>
 public sealed record EvidenceResponse(
     Guid Id, string FileName, string ContentType, long SizeBytes, DateTimeOffset UploadedAt,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Note)
@@ -21,7 +20,6 @@ public sealed record EvidenceResponse(
 
 public sealed record EvidenceListResponse(IReadOnlyList<EvidenceResponse> Items);
 
-/// <summary>Documents the multipart body for OpenAPI; the endpoint reads the form directly.</summary>
 public sealed record EvidenceUploadForm(IFormFile File, string? Note);
 
 public static class CustomerEvidenceEndpoints

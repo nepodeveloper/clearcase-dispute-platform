@@ -11,7 +11,6 @@ public enum DisputeAssignmentOutcome
     Forbidden
 }
 
-/// <summary>Persists workload assignment and its append-only audit; it never touches the case version.</summary>
 public interface IDisputeAssignmentStore
 {
     Task<DisputeAssignmentOutcome> ClaimAsync(

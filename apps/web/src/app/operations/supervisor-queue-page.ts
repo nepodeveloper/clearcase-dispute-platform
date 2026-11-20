@@ -95,7 +95,6 @@ export class SupervisorQueuePage {
     this.load();
   }
 
-  /** Text search applies after a typing pause. */
   protected setSearch(value: string): void {
     this.search.set(value);
     this.filterDebounce.schedule();

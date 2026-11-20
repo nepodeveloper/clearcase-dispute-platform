@@ -6,7 +6,6 @@ using ClearCase.Infrastructure.Disputes;
 
 namespace ClearCase.UnitTests;
 
-/// <summary>Compiled dependency rules; they complement the static scripts/ci/architecture_guard.py check.</summary>
 public sealed class ArchitectureBoundaryTests
 {
     private static readonly Assembly Domain = typeof(Dispute).Assembly;

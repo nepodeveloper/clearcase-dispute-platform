@@ -186,7 +186,6 @@ public sealed class AgentAssignmentEndpointsTests : IClassFixture<SqliteWebAppli
         Assert.Equal(HttpStatusCode.OK, released.StatusCode);
         Assert.False(releasedBody.RootElement.TryGetProperty("assignedTo", out _));
 
-        // A supervisor can also take a case away from an agent.
         using var agentClaim = await agent.PostAsync($"/api/v1/agent/disputes/{id}/assignment", null);
         using var forced = await supervisor.DeleteAsync($"/api/v1/agent/disputes/{id}/assignment");
         Assert.Equal(HttpStatusCode.OK, forced.StatusCode);

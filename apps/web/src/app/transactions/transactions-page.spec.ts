@@ -226,7 +226,6 @@ describe('TransactionsPage', () => {
     size.value = '10';
     size.dispatchEvent(new Event('change'));
     fixture.detectChanges();
-    // Rows stay visible (dimmed) while the next page size loads.
     expect(element.querySelector('.page-size select')).not.toBeNull();
     expect(element.querySelector('section')!.getAttribute('aria-busy')).toBe('true');
     const resized = http.expectOne((request) => request.url === '/api/v1/transactions');
@@ -349,7 +348,6 @@ describe('TransactionsPage', () => {
 
     search.value = '  Woolworths  ';
     search.dispatchEvent(new Event('input'));
-    // Choosing a type does not wait for the typing pause and carries the text typed so far.
     type.value = 'DebitOrder';
     type.dispatchEvent(new Event('change'));
     const byType = nextRequest();

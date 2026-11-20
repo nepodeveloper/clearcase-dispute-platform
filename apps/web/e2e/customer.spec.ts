@@ -69,7 +69,6 @@ test('customer completes the persisted journey for all categories, with filterin
     && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
-  // Typing pauses for the debounce, then the search applies without any button.
   const searchedResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('search') === 'ATM WITHDRAWAL');
   await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
   const searched: TransactionPage = await (await searchedResponse).json();

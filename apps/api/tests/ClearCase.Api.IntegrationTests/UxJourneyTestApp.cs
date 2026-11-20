@@ -23,7 +23,6 @@ internal sealed class UxClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => Now;
 }
 
-/// <summary>A host with a controllable clock and signed-in cookie clients for the UX-journey endpoint tests.</summary>
 internal sealed class UxApp
 {
     public const string DemoCustomerId = "11111111-1111-1111-1111-111111111111";
@@ -89,7 +88,6 @@ internal sealed class UxApp
         WithDatabaseAsync(database => database.Users.Where(user => user.UserName == username)
             .Select(user => user.Id).SingleAsync());
 
-    /// <summary>Inserts an owned dispute directly, with its own transaction and initial timeline event.</summary>
     public async Task<Guid> SeedDisputeAsync(
         string customerId = DemoCustomerId, TransactionType type = TransactionType.BankCharge,
         DisputeCaseStatus status = DisputeCaseStatus.Submitted,

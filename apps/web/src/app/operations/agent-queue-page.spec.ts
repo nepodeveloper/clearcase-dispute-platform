@@ -26,7 +26,6 @@ describe('Agent queue', () => {
   };
   let http: HttpTestingController;
 
-  // Claim and release answer with the full agent detail; only the fields the queue reads matter here.
   function details(row: AgentDisputeListItem): AgentDisputeDetails {
     return { id: row.id, reference: row.reference, slaDueAt: row.slaDueAt, slaStatus: row.slaStatus,
       financialOperations: [] } as unknown as AgentDisputeDetails;

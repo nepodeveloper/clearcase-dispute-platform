@@ -20,8 +20,7 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          # The browser talks to one origin: /api goes straight to the API, everything else to the web tier.
-          # Going direct lets the API see the real client address through the trusted ingress controller.
+          # Going direct to the API lets it see the real client address through the trusted ingress controller.
           - path: /api
             pathType: Prefix
             backend:

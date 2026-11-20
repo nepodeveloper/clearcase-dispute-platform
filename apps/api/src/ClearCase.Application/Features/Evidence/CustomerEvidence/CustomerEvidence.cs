@@ -20,11 +20,9 @@ public enum CustomerEvidenceAddOutcome { Added, DisputeNotFound, DisputeClosed, 
 /// <summary>Evidence persistence; a null customer scope is the bank-wide read used by staff.</summary>
 public interface ICustomerEvidenceStore
 {
-    /// <summary>Atomically re-checks ownership, closure and the per-dispute file limit before storing.</summary>
     Task<CustomerEvidenceAddOutcome> AddAsync(
         Guid customerId, NewCustomerEvidence evidence, CancellationToken cancellationToken);
 
-    /// <summary>Oldest first; null when the dispute does not exist in the requested scope.</summary>
     Task<IReadOnlyList<CustomerEvidenceSummary>?> ListAsync(
         Guid? customerId, Guid disputeId, CancellationToken cancellationToken);
 
@@ -115,7 +113,6 @@ public sealed class UploadCustomerEvidenceHandler(
         new("/file", "file.invalid", message);
 }
 
-/// <summary>Read access for the evidence owner, scoped by the session's customer.</summary>
 public sealed class CustomerEvidenceQueryHandler(ICustomerContext customerContext, ICustomerEvidenceStore store)
 {
     public Task<IReadOnlyList<CustomerEvidenceSummary>?> ListAsync(
@@ -127,7 +124,6 @@ public sealed class CustomerEvidenceQueryHandler(ICustomerContext customerContex
         store.ReadContentAsync(customerContext.CustomerId, disputeId, evidenceId, cancellationToken);
 }
 
-/// <summary>Read-only bank-wide access for authorised employees.</summary>
 public sealed class StaffEvidenceQueryHandler(ICustomerEvidenceStore store)
 {
     public Task<IReadOnlyList<CustomerEvidenceSummary>?> ListAsync(

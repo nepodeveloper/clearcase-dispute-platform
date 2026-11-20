@@ -59,7 +59,6 @@ public static class KafkaOutboxRegistration
     }
 }
 
-/// <summary>Applies optional TLS/SASL settings so brokers outside local development can require authentication.</summary>
 public static class KafkaClientSecurity
 {
     public static void Apply(ClientConfig client, IConfiguration configuration)

@@ -18,7 +18,6 @@ internal static class NotificationPersistenceModel
     }
 }
 
-/// <summary>Everything the customer received up to this instant has been seen.</summary>
 public sealed class PersistedNotificationReadMarker
 {
     public Guid CustomerId { get; set; }

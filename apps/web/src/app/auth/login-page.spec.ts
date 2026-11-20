@@ -11,7 +11,6 @@ describe('LoginPage', () => {
   }));
   afterEach(() => {
     const http = TestBed.inject(HttpTestingController);
-    // The optional help block asks for support details; without a session the server answers 401.
     http.match('/api/v1/support').forEach(request => request.flush({}, { status: 401, statusText: 'Unauthorized' }));
     http.verify();
   });

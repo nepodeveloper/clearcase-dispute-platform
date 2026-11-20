@@ -45,7 +45,6 @@ public sealed class AgentDisputeCommandHandler(
     }
 }
 
-/// <summary>Runs a staff command for one transaction category; adding a category means adding a processor.</summary>
 public interface ICategoryCommandProcessor
 {
     TransactionCategory Category { get; }

@@ -37,7 +37,6 @@ function storage(): Storage | null {
   }
 }
 
-/** Reads saved presets, dropping anything that does not have the expected shape. */
 export function readQueueFilterPresets(): QueueFilterPreset[] {
   try {
     const raw = storage()?.getItem(queueFilterStorageKey);
@@ -52,7 +51,6 @@ export function readQueueFilterPresets(): QueueFilterPreset[] {
   }
 }
 
-/** Returns false when storage is unavailable so the caller can say the preset is not saved. */
 export function writeQueueFilterPresets(presets: readonly QueueFilterPreset[]): boolean {
   try {
     const target = storage();
@@ -64,7 +62,6 @@ export function writeQueueFilterPresets(presets: readonly QueueFilterPreset[]): 
   }
 }
 
-/** Replaces a preset with the same name (case-insensitive), otherwise appends; null when the limit is reached. */
 export function upsertPreset(presets: readonly QueueFilterPreset[], preset: QueueFilterPreset): QueueFilterPreset[] | null {
   const existing = presets.findIndex(item => item.name.toLowerCase() === preset.name.toLowerCase());
   if (existing >= 0) return presets.map((item, index) => index === existing ? preset : item);

@@ -94,7 +94,6 @@ internal static class DisputePersistenceModel
     }
 }
 
-/// <summary>The customer's optional reason for walking away; the case itself is closed through the transition writer.</summary>
 public sealed class PersistedDisputeWithdrawal
 {
     public Guid DisputeId { get; set; }

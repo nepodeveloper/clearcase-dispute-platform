@@ -44,11 +44,8 @@ export interface Dispute {
   financialStatus: 'NotInitiated' | 'Requested' | 'OutcomeUnknown' | 'Failed' | 'Confirmed';
   statusDescription: string;
   createdAt: string;
-  /** Optimistic concurrency version sent back as expectedVersion on customer commands. */
   version: number;
-  /** Computed by the server and omitted once the case is Closed or Rejected. */
   expectedResolutionBy?: string;
-  /** Server decision; the client never re-derives whether a withdrawal is allowed. */
   canWithdraw?: boolean;
   timeline: DisputeTimelineEvent[];
   chargeback?: Chargeback;
@@ -66,7 +63,6 @@ export interface CustomerEvidence {
 
 export interface CustomerEvidenceList { items: CustomerEvidence[] }
 
-/** Reads the stable `code` of an application/problem+json error response, if there is one. */
 export function problemCode(error: unknown): string | null {
   const body: unknown = error instanceof HttpErrorResponse ? error.error : null;
   return typeof body === 'object' && body !== null && 'code' in body && typeof body.code === 'string' ? body.code : null;
@@ -131,7 +127,6 @@ export class DisputeApi {
       { observe: 'events', reportProgress: true });
   }
 
-  /** Same-origin URL that downloads with the session cookie; the server answers with Content-Disposition: attachment. */
   evidenceContentUrl(id: string, evidenceId: string): string {
     return `/api/v1/disputes/${encodeURIComponent(id)}/evidence/${encodeURIComponent(evidenceId)}/content`;
   }

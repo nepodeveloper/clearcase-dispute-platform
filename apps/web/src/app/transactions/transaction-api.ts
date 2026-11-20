@@ -60,7 +60,6 @@ export interface TransactionDisputeEligibility {
 
 export interface TransactionQuery {
   pageSize: number;
-  /** Opaque continuation from the previous page's pageInfo.nextCursor; omitted for the first page. */
   cursor?: string;
   transactionType: TransactionType | '';
   fromDate: string;

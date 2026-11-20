@@ -8,11 +8,6 @@ using Microsoft.AspNetCore.Diagnostics;
 
 namespace ClearCase.Api.Middleware;
 
-/// <summary>
-/// Maps expected domain and workflow failures to the shared Problem Details contract in one place,
-/// so command endpoints do not each repeat the same catch blocks. Unrecognised exceptions fall through
-/// to the default exception handler.
-/// </summary>
 public sealed class DomainExceptionHandler(ILogger<DomainExceptionHandler> logger) : IExceptionHandler
 {
     private const string AgentRoutePrefix = "/api/v1/agent/";

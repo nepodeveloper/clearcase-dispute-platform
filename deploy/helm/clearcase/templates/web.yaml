@@ -35,7 +35,6 @@ spec:
         fsGroup: {{ .Values.securityIds.web }}
         seccompProfile:
           type: RuntimeDefault
-      # Spread replicas across nodes so one node failure never takes the whole web tier down.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

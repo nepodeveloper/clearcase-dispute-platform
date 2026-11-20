@@ -14,7 +14,6 @@ export const evidenceLimits = {
   noteMaxLength: 200,
 } as const;
 
-/** Returns a user-facing problem with the chosen file, or null when it looks acceptable. */
 export function evidenceFileProblem(file: File, existingCount: number): string | null {
   if (existingCount >= evidenceLimits.maxFiles)
     return `This dispute already has the maximum of ${evidenceLimits.maxFiles} files.`;
@@ -102,7 +101,6 @@ type ListState = { kind: 'loading' } | { kind: 'error' } | { kind: 'loaded' };
 export class DisputeEvidencePanel {
   readonly disputeId = input.required<string>();
   readonly closed = input(false);
-  /** Emitted when the server says the dispute is closed so the page can refresh its status. */
   readonly refreshRequested = output<void>();
   private readonly api = inject(DisputeApi);
   private readonly destroyRef = inject(DestroyRef);

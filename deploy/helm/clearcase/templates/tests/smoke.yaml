@@ -24,7 +24,6 @@ spec:
           curl -fsS --retry 10 --retry-delay 3 --retry-all-errors http://{{ include "clearcase.fullname" . }}-api/health/ready
           echo
           curl -fsS --retry 5 --retry-delay 2 --retry-all-errors http://{{ include "clearcase.fullname" . }}-web/ -o /dev/null
-          # Anonymous callers must be rejected, not served.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://{{ include "clearcase.fullname" . }}-api/api/v1/auth/me)" = "401"
       securityContext:
         allowPrivilegeEscalation: false

@@ -9,10 +9,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace ClearCase.Api.Features.Disputes.WithdrawDispute;
 
-/// <summary>The customer is derived from the session; the body carries only the version guard and an optional reason.</summary>
 public sealed record WithdrawDisputeRequest(long? ExpectedVersion, string? Reason);
 
-/// <summary>Customer command slice: closes an undecided case through the canonical transition writer.</summary>
 public static class WithdrawDisputeEndpoint
 {
     public static void Map(IEndpointRouteBuilder app) =>
@@ -54,7 +52,6 @@ public static class WithdrawDisputeEndpoint
             return ApiProblem.Create(context, StatusCodes.Status400BadRequest, "Invalid withdrawal request",
                 "dispute.invalidRequest", errors: errors);
 
-        // Not-allowed and stale-version failures are mapped centrally by DomainExceptionHandler.
         var dispute = await handler.HandleAsync(new WithdrawDisputeCommand(
             disputeId, request!.ExpectedVersion!.Value, string.IsNullOrEmpty(reason) ? null : reason,
             (string)context.Items[CorrelationIdMiddleware.ContextItemKey]!), cancellationToken);

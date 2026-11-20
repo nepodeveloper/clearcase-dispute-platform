@@ -6,10 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Assignments;
 
-/// <summary>
-/// Assignment bookkeeping only: it never changes a case, its version, timeline or outbox.
-/// Every claim and release appends an audit row in the same transaction.
-/// </summary>
 public sealed class SqliteDisputeAssignmentStore(TransactionDbContext context) : IDisputeAssignmentStore
 {
     private const int SqliteConstraintError = 19;
@@ -41,7 +37,6 @@ public sealed class SqliteDisputeAssignmentStore(TransactionDbContext context) :
         catch (DbUpdateException exception) when (exception.InnerException is SqliteException
             { SqliteErrorCode: SqliteConstraintError })
         {
-            // A concurrent claim won the single-assignee key.
             context.ChangeTracker.Clear();
             var winner = await FindAsync(disputeId, cancellationToken);
             return winner?.EmployeeId == employeeId

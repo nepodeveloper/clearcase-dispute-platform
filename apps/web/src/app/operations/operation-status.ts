@@ -7,7 +7,6 @@ const statusLabels: Readonly<Record<FinancialOperationStatus, string>> = {
   Pending: 'Pending', InFlight: 'In flight', Succeeded: 'Succeeded', Failed: 'Failed', Unknown: 'Unknown',
 };
 
-/** Read-only status of durable financial operations. It offers no retry; Reconcile comes only from the server's actions. */
 @Component({
   selector: 'cc-operation-status',
   imports: [DatePipe, StatusBadge],

@@ -1,4 +1,3 @@
-/** True when a single-key shortcut may run: no modifier is held and focus is not in an editable control. */
 export function shortcutsActive(event: KeyboardEvent): boolean {
   if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
   const target = event.target;

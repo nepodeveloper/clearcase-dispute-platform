@@ -49,7 +49,6 @@ describe('Dispute tracking pages', () => {
   });
 
   afterEach(() => {
-    // The evidence and support panels load on their own; these tests are about the timeline and statuses.
     http.match(request => /\/disputes\/[^/]+\/evidence$/.test(request.url))
       .forEach(request => { if (!request.cancelled) request.flush({ items: [] }); });
     http.match(request => request.url === '/api/v1/support')

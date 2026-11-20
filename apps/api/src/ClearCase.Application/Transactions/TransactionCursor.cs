@@ -3,7 +3,6 @@ using System.Text;
 
 namespace ClearCase.Application.Transactions;
 
-/// <summary>Opaque continuation point over the stable transaction order: date descending, then id ascending.</summary>
 public sealed record TransactionCursor(DateTimeOffset TransactionDate, Guid Id)
 {
     private const string Version = "1";

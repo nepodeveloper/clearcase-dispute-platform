@@ -2,7 +2,6 @@ using ClearCase.Application.AgentDisputes;
 
 namespace ClearCase.Infrastructure.Disputes;
 
-/// <summary>Collapses durable intent bookkeeping into the five states staff can act on.</summary>
 public static class FinancialOperationStatusMapper
 {
     public static FinancialOperationStatus Map(

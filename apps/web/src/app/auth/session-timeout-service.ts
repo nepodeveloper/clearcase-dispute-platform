@@ -6,7 +6,6 @@ export const sessionLifetimeMs = 30 * 60_000;
 export const sessionWarningMs = 5 * 60_000;
 const tickIntervalMs = 10_000;
 
-/** Overridable in tests so expiry can be exercised without waiting. */
 export const sessionClock = new InjectionToken<() => number>('sessionClock', {
   providedIn: 'root',
   factory: () => () => Date.now(),
@@ -51,7 +50,6 @@ export class SessionTimeoutService {
     this.now.set(this.clock());
   }
 
-  /** Returns false when the session could not be refreshed. */
   async extend(): Promise<boolean> {
     if (this.extending()) return true;
     this.extending.set(true);

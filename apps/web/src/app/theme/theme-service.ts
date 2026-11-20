@@ -6,7 +6,6 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export const themePreferences: readonly ThemePreference[] = ['system', 'light', 'dark'];
 export const themeStorageKey = 'clearcase.theme';
 
-/** Reads only the theme choice; unknown values and unavailable storage fall back to following the system. */
 export function readThemePreference(): ThemePreference {
   try {
     const stored = globalThis.localStorage?.getItem(themeStorageKey);
