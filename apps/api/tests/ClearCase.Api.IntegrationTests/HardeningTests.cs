@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using ClearCase.Application.AgentDisputes;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
@@ -87,6 +88,67 @@ public sealed class StaffActionCatalogTests
 
 public sealed class HostingHardeningTests
 {
+    [Theory]
+    [InlineData("trace-123_ABC")]
+    [InlineData("employee-command-correlation")]
+    public async Task ValidCorrelationIdIsEchoedUnchanged(string supplied)
+    {
+        using var app = new WebApplicationFactory<Program>();
+        using var client = app.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        request.Headers.TryAddWithoutValidation("X-Correlation-ID", supplied);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(supplied, response.Headers.GetValues("X-Correlation-ID").Single());
+    }
+
+    [Theory]
+    [InlineData("bad id")]
+    [InlineData("semi;colon")]
+    [InlineData("emoji-\u2764")]
+    public async Task CorrelationIdWithUnexpectedCharactersIsReplaced(string supplied)
+    {
+        using var app = new WebApplicationFactory<Program>();
+        using var client = app.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        request.Headers.TryAddWithoutValidation("X-Correlation-ID", supplied);
+
+        using var response = await client.SendAsync(request);
+
+        var returned = response.Headers.GetValues("X-Correlation-ID").Single();
+        Assert.NotEqual(supplied, returned);
+        Assert.Matches("^[0-9a-f]{32}$", returned);
+    }
+
+    [Fact]
+    public async Task OverlongCorrelationIdIsReplaced()
+    {
+        using var app = new WebApplicationFactory<Program>();
+        using var client = app.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        request.Headers.TryAddWithoutValidation("X-Correlation-ID", new string('a', 65));
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Matches("^[0-9a-f]{32}$", response.Headers.GetValues("X-Correlation-ID").Single());
+    }
+
+    [Fact]
+    public async Task AntiforgeryCookieIsHttpOnlyAndStrict()
+    {
+        await using var factory = new SqliteWebApplicationFactory();
+        await factory.InitializeAsync();
+        using var client = factory.CreateClient();
+        using var login = await client.PostAsJsonAsync("/api/v1/auth/login",
+            new { username = "customer.demo", password = TestIdentityPasswords.Seed["Customer"] });
+
+        var cookies = login.Headers.GetValues("Set-Cookie").ToArray();
+        var csrf = Assert.Single(cookies, cookie => cookie.StartsWith("clearcase.csrf=", StringComparison.Ordinal));
+        Assert.Contains("httponly", csrf, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", csrf, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task GlobalRateLimitRejectsExcessRequestsButNeverHealthProbes()
     {

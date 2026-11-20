@@ -24,7 +24,6 @@ public static class SecurityExtensions
         return addresses;
     }
 
-    /// <summary>CIDR ranges (for example a cluster's ingress-controller pod range) trusted to set forwarded headers.</summary>
     public static IPNetwork[] ReadTrustedProxyNetworks(this IConfiguration configuration)
     {
         var networks = configuration.GetSection("Security:TrustedProxyNetworks").Get<string[]>() ?? [];
@@ -112,7 +111,7 @@ public static class SecurityExtensions
         services.AddAntiforgery(options =>
         {
             options.Cookie.Name = "clearcase.csrf";
-            options.Cookie.HttpOnly = false;
+            options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.Cookie.SecurePolicy = cookieSecurePolicy;
             options.HeaderName = "X-CSRF-TOKEN";
@@ -137,7 +136,6 @@ public static class SecurityExtensions
                         ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return ValueTask.CompletedTask;
             };
-            // Authenticated callers are limited per user, anonymous callers per address; probes are exempt.
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
                 if (context.Request.Path.StartsWithSegments("/health"))

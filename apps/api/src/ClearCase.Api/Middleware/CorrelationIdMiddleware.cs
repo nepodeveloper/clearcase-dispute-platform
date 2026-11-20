@@ -1,9 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace ClearCase.Api.Middleware;
 
-public sealed class CorrelationIdMiddleware
+public sealed partial class CorrelationIdMiddleware
 {
     public const string HeaderName = "X-Correlation-ID";
     public const string ContextItemKey = "ClearCase.CorrelationId";
+    private const int MaxLength = 64;
 
     private readonly RequestDelegate _next;
     private readonly ILogger<CorrelationIdMiddleware> _logger;
@@ -35,15 +38,15 @@ public sealed class CorrelationIdMiddleware
         }
     }
 
+    [GeneratedRegex("[^A-Za-z0-9_-]")]
+    private static partial Regex DisallowedCharacters();
+
+    // Only the characters left after stripping reach logs, headers and traces, never the raw header value.
     private static string GetCorrelationId(string requestedId)
     {
-        if (requestedId.Length is > 0 and <= 64
-            && requestedId.All(static character =>
-                char.IsAsciiLetterOrDigit(character) || character is '-' or '_'))
-        {
-            return requestedId;
-        }
-
-        return Guid.NewGuid().ToString("N");
+        var cleaned = DisallowedCharacters().Replace(requestedId, string.Empty);
+        return cleaned.Length is > 0 and <= MaxLength && cleaned.Length == requestedId.Length
+            ? cleaned
+            : Guid.NewGuid().ToString("N");
     }
 }
