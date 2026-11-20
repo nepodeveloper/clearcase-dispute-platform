@@ -13,6 +13,7 @@ public sealed record TransactionListRequest
     [FromQuery(Name = "fromDate")] public string? FromDate { get; init; }
     [FromQuery(Name = "toDate")] public string? ToDate { get; init; }
     [FromQuery(Name = "search")] public string? Search { get; init; }
+    [FromQuery(Name = "cursor")] public string? Cursor { get; init; }
 }
 
 /// <summary>Identifies one invalid query parameter.</summary>

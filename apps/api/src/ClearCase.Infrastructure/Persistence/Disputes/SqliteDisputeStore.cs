@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.Disputes;
 
-public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeStore, IDebitOrderProcessingStore
+public sealed class SqliteDisputeStore(TransactionDbContext context, DisputeSlaPolicy? slaPolicy = null)
+    : IDisputeStore, IDebitOrderProcessingStore
 {
     private const int SqliteConstraintError = 19;
 
@@ -123,6 +124,9 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
             .Select(transaction => new DisputeTransactionView(transaction.Description, transaction.MerchantName,
                 transaction.AmountMinorUnits, transaction.Currency, transaction.TransactionDate))
             .SingleAsync(cancellationToken);
+        var hasActiveEscalation = await context.DisputeEscalations.AsNoTracking().AnyAsync(
+            escalation => escalation.DisputeId == item.Id
+                && escalation.Status != DisputeEscalationStatus.Resolved, cancellationToken);
         return new DisputeView(
             item.Id, item.Reference, item.TransactionId, item.Category, item.ReasonCode, item.Description,
             item.CaseStatus, item.DecisionStatus, item.FinancialStatus, item.CreatedAt,
@@ -130,7 +134,8 @@ public sealed class SqliteDisputeStore(TransactionDbContext context) : IDisputeS
                 .Select(entry => new DisputeEvent(entry.Id, entry.SequenceNumber, entry.EventType,
                     entry.CaseStatus, entry.PublicDescription, entry.OccurredAt))
                 .ToArray(), transaction, item.ReversalOperationReference, item.Chargeback?.ToDomain(),
-            item.BankChargeAdjustmentReference, item.Version);
+            item.BankChargeAdjustmentReference, item.Version, hasActiveEscalation,
+            (slaPolicy ?? DisputeSlaPolicy.Default).ExpectedResolutionBy(item.CaseStatus, item.CreatedAt));
     }
 
     public Task<DisputeView?> ApplyAsync(

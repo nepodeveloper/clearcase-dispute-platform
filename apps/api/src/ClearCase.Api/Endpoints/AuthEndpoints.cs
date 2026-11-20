@@ -114,7 +114,9 @@ public sealed record AuthSessionResponse(
     string ActorType,
     string[] Roles,
     string? CustomerId,
-    string CsrfToken)
+    string CsrfToken,
+    [property: System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? EmployeeId = null)
 {
     public static AuthSessionResponse From(ClaimsPrincipal principal, string csrfToken)
     {
@@ -125,6 +127,9 @@ public sealed record AuthSessionResponse(
                        ?? principal.FindFirstValue(ClaimTypes.Name)
                        ?? principal.FindFirstValue(ClaimTypes.NameIdentifier)
                        ?? "unknown";
-        return new AuthSessionResponse(username, actorType, roles, customerId, csrfToken);
+        var employeeId = actorType == SyntheticIdentitySeeder.ActorTypeBankEmployee
+            && Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed)
+                ? parsed.ToString() : null;
+        return new AuthSessionResponse(username, actorType, roles, customerId, csrfToken, employeeId);
     }
 }

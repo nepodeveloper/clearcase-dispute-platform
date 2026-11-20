@@ -8,12 +8,18 @@ namespace ClearCase.Application.AgentDisputes;
 
 public sealed record AgentDisputeCursor(DateTimeOffset CreatedAt, string Reference);
 
+public enum AgentAssignmentFilter { All, Mine, Unassigned }
+
+public sealed record AgentAssignee(Guid EmployeeId, string DisplayName);
+
 public sealed record ListAgentDisputesQuery(
     int PageSize,
     string? Search,
     TransactionCategory? Category,
     DisputeCaseStatus? CaseStatus,
-    AgentDisputeCursor? After);
+    AgentDisputeCursor? After,
+    AgentAssignmentFilter Assignment = AgentAssignmentFilter.All,
+    Guid? EmployeeId = null);
 
 public sealed record AgentDisputeListItem(
     Guid Id,
@@ -29,7 +35,9 @@ public sealed record AgentDisputeListItem(
     DisputeFinancialStatus FinancialStatus,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastActivityAt,
-    long Version);
+    long Version,
+    AgentAssignee? AssignedTo = null,
+    DisputeSlaAssessment? Sla = null);
 
 public sealed record AgentDisputePage(IReadOnlyList<AgentDisputeListItem> Items, bool HasNextPage);
 
@@ -64,6 +72,11 @@ public sealed record AgentEscalationSummary(
     string Status,
     DateTimeOffset CreatedAt);
 
+public enum FinancialOperationStatus { Pending, InFlight, Succeeded, Failed, Unknown }
+
+public sealed record AgentFinancialOperation(
+    string Kind, string OperationReference, FinancialOperationStatus Status, DateTimeOffset UpdatedAt);
+
 public sealed record AgentDisputeDetails(
     Guid Id,
     string Reference,
@@ -84,7 +97,10 @@ public sealed record AgentDisputeDetails(
     AgentCardWorkflow? CardWorkflow,
     AgentEscalationSummary? ActiveEscalation,
     IReadOnlyList<AgentTimelineEvent> Timeline,
-    IReadOnlyList<InvestigationNote> Notes);
+    IReadOnlyList<InvestigationNote> Notes,
+    AgentAssignee? AssignedTo = null,
+    IReadOnlyList<AgentFinancialOperation>? FinancialOperations = null,
+    DisputeSlaAssessment? Sla = null);
 
 public sealed record InvestigationNote(
     Guid Id,
@@ -141,11 +157,22 @@ public interface IListAgentDisputesHandler
     Task<AgentDisputePage> HandleAsync(ListAgentDisputesQuery query, CancellationToken cancellationToken);
 }
 
-public sealed class ListAgentDisputesHandler(IAgentDisputeReader reader) : IListAgentDisputesHandler
+public sealed class ListAgentDisputesHandler(
+    IAgentDisputeReader reader, DisputeSlaPolicy sla, TimeProvider clock) : IListAgentDisputesHandler
 {
-    public Task<AgentDisputePage> HandleAsync(
-        ListAgentDisputesQuery query, CancellationToken cancellationToken) =>
-        reader.ReadPageAsync(query, cancellationToken);
+    public async Task<AgentDisputePage> HandleAsync(
+        ListAgentDisputesQuery query, CancellationToken cancellationToken)
+    {
+        var page = await reader.ReadPageAsync(query, cancellationToken);
+        var now = clock.GetUtcNow();
+        return page with
+        {
+            Items = page.Items.Select(item => item with
+            {
+                Sla = sla.Assess(item.CaseStatus, item.CreatedAt, now)
+            }).ToArray()
+        };
+    }
 }
 
 public interface IGetAgentDisputeHandler
@@ -155,7 +182,9 @@ public interface IGetAgentDisputeHandler
 
 public sealed class GetAgentDisputeHandler(
     IAgentDisputeReader reader,
-    IInvestigationNoteStore notes) : IGetAgentDisputeHandler
+    IInvestigationNoteStore notes,
+    DisputeSlaPolicy sla,
+    TimeProvider clock) : IGetAgentDisputeHandler
 {
     public async Task<AgentDisputeDetails?> HandleAsync(Guid disputeId, CancellationToken cancellationToken)
     {
@@ -163,7 +192,11 @@ public sealed class GetAgentDisputeHandler(
         if (dispute is null)
             return null;
         var noteItems = await notes.ReadAsync(disputeId, cancellationToken);
-        return dispute with { Notes = noteItems };
+        return dispute with
+        {
+            Notes = noteItems,
+            Sla = sla.Assess(dispute.CaseStatus, dispute.CreatedAt, clock.GetUtcNow())
+        };
     }
 }
 

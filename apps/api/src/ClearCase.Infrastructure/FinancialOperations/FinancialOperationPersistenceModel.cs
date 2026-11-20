@@ -21,6 +21,7 @@ public sealed class PersistedFinancialOperation
     public Guid? LeaseId { get; set; }
     public DateTimeOffset? LeaseUntilAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 internal static class FinancialOperationPersistenceModel
@@ -35,6 +36,8 @@ internal static class FinancialOperationPersistenceModel
         entity.Property(item => item.OperationReference).HasMaxLength(128).IsRequired();
         entity.Property(item => item.CorrelationId).HasMaxLength(128).IsRequired();
         entity.Property(item => item.CreatedAt).HasConversion(
+            value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
+        entity.Property(item => item.UpdatedAt).HasConversion(
             value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
         entity.Property(item => item.LeaseUntilAt).HasConversion(
             value => value.HasValue ? value.Value.UtcTicks : (long?)null,

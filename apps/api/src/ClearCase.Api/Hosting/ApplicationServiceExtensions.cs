@@ -4,14 +4,18 @@ using ClearCase.Application.AgentDisputes;
 using ClearCase.Application.Chargebacks;
 using ClearCase.Application.DisputeEligibility;
 using ClearCase.Application.Disputes;
+using ClearCase.Application.Evidence;
+using ClearCase.Application.Notifications;
 using ClearCase.Application.SupervisorEscalations;
 using ClearCase.Application.Transactions;
 using ClearCase.Api.Endpoints;
 using ClearCase.Api.Middleware;
 using ClearCase.Api.Transactions;
 using ClearCase.Domain.DisputeEligibility;
+using ClearCase.Domain.Disputes;
 using ClearCase.Infrastructure.AgentDisputes;
 using ClearCase.Infrastructure.Disputes;
+using ClearCase.Infrastructure.Evidence;
 using ClearCase.Infrastructure.SupervisorEscalations;
 using ClearCase.Infrastructure.Transactions;
 
@@ -91,6 +95,18 @@ public static class ApplicationServiceExtensions
     private static void AddCaseHandlers(this WebApplicationBuilder builder)
     {
         var services = builder.Services;
+        services.AddSingleton(provider => ReadSlaPolicy(provider.GetRequiredService<IConfiguration>()));
+        if (SimulationAuthorization.IsEnabled(builder.Environment))
+            services.AddSingleton<IMalwareScanner, MockMalwareScanner>();
+        else
+            services.AddSingleton<IMalwareScanner, UnavailableMalwareScanner>();
+        services.AddScoped<IWithdrawDisputeHandler, WithdrawDisputeHandler>();
+        services.AddScoped<IDisputeAssignmentHandler, DisputeAssignmentHandler>();
+        services.AddScoped<IUploadCustomerEvidenceHandler, UploadCustomerEvidenceHandler>();
+        services.AddScoped<CustomerEvidenceQueryHandler>();
+        services.AddScoped<StaffEvidenceQueryHandler>();
+        services.AddScoped<IGetNotificationsHandler, GetNotificationsHandler>();
+        services.AddScoped<IMarkNotificationsReadHandler, MarkNotificationsReadHandler>();
         services.AddScoped<IListTransactionsHandler, ListTransactionsHandler>();
         services.AddScoped<IGetTransactionDetailsHandler, GetTransactionDetailsHandler>();
         services.AddScoped<IGetDisputeEligibilityHandler, GetDisputeEligibilityHandler>();
@@ -114,5 +130,15 @@ public static class ApplicationServiceExtensions
         services.AddScoped<CreateDisputeEscalationHandler>();
         services.AddScoped<AcknowledgeEscalationHandler>();
         services.AddScoped<ResolveEscalationHandler>();
+    }
+
+    private static DisputeSlaPolicy ReadSlaPolicy(IConfiguration configuration)
+    {
+        var reviewHours = configuration.GetValue<int?>("Sla:ReviewHours") ?? DisputeSlaPolicy.DefaultReviewHours;
+        var dueSoonHours = configuration.GetValue<int?>("Sla:DueSoonHours") ?? DisputeSlaPolicy.DefaultDueSoonHours;
+        if (reviewHours < 1 || dueSoonHours < 0)
+            throw new InvalidOperationException(
+                "Sla:ReviewHours must be a positive integer and Sla:DueSoonHours must not be negative.");
+        return new DisputeSlaPolicy(TimeSpan.FromHours(reviewHours), TimeSpan.FromHours(dueSoonHours));
     }
 }

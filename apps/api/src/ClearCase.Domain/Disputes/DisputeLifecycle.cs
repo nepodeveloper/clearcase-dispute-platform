@@ -82,6 +82,7 @@ public sealed record DisputeLifecycle(
             DisputeTransitionFamily.DebitOrder => "DebitOrder",
             DisputeTransitionFamily.BankCharge => "BankCharge",
             DisputeTransitionFamily.Chargeback => "Chargeback",
+            DisputeTransitionFamily.CustomerWithdrawal => "Customer",
             _ => throw new InvalidDisputeLifecycleTransitionException()
         };
         var envelope = family switch
@@ -89,6 +90,7 @@ public sealed record DisputeLifecycle(
             DisputeTransitionFamily.DebitOrder => "dispute.debit-order-transitioned.v1",
             DisputeTransitionFamily.BankCharge => "dispute.bank-charge-transitioned.v1",
             DisputeTransitionFamily.Chargeback => "dispute.chargeback-transitioned.v1",
+            DisputeTransitionFamily.CustomerWithdrawal => "dispute.withdrawn.v1",
             _ => throw new InvalidDisputeLifecycleTransitionException()
         };
         return new DisputeLifecycleTransition(
@@ -106,7 +108,7 @@ public sealed record DisputeLifecycle(
     }
 }
 
-public enum DisputeTransitionFamily { DebitOrder, BankCharge, Chargeback }
+public enum DisputeTransitionFamily { DebitOrder, BankCharge, Chargeback, CustomerWithdrawal }
 
 public sealed class InvalidDisputeLifecycleTransitionException()
     : Exception("This dispute lifecycle transition violates cross-category case invariants.");

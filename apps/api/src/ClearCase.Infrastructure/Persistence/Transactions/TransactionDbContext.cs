@@ -5,6 +5,9 @@ using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Chargebacks;
 using ClearCase.Infrastructure.AgentDisputes;
 using ClearCase.Infrastructure.SupervisorEscalations;
+using ClearCase.Infrastructure.Assignments;
+using ClearCase.Infrastructure.Evidence;
+using ClearCase.Infrastructure.Notifications;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -30,6 +33,12 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
     public DbSet<PersistedDisputeEscalation> DisputeEscalations => Set<PersistedDisputeEscalation>();
     public DbSet<PersistedDisputeEscalationAuditEvent> DisputeEscalationAuditEvents =>
         Set<PersistedDisputeEscalationAuditEvent>();
+    public DbSet<PersistedDisputeAssignment> DisputeAssignments => Set<PersistedDisputeAssignment>();
+    public DbSet<PersistedDisputeWithdrawal> DisputeWithdrawals => Set<PersistedDisputeWithdrawal>();
+    public DbSet<PersistedDisputeAssignmentAuditEvent> DisputeAssignmentAuditEvents =>
+        Set<PersistedDisputeAssignmentAuditEvent>();
+    public DbSet<PersistedCustomerEvidence> CustomerEvidence => Set<PersistedCustomerEvidence>();
+    public DbSet<PersistedNotificationReadMarker> NotificationReadMarkers => Set<PersistedNotificationReadMarker>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +67,9 @@ public sealed class TransactionDbContext(DbContextOptions<TransactionDbContext> 
         ChargebackPersistenceModel.Configure(modelBuilder);
         AgentDisputePersistenceModel.Configure(modelBuilder);
         SupervisorEscalationPersistenceModel.Configure(modelBuilder);
+        DisputeAssignmentPersistenceModel.Configure(modelBuilder);
+        CustomerEvidencePersistenceModel.Configure(modelBuilder);
+        NotificationPersistenceModel.Configure(modelBuilder);
     }
 }
 

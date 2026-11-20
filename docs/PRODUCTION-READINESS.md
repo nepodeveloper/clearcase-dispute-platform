@@ -24,7 +24,7 @@ CI green is evidence of engineering quality, not banking readiness.
 | Maker-checker | One agent can approve and execute money movement. | Second-approver rule above a configurable amount, audited. |
 | Real banking adapters | Adapters are mocks or "unavailable". | Implement gateways behind the existing ports; keep calls outside dispute transactions. |
 | Data protection and retention | Dispute text is stored in plaintext; no erasure or retention policy. | Encryption at rest, retention rules, access-read auditing (POPIA/GDPR). |
-| Case assignment and SLAs | Agents see every case. | Assignment, ownership and SLA timers. |
-| Customer notifications and evidence | No email/SMS/push, no uploads. | Notification outbox consumer; evidence store with malware scanning. |
+| Case assignment enforcement and SLA reporting | Claiming is advisory workload information; SLA status is computed (`Sla:ReviewHours`, `Sla:DueSoonHours`), not escalated or reported. | Ownership rules, SLA breach alerts and reporting. |
+| Customer notification delivery and evidence storage | Notifications are an in-app feed only; evidence blobs live in the database and are scanned by a mock in Development/Testing (production fails closed with 503). | Notification outbox consumer with contact preferences; object storage and a real malware-scanning service behind `IMalwareScanner`. |
 | Deployment automation | Chart is validated on kind only; release workflow is a simulation. | Environment-specific IaC, approvals, backup/restore rehearsal, canary and rollback. |
 | Domain model | `Dispute` is a factory; transitions live in lifecycle/workflow records and EF rows are mutated directly. | Rehydrate an aggregate root, use typed commands and constraint-name conflict detection. |

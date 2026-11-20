@@ -17,7 +17,9 @@ public static class TransactionEndpoints
             .WithName("ListTransactions")
             .WithSummary("List the authenticated customer's synthetic transactions")
             .WithDescription("Search description, merchant or reference with search (trimmed, at most 100 characters). "
-                + "Filtering precedes page-number pagination. activeDisputeId is present only for an owned case "
+                + "Filtering precedes pagination. Page with pageNumber or, preferably, the opaque cursor from "
+                + "pageInfo.nextCursor (never both; cursor.conflict and cursor.invalid return 400). "
+                + "activeDisputeId is present only for an owned case "
                 + "that is not closed. isDisputable is an affordance; the eligibility endpoint remains authoritative.")
             .Produces<TransactionListResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -110,6 +112,15 @@ public static class TransactionEndpoints
         }
         if (fromDate > toDate)
             errors.Add(new("/toDate", "date.invalidRange", "toDate must not precede fromDate."));
+        TransactionCursor? after = null;
+        if (request.Cursor is not null)
+        {
+            if (request.PageNumber is not null)
+                errors.Add(new("/cursor", "cursor.conflict", "Use either cursor or pageNumber, not both."));
+            else if (!TransactionCursor.TryDecode(request.Cursor, out after))
+                errors.Add(new("/cursor", "cursor.invalid",
+                    "Use a continuation cursor returned by this endpoint in pageInfo.nextCursor."));
+        }
         if (errors.Count != 0)
         {
             return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
@@ -117,7 +128,7 @@ public static class TransactionEndpoints
         }
 
         var result = await handler.HandleAsync(
-            new(pageNumber, pageSize, type, fromDate, toDate, string.IsNullOrEmpty(search) ? null : search),
+            new(pageNumber, pageSize, type, fromDate, toDate, string.IsNullOrEmpty(search) ? null : search, after),
             cancellationToken);
         return TypedResults.Ok(result);
     }

@@ -3,6 +3,8 @@ using ClearCase.Api.Features.Disputes.SubmitDispute;
 using ClearCase.Api.Features.Disputes.ListDisputes;
 using ClearCase.Api.Features.Disputes.GetDispute;
 using ClearCase.Api.Features.Disputes.GetDisputeTimeline;
+using ClearCase.Api.Features.Disputes.WithdrawDispute;
+using ClearCase.Api.Features.Evidence;
 
 namespace ClearCase.Api.Endpoints;
 
@@ -21,6 +23,8 @@ public static class DisputeEndpoints
             GetDisputeEndpoint.Map(app, prefix, suffix);
         }
 
+        WithdrawDisputeEndpoint.Map(app);
+        CustomerEvidenceEndpoints.Map(app);
         return app;
     }
 

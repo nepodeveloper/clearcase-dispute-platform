@@ -18,8 +18,12 @@ customer can follow.
 - **Agents:** work a bank-wide case queue, add private investigation notes, move cases through
   their workflow (decision and mock settlement, reversal or adjustment) and escalate cases.
 - **Supervisors:** acknowledge and resolve escalations raised by Agents.
+- **Customers also:** withdraw an undecided dispute, attach supporting files (PDF/PNG/JPEG, malware-scanned
+  before storage), see an expected resolution date and an in-app notification feed, and find support details.
+- **Agents also:** claim and release cases (workload information only), see SLA status and the state of
+  financial operations on each case, and read customer evidence.
 - **Under the hood:** idempotent submissions, optimistic concurrency, append-only timelines and
-  audit records, and a transactional outbox with optional Kafka publishing.
+  audit records, cursor pagination, and a transactional outbox with optional Kafka publishing.
 
 ## Tech stack
 
@@ -171,10 +175,11 @@ $env:Messaging__Kafka__BootstrapServers = 'localhost:9092'
 
 ## Limitations
 
-- Local Identity accounts only: no bank identity provider, MFA or case assignment. Agents and
-  Supervisors can see every case.
-- All financial processing is mocked. There are no real refunds, reversals, chargebacks,
-  notifications or evidence uploads.
+- Local Identity accounts only: no bank identity provider or MFA. Agents and Supervisors can see every
+  case; claiming a case is workload information only and never restricts access.
+- All financial processing is mocked. There are no real refunds, reversals or chargebacks. Notifications
+  are an in-app feed only (no email, SMS or push), and uploaded evidence is scanned by a mock scanner in
+  Development/Testing; other environments reject uploads (503) until a real scanner is configured.
 - SQLite and the bundled Kafka broker are for local use. A production database, broker hosting
   and cloud deployment are not included.
 - Coverage is gated in CI (merged line coverage: Domain 85%, Application 80%, API 75%, overall 80%).

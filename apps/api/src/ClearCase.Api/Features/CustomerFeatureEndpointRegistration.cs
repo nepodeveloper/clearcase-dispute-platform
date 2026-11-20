@@ -1,4 +1,6 @@
 using ClearCase.Api.Endpoints;
+using ClearCase.Api.Features.Notifications;
+using ClearCase.Api.Features.Support.GetSupport;
 
 namespace ClearCase.Api.Features;
 
@@ -9,6 +11,8 @@ public static class CustomerFeatureEndpointRegistration
     {
         app.MapTransactionEndpoints();
         app.MapDisputeEndpoints();
+        NotificationEndpoints.Map(app);
+        GetSupportEndpoint.Map(app);
         return app;
     }
 }
