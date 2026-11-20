@@ -22,6 +22,7 @@
                 @case ('disputes') { <path d="M12 3 3 8v2h18V8l-9-5ZM5 10v8M10 10v8M14 10v8M19 10v8M3 21h18" /> }
                 @case ('agent') { <path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1ZM6 6h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM8 12h8M8 16h5" /> }
                 @case ('supervisor') { <path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6l-8-3ZM9 12l2 2 4-4" /> }
+                @case ('notifications') { <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" /> }
               }
             </svg>{{ link.label }}
           </a>
@@ -43,13 +44,33 @@
       <nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
         <li><a [routerLink]="home()">ClearCase</a></li><li aria-hidden="true">&rsaquo;</li><li aria-current="page">{{ label() }}</li>
       </ol></nav>
-      @if (auth.user(); as user) {
-        <div class="user-tools">
-          <span class="user-name">{{ user.username }}</span>
-          <span class="user-avatar" aria-hidden="true">{{ initials() }}</span>
-          <button class="cc-button cc-button--secondary" type="button" (click)="logout()" [disabled]="auth.loading()">Sign out</button>
+      <div class="header-tools">
+        <div class="theme-toggle" role="group" aria-label="Colour theme">
+          @for (option of themeOptions; track option.value) {
+            <button type="button" [attr.aria-pressed]="theme.preference() === option.value"
+              (click)="theme.set(option.value)">{{ option.label }}</button>
+          }
         </div>
-      }
+        @if (auth.user(); as user) {
+          @if (customer()) {
+            <a class="notification-bell" routerLink="/notifications" data-testid="notification-bell"
+              [attr.aria-label]="unreadLabel()" [attr.aria-current]="section() === 'notifications' ? 'page' : null">
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              </svg>
+              @if (notifications.unreadCount() > 0) {
+                <span class="notification-badge" aria-hidden="true" data-testid="notification-badge">{{ unreadBadge() }}</span>
+              }
+            </a>
+          }
+          <div class="user-tools">
+            <span class="user-name">{{ user.username }}</span>
+            <span class="user-avatar" aria-hidden="true">{{ initials() }}</span>
+            <button class="cc-button cc-button--secondary" type="button" (click)="logout()" [disabled]="auth.loading()">Sign out</button>
+          </div>
+        }
+      </div>
     </header>
     @if (sessionTimeout.warning()) {
       <div class="session-banner" role="status">

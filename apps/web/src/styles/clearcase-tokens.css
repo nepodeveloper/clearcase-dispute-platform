@@ -22,6 +22,14 @@
   --cc-canvas-alt: #ecf3fa;
   --cc-surface: #ffffff;
   --cc-surface-blue: #eaf2ff;
+  --cc-surface-subtle: #f8fafd;
+  --cc-surface-hover: #f7faff;
+  --cc-on-brand: #ffffff;
+  --cc-chrome-start: #082b4a;
+  --cc-chrome-end: #07365c;
+  --cc-chrome-accent: #0e45a8;
+  --cc-on-chrome: #ffffff;
+  --cc-success-solid: #126c49;
   --cc-border: #dae4f0;
   --cc-border-strong: #b9cadd;
   --cc-success: #126c49;
@@ -56,4 +64,76 @@
   --cc-content-width: 1220px;
   --cc-control-height: 44px;
   --cc-transition: 160ms ease;
+}
+
+/* Dark theme: applied when the user chooses it, or automatically (no explicit choice) via the OS preference.
+   Text/background pairs keep at least WCAG AA contrast (4.5:1); control borders and focus rings keep 3:1. */
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --cc-brand-strong: #8fb5ff;
+  --cc-ink: #e4edf8;
+  --cc-ink-strong: #f5f9ff;
+  --cc-muted: #a6b8cc;
+  --cc-muted-strong: #c2d0e0;
+  --cc-navy: #dbe7f6;
+  --cc-canvas: #0a1626;
+  --cc-canvas-alt: #0e1d31;
+  --cc-surface: #11223a;
+  --cc-surface-blue: #16304f;
+  --cc-surface-subtle: #0e1d31;
+  --cc-surface-hover: #162b45;
+  --cc-chrome-start: #061b30;
+  --cc-chrome-end: #0a2b4a;
+  --cc-border: #26405e;
+  --cc-border-strong: #6a8bb3;
+  --cc-success: #62d9a2;
+  --cc-success-bg: #0e3a2a;
+  --cc-warning: #f4bb6a;
+  --cc-warning-bg: #3b2a0b;
+  --cc-danger: #ff9ea3;
+  --cc-danger-bg: #4b1b1f;
+  --cc-review: #bdaeff;
+  --cc-review-bg: #2a2352;
+  --cc-debit: #62d8e2;
+  --cc-debit-bg: #0a383e;
+  --cc-info-bg: #16304f;
+  --cc-focus: #8fb5ff;
+  --cc-shadow-card: 0 10px 34px rgba(0, 0, 0, 0.35);
+  --cc-shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) {
+    color-scheme: dark;
+    --cc-brand-strong: #8fb5ff;
+    --cc-ink: #e4edf8;
+    --cc-ink-strong: #f5f9ff;
+    --cc-muted: #a6b8cc;
+    --cc-muted-strong: #c2d0e0;
+    --cc-navy: #dbe7f6;
+    --cc-canvas: #0a1626;
+    --cc-canvas-alt: #0e1d31;
+    --cc-surface: #11223a;
+    --cc-surface-blue: #16304f;
+    --cc-surface-subtle: #0e1d31;
+    --cc-surface-hover: #162b45;
+    --cc-chrome-start: #061b30;
+    --cc-chrome-end: #0a2b4a;
+    --cc-border: #26405e;
+    --cc-border-strong: #6a8bb3;
+    --cc-success: #62d9a2;
+    --cc-success-bg: #0e3a2a;
+    --cc-warning: #f4bb6a;
+    --cc-warning-bg: #3b2a0b;
+    --cc-danger: #ff9ea3;
+    --cc-danger-bg: #4b1b1f;
+    --cc-review: #bdaeff;
+    --cc-review-bg: #2a2352;
+    --cc-debit: #62d8e2;
+    --cc-debit-bg: #0a383e;
+    --cc-info-bg: #16304f;
+    --cc-focus: #8fb5ff;
+    --cc-shadow-card: 0 10px 34px rgba(0, 0, 0, 0.35);
+    --cc-shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.6);
+  }
 }

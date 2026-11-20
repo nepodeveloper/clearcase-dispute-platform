@@ -1,5 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
+import { CustomerEvidenceList } from '../disputes/dispute-api';
 
 export type AgentDisputeCategory = 'CardPurchase' | 'DebitOrder' | 'BankCharge';
 export type AgentCaseStatus =
@@ -14,6 +15,32 @@ export type AgentCaseStatus =
 export type AgentDecisionStatus = 'Pending' | 'Approved' | 'Rejected';
 export type AgentFinancialStatus = 'NotInitiated' | 'Requested' | 'Confirmed' | 'Failed' | 'OutcomeUnknown';
 export type EvidenceKind = 'Receipt' | 'DeliveryConfirmation' | 'AuthorizationRecord';
+/** Computed by the server from the case age; `Complete` once the case is Closed or Rejected. */
+export type SlaStatus = 'OnTrack' | 'DueSoon' | 'Breached' | 'Complete';
+export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
+export type FinancialOperationStatus = 'Pending' | 'InFlight' | 'Succeeded' | 'Failed' | 'Unknown';
+
+export interface AgentAssignee {
+  employeeId: string;
+  displayName: string;
+}
+
+/** Read-only view of a durable financial operation; payloads are never exposed. */
+export interface AgentFinancialOperation {
+  kind: string;
+  operationReference: string;
+  status: FinancialOperationStatus;
+  updatedAt: string;
+}
+
+export function slaStatusLabel(status: SlaStatus): string | null {
+  switch (status) {
+    case 'OnTrack': return 'On track';
+    case 'DueSoon': return 'Due soon';
+    case 'Breached': return 'Breached';
+    case 'Complete': return null;
+  }
+}
 
 export function agentCaseStatusLabel(status: AgentCaseStatus): string {
   const labels: Record<AgentCaseStatus, string> = {
@@ -44,6 +71,9 @@ export interface AgentDisputeListItem {
   createdAt: string;
   lastActivityAt: string;
   version: number;
+  slaDueAt: string;
+  slaStatus: SlaStatus;
+  assignedTo?: AgentAssignee;
 }
 
 export interface AgentDisputePage {
@@ -111,6 +141,10 @@ export interface AgentDisputeDetails {
   financialStatus: AgentFinancialStatus;
   createdAt: string;
   version: number;
+  slaDueAt: string;
+  slaStatus: SlaStatus;
+  assignedTo?: AgentAssignee;
+  financialOperations: AgentFinancialOperation[];
   transaction: {
     description: string;
     amountMinorUnits: string;
@@ -139,6 +173,7 @@ export interface AgentDisputeFilters {
   search: string;
   category: AgentDisputeCategory | '';
   caseStatus: AgentCaseStatus | '';
+  assignment: AssignmentFilter;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -150,6 +185,7 @@ export class AgentDisputesApi {
     if (filters.search.trim() !== '') params = params.set('search', filters.search.trim());
     if (filters.category !== '') params = params.set('category', filters.category);
     if (filters.caseStatus !== '') params = params.set('caseStatus', filters.caseStatus);
+    if (filters.assignment !== 'all') params = params.set('assignment', filters.assignment);
     if (cursor !== null) params = params.set('cursor', cursor);
     return this.http.get<AgentDisputePage>('/api/v1/agent/disputes', { params });
   }
@@ -158,6 +194,23 @@ export class AgentDisputesApi {
     return this.http.get<AgentDisputeDetails>(
       `/api/v1/agent/disputes/${encodeURIComponent(id)}`,
     );
+  }
+
+  /** Workload assignment only: it never changes the case state or its version. */
+  claim(id: string) {
+    return this.http.post<AgentDisputeDetails>(`/api/v1/agent/disputes/${encodeURIComponent(id)}/assignment`, {});
+  }
+
+  release(id: string) {
+    return this.http.delete<AgentDisputeDetails>(`/api/v1/agent/disputes/${encodeURIComponent(id)}/assignment`);
+  }
+
+  listEvidence(id: string) {
+    return this.http.get<CustomerEvidenceList>(`/api/v1/agent/disputes/${encodeURIComponent(id)}/evidence`);
+  }
+
+  evidenceContentUrl(id: string, evidenceId: string): string {
+    return `/api/v1/agent/disputes/${encodeURIComponent(id)}/evidence/${encodeURIComponent(evidenceId)}/content`;
   }
 
   listNotes(id: string) {

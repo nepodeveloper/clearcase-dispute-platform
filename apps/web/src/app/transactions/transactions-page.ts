@@ -1,13 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, Injector, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { DateField } from '../ui/date-field';
 import { defaultPageSize, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
-import { TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
+import { Transaction, TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
 import { transactionStatusLabel, transactionTypeLabel } from './transaction-type-label';
 import { DecimalMoney } from './decimal-money';
 
@@ -15,7 +15,9 @@ type ViewState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'invalid'; messages: string[] }
-  | { kind: 'loaded'; page: TransactionPage };
+  | { kind: 'loaded' };
+
+type MoreError = { message: string; reload: boolean };
 
 function validationMessages(error: HttpErrorResponse): string[] {
   const body: unknown = error.error;
@@ -28,6 +30,25 @@ function validationMessages(error: HttpErrorResponse): string[] {
       : []);
 }
 
+function loadFailure(error: unknown): ViewState {
+  if (error instanceof HttpErrorResponse) {
+    if (error.status === 400) {
+      const messages = validationMessages(error);
+      if (messages.length > 0) return { kind: 'invalid', messages };
+      return { kind: 'error', message: 'Check the transaction filters and try again.', retryable: false };
+    }
+    const retryable = error.status === 0 || error.status === 429 || error.status >= 500;
+    return {
+      kind: 'error',
+      message: retryable
+        ? 'Unable to load transactions. Please try again.'
+        : 'Unable to access transactions. Please check your session.',
+      retryable,
+    };
+  }
+  return { kind: 'error', message: 'Unable to load transactions.', retryable: false };
+}
+
 @Component({
   selector: 'app-transactions-page',
   imports: [ReactiveFormsModule, DateField, DecimalMoney, DatePipe, RouterLink, PageSizeSelect, StatCard, StatusBadge],
@@ -36,16 +57,31 @@ function validationMessages(error: HttpErrorResponse): string[] {
 export class TransactionsPage implements OnInit {
   private readonly api = inject(TransactionApi);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly requests = new Subject<TransactionQuery>();
-  @ViewChild('transactionsHeading') private transactionsHeading?: ElementRef<HTMLHeadingElement>;
+  private readonly injector = inject(Injector);
+  private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('transactionsHeading');
+  private readonly status = viewChild<ElementRef<HTMLElement>>('transactionsStatus');
+  private readonly loadMoreButton = viewChild<ElementRef<HTMLButtonElement>>('loadMoreButton');
   protected readonly state = signal<ViewState>({ kind: 'loading' });
-  // Keeps the summary cards steady while the next page or filter result is loading.
-  private readonly lastPage = signal<TransactionPage | null>(null);
-  protected readonly totalCount = computed(() => this.lastPage()?.totalCount ?? '\u2013');
-  protected readonly shownCount = computed(() => this.lastPage()?.items.length ?? '\u2013');
-  protected readonly pageSummary = computed(() => {
-    const page = this.lastPage();
-    return page === null ? 'Loading' : `Page ${page.pageNumber} of ${Math.max(page.totalPages, 1)}`;
+  protected readonly rows = signal<Transaction[]>([]);
+  protected readonly nextCursor = signal<string | undefined>(undefined);
+  protected readonly loadingMore = signal(false);
+  protected readonly moreError = signal<MoreError | null>(null);
+  protected readonly pageSize = signal<PageSize>(defaultPageSize);
+  // Keeps the summary cards steady while a new filter result is loading.
+  private readonly total = signal<number | undefined>(undefined);
+  protected readonly hasMore = computed(() => this.nextCursor() !== undefined);
+  protected readonly totalCount = computed(() => this.total() ?? (this.state().kind === 'loaded'
+    ? `${this.rows().length}${this.hasMore() ? '+' : ''}` : '\u2013'));
+  protected readonly shownCount = computed(() => this.rows().length === 0 && this.state().kind !== 'loaded'
+    ? '\u2013' : this.rows().length);
+  protected readonly pageSummary = computed(() => this.state().kind !== 'loaded' && this.rows().length === 0
+    ? 'Loading' : this.hasMore() ? 'More available' : 'All matching loaded');
+  protected readonly countSummary = computed(() => {
+    if (this.state().kind !== 'loaded') return '';
+    const count = this.rows().length;
+    const total = this.total();
+    if (total !== undefined) return `Showing ${count} of ${total} transactions`;
+    return `Showing ${count}${this.hasMore() ? '+' : ''} ${count === 1 && !this.hasMore() ? 'transaction' : 'transactions'}`;
   });
   protected readonly dateError = signal<{ field: 'fromDate' | 'toDate'; message: string } | null>(null);
   protected readonly filters = new FormGroup({
@@ -54,44 +90,14 @@ export class TransactionsPage implements OnInit {
     fromDate: new FormControl('', { nonNullable: true }),
     toDate: new FormControl('', { nonNullable: true }),
   });
-  private query: TransactionQuery = { pageNumber: 1, pageSize: defaultPageSize, ...this.filters.getRawValue() };
-  private focusAfterPageChange = false;
+  private query: TransactionQuery = { pageSize: defaultPageSize, ...this.filters.getRawValue() };
+  private focusAfterLoad = false;
+  private request: Subscription | null = null;
 
   ngOnInit(): void {
     this.filters.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.dateError.set(null));
-    this.requests.pipe(
-      switchMap((query) => this.api.list(query).pipe(
-        map((page): ViewState => ({ kind: 'loaded', page })),
-        catchError((error: unknown) => {
-          if (error instanceof HttpErrorResponse) {
-            if (error.status === 400) {
-              const messages = validationMessages(error);
-              if (messages.length > 0) return of<ViewState>({ kind: 'invalid', messages });
-              return of<ViewState>({ kind: 'error', message: 'Check the transaction filters and try again.', retryable: false });
-            }
-            const retryable = error.status === 0 || error.status === 429 || error.status >= 500;
-            return of<ViewState>({
-              kind: 'error',
-              message: retryable
-                ? 'Unable to load transactions. Please try again.'
-                : 'Unable to access transactions. Please check your session.',
-              retryable,
-            });
-          }
-          return of<ViewState>({ kind: 'error', message: 'Unable to load transactions.', retryable: false });
-        }),
-        startWith<ViewState>({ kind: 'loading' }),
-      )),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((state) => {
-      this.state.set(state);
-      if (state.kind === 'loaded') this.lastPage.set(state.page);
-      if (this.focusAfterPageChange && state.kind !== 'loading') {
-        this.focusAfterPageChange = false;
-        this.transactionsHeading?.nativeElement.focus();
-      }
-    });
+    this.destroyRef.onDestroy(() => this.request?.unsubscribe());
     this.load();
   }
 
@@ -107,25 +113,71 @@ export class TransactionsPage implements OnInit {
       return;
     }
     this.dateError.set(null);
-    this.focusAfterPageChange = false;
-    this.query = { ...this.query, ...filters, search: filters.search.trim(), pageNumber: 1 };
-    this.load();
-  }
-
-  protected changePage(pageNumber: number): void {
-    this.focusAfterPageChange = true;
-    this.query = { ...this.query, pageNumber };
+    this.focusAfterLoad = false;
+    this.query = { ...this.query, ...filters, search: filters.search.trim() };
     this.load();
   }
 
   protected changePageSize(pageSize: PageSize): void {
-    this.focusAfterPageChange = true;
-    this.query = { ...this.query, pageSize, pageNumber: 1 };
+    this.focusAfterLoad = true;
+    this.pageSize.set(pageSize);
+    this.query = { ...this.query, pageSize };
     this.load();
   }
 
+  /** Loads the first page for the applied filters, replacing every row and cancelling any request in flight. */
   protected load(): void {
-    this.requests.next(this.query);
+    this.request?.unsubscribe();
+    this.loadingMore.set(false);
+    this.moreError.set(null);
+    this.state.set({ kind: 'loading' });
+    this.request = this.api.list({ ...this.query, cursor: undefined }).subscribe({
+      next: (page) => {
+        this.accept(page, false);
+        this.state.set({ kind: 'loaded' });
+        this.restoreFocus();
+      },
+      error: (error: unknown) => {
+        this.state.set(loadFailure(error));
+        this.restoreFocus();
+      },
+    });
+  }
+
+  /** Appends the next page using the server cursor, keeping the applied filters and the rows already shown. */
+  protected loadMore(): void {
+    const cursor = this.nextCursor();
+    if (cursor === undefined || this.loadingMore()) return;
+    const hadFocus = document.activeElement === this.loadMoreButton()?.nativeElement;
+    this.loadingMore.set(true);
+    this.moreError.set(null);
+    this.request?.unsubscribe();
+    this.request = this.api.list({ ...this.query, cursor }).subscribe({
+      next: (page) => {
+        this.accept(page, true);
+        this.loadingMore.set(false);
+        // The button disappears with the last page, so keep keyboard focus on the announced summary.
+        if (hadFocus && !this.hasMore())
+          afterNextRender(() => this.status()?.nativeElement.focus(), { injector: this.injector });
+      },
+      error: (error: unknown) => {
+        this.loadingMore.set(false);
+        this.moreError.set(error instanceof HttpErrorResponse && error.status === 400
+          ? { message: 'The list changed while you were browsing. Reload it to continue.', reload: true }
+          : { message: 'Unable to load more transactions. Your existing results are still shown.', reload: false });
+      },
+    });
+  }
+
+  private accept(page: TransactionPage, append: boolean): void {
+    this.rows.update(rows => append ? [...rows, ...page.items] : page.items);
+    this.nextCursor.set(page.pageInfo.hasNextPage ? page.pageInfo.nextCursor : undefined);
+    if (page.totalCount !== undefined || !append) this.total.set(page.totalCount);
+  }
+
+  private restoreFocus(): void {
+    if (this.focusAfterLoad) this.heading()?.nativeElement.focus();
+    this.focusAfterLoad = false;
   }
 
   protected readonly typeLabel = transactionTypeLabel;

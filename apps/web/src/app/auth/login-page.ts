@@ -1,12 +1,13 @@
-import { Component, ElementRef, inject, signal } from '@angular/core';
+import { Component, computed, ElementRef, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from './auth-service';
+import { SupportContactPanel } from '../support/support-contact';
+import { AuthService, sessionEndedMessage } from './auth-service';
 import { loginDestination } from './auth-guards';
 
 @Component({
   selector: 'cc-login',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, SupportContactPanel],
   template: `
     <section class="auth-layout" aria-labelledby="login-heading">
       <div class="auth-hero">
@@ -39,12 +40,19 @@ import { loginDestination } from './auth-guards';
             {{ showPassword() ? 'Hide password' : 'Show password' }}
           </button>
         </div>
-        @if (auth.error()) { <p class="cc-form-error" role="alert">{{ auth.error() }}</p> }
+        @if (auth.error()) {
+          @if (sessionEnded()) {
+            <p class="cc-notice" role="status" data-testid="session-ended">{{ auth.error() }}</p>
+          } @else {
+            <p class="cc-form-error" role="alert">{{ auth.error() }}</p>
+          }
+        }
         <button class="cc-button cc-button--primary full" type="submit" [disabled]="auth.loading()">
           {{ auth.loading() ? 'Signing in...' : 'Sign in' }}
         </button>
         <div class="security-copy" id="login-notice">Local assessment accounts only. No real banking access or money movement.
           Contact your local administrator for access. Never enter real banking credentials.</div>
+        <cc-support-contact heading="Need help signing in?" [quiet]="true" [anonymous]="true" />
       </form>
     </section>`,
 })
@@ -54,6 +62,8 @@ export class LoginPage {
   private readonly route = inject(ActivatedRoute);
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly showPassword = signal(false);
+  // The expected end of an idle or expired session is information, not a sign-in error.
+  protected readonly sessionEnded = computed(() => this.auth.error() === sessionEndedMessage);
   protected readonly form = new FormGroup({
     username: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/\S/)] }),
     password: new FormControl('', { nonNullable: true, validators: Validators.required }),

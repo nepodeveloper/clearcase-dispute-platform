@@ -31,6 +31,8 @@ export default defineConfig({
       use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'agent-decision-mobile', testMatch: 'agent-decision.spec.ts',
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'ux-journeys', testMatch: 'ux-journeys.spec.ts',
+      use: { viewport: { width: 1440, height: 1000 }, timezoneId: 'Africa/Johannesburg' } },
   ],
   webServer: [{
     command: `dotnet run --project "${resolve('..', 'api', 'src', 'ClearCase.Api')}" --configuration Release --no-launch-profile --urls http://127.0.0.1:5101`,

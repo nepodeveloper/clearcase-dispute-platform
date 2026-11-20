@@ -6,6 +6,7 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 import { AuthService } from '../auth/auth-service';
+import { installDialogPolyfill } from '../testing/dialog-polyfill';
 
 describe('Dispute tracking pages', () => {
   const cases = ['CardPurchase', 'DebitOrder', 'BankCharge'].map((category, index) => ({
@@ -47,7 +48,14 @@ describe('Dispute tracking pages', () => {
     await restored;
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    // The evidence and support panels load on their own; these tests are about the timeline and statuses.
+    http.match(request => /\/disputes\/[^/]+\/evidence$/.test(request.url))
+      .forEach(request => { if (!request.cancelled) request.flush({ items: [] }); });
+    http.match(request => request.url === '/api/v1/support')
+      .forEach(request => { if (!request.cancelled) request.flush({}, { status: 503, statusText: 'Unavailable' }); });
+    http.verify();
+  });
 
   it('shows loading and an accessible empty state linking to transactions', async () => {
     const harness = await RouterTestingHarness.create('/disputes');
@@ -320,6 +328,105 @@ describe('Dispute tracking pages', () => {
     expect(harness.routeNativeElement?.textContent).toContain('Demo refund confirmed - no real money moved');
     expect(harness.routeNativeElement?.textContent).not.toContain('reversal confirmed');
     http.expectNone(req => req.url.includes('simulations'));
+  });
+
+  describe('customer actions on the dispute page', () => {
+    const detailUrl = `/api/v1/disputes/${cases[0].id}`;
+    const evidenceUrl = `${detailUrl}/evidence`;
+    const withdrawable = { ...cases[0], version: 7, canWithdraw: true, decisionStatus: 'Pending',
+      financialStatus: 'NotInitiated', caseStatus: 'Submitted' };
+
+    beforeAll(() => installDialogPolyfill());
+
+    async function open(dispute: object) {
+      const harness = await RouterTestingHarness.create(`/disputes/${cases[0].id}`);
+      http.expectOne(detailUrl).flush(dispute);
+      harness.detectChanges();
+      return harness;
+    }
+
+    it('shows the server expected resolution date instead of the unconfirmed text', async () => {
+      const harness = await open({ ...cases[0], expectedResolutionBy: '2026-11-20T10:00:00Z' });
+      const text = harness.routeNativeElement!.textContent!;
+      expect(text).toContain('Expected resolution by');
+      expect(harness.routeNativeElement!.querySelector('[data-testid="expected-resolution"] time')?.getAttribute('datetime'))
+        .toBe('2026-11-20T10:00:00Z');
+      expect(text).toContain('Nov 20, 2026');
+      expect(text).not.toContain('No completion date has been confirmed');
+    });
+
+    it('lists evidence for download and shows support contact details quoting the case reference', async () => {
+      const harness = await open(cases[0]);
+      http.expectOne(evidenceUrl).flush({ items: [{ id: 'ev-1', fileName: 'receipt.pdf', contentType: 'application/pdf',
+        sizeBytes: 2048, uploadedAt: '2026-11-13T10:00:00Z' }] });
+      http.expectOne('/api/v1/support').flush({ email: 'support@clearcase.example', phone: '0800 000 000',
+        hours: 'Mon-Fri 08:00-17:00 SAST', responseTime: 'Within 1 business day' });
+      harness.detectChanges();
+      const element = harness.routeNativeElement!;
+      expect(element.querySelector('[data-testid="evidence-download"]')?.getAttribute('href'))
+        .toBe(`${evidenceUrl}/ev-1/content`);
+      expect(element.querySelector('[data-testid="support-email"]')?.getAttribute('href'))
+        .toContain(encodeURIComponent(cases[0].reference));
+      expect(element.querySelector('#support-heading')?.textContent).toContain('Contact support');
+    });
+
+    it('keeps the case usable with a plain-text fallback when evidence and support fail to load', async () => {
+      const harness = await open(cases[0]);
+      http.expectOne(evidenceUrl).flush({}, { status: 500, statusText: 'Error' });
+      http.expectOne('/api/v1/support').flush({}, { status: 503, statusText: 'Unavailable' });
+      harness.detectChanges();
+      const element = harness.routeNativeElement!;
+      expect(element.textContent).toContain('Unable to load your documents');
+      expect(element.textContent).toContain('Support contact details are unavailable right now');
+      expect(element.textContent).toContain(cases[0].reference);
+    });
+
+    it('withdraws a dispute after confirmation and shows it closed without upload controls', async () => {
+      const harness = await open(withdrawable);
+      http.expectOne(evidenceUrl).flush({ items: [] });
+      http.expectOne('/api/v1/support').flush({}, { status: 503, statusText: 'Unavailable' });
+      harness.detectChanges();
+      const element = harness.routeNativeElement!;
+      expect(element.querySelector('#evidence-file')).not.toBeNull();
+      element.querySelector<HTMLButtonElement>('[data-testid="withdraw-dispute"]')!.click();
+      await harness.fixture.whenStable();
+      expect(element.querySelector('dialog')?.hasAttribute('open')).toBe(true);
+
+      element.querySelector<HTMLFormElement>('dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+      const request = http.expectOne(`${detailUrl}/withdrawals`);
+      expect(request.request.body).toEqual({ expectedVersion: 7 });
+      request.flush({ ...withdrawable, caseStatus: 'Closed', canWithdraw: false, version: 8,
+        expectedResolutionBy: undefined });
+      await harness.fixture.whenStable();
+      harness.detectChanges();
+
+      expect(element.querySelector('[data-testid="withdraw-dispute"]')).toBeNull();
+      expect(element.querySelector('[data-testid="withdraw-outcome"]')?.textContent)
+        .toContain('You withdrew this dispute. No payment adjustment was made.');
+      expect(element.textContent).toContain('This case is closed');
+      expect(element.querySelector('#evidence-file')).toBeNull();
+      expect(element.querySelector('[data-testid="evidence-closed"]')).not.toBeNull();
+    });
+
+    it('refreshes the case after a stale-version withdrawal and explains what happened', async () => {
+      const harness = await open(withdrawable);
+      http.expectOne(evidenceUrl).flush({ items: [] });
+      http.expectOne('/api/v1/support').flush({}, { status: 503, statusText: 'Unavailable' });
+      harness.detectChanges();
+      const element = harness.routeNativeElement!;
+      element.querySelector<HTMLButtonElement>('[data-testid="withdraw-dispute"]')!.click();
+      await harness.fixture.whenStable();
+      element.querySelector<HTMLFormElement>('dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+      http.expectOne(`${detailUrl}/withdrawals`)
+        .flush({ code: 'dispute.concurrencyConflict' }, { status: 409, statusText: 'Conflict' });
+      await harness.fixture.whenStable();
+
+      http.expectOne(detailUrl).flush({ ...withdrawable, version: 8, canWithdraw: false, caseStatus: 'UnderReview' });
+      harness.detectChanges();
+      expect(element.querySelector('[data-testid="withdraw-dispute"]')).toBeNull();
+      expect(element.querySelector('[data-testid="withdraw-outcome"]')?.textContent).toContain('changed while you were viewing it');
+      expect(element.textContent).toContain('Under review');
+    });
   });
 
   it('handles missing cases and retries transient detail errors', async () => {

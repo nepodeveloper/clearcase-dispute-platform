@@ -11,6 +11,7 @@ const basic: AgentDisputeDetails = {
   eligibilityOutcome: 'EligibleToSubmit', eligibilityPolicyVersion: 'test-v1',
   caseStatus: 'UnderReview', decisionStatus: 'Pending', financialStatus: 'NotInitiated',
   createdAt: '2026-11-17T08:00:00Z', version: 4,
+  slaDueAt: '2026-11-22T08:00:00Z', slaStatus: 'OnTrack', financialOperations: [],
   transaction: { description: 'Account fee', amountMinorUnits: '1000', currency: 'ZAR',
     transactionDate: '2026-11-16T08:00:00Z' },
   availableActions: [

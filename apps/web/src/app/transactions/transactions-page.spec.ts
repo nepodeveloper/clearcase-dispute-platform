@@ -33,9 +33,9 @@ describe('TransactionsPage', () => {
     return fixture;
   }
 
-  function respond(items = [item], hasNextPage = false) {
+  function respond(items = [item], nextCursor?: string, totalCount: number | undefined = items.length) {
     http.expectOne((request) => request.url === '/api/v1/transactions').flush({
-      items, pageNumber: 1, pageSize: 20, totalCount: items.length, totalPages: hasNextPage ? 2 : 1, hasNextPage,
+      items, pageInfo: { hasNextPage: nextCursor !== undefined, nextCursor }, totalCount,
     });
   }
 
@@ -65,7 +65,7 @@ describe('TransactionsPage', () => {
         { ...item, activeDisputeId: disputeId },
         { ...item, id: '00000000-0000-0000-0000-000000000004', status: 'PendingAuthorization', isDisputable: false },
       ],
-      pageNumber: 1, pageSize: 20, totalCount: 2, totalPages: 1, hasNextPage: false,
+      pageInfo: { hasNextPage: false }, totalCount: 2,
     });
     fixture.detectChanges();
     const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr');
@@ -98,26 +98,125 @@ describe('TransactionsPage', () => {
     expect(fixture.nativeElement.textContent).toContain('Woolworths');
   });
 
-  it('requests the next page', () => {
+  it('loads more rows with the opaque cursor, appends them, announces the count and keeps focus', async () => {
     const fixture = render();
-    respond([item], true);
+    const initial = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(initial.request.params.get('pageNumber')).toBe('1');
+    expect(initial.request.params.has('cursor')).toBe(false);
+    initial.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'cursor-2' }, totalCount: 2 });
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="next"]').click();
+    const element = fixture.nativeElement as HTMLElement;
+    const status = element.querySelector<HTMLElement>('[data-testid="transactions-status"]')!;
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.textContent).toContain('Showing 1 of 2 transactions');
+    expect(element.querySelector('[data-testid="next"]')).toBeNull();
+
+    const more = element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!;
+    more.focus();
+    more.click();
+    fixture.detectChanges();
+    expect(more.getAttribute('aria-disabled')).toBe('true');
+    more.click();
     const request = http.expectOne((req) => req.url === '/api/v1/transactions');
-    expect(request.request.params.get('pageNumber')).toBe('2');
-    request.flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
+    expect(request.request.params.get('cursor')).toBe('cursor-2');
+    expect(request.request.params.has('pageNumber')).toBe(false);
+    expect(request.request.params.get('pageSize')).toBe('5');
+    request.flush({ items: [{ ...item, id: 'second', description: 'Checkers' }], pageInfo: { hasNextPage: false }, totalCount: 2 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(Array.from(element.querySelectorAll('tbody tr'), row => row.textContent)).toEqual([
+      expect.stringContaining('Woolworths'), expect.stringContaining('Checkers')]);
+    expect(status.textContent).toContain('Showing 2 of 2 transactions');
+    expect(element.querySelector('[data-testid="load-more"]')).toBeNull();
+    expect(element.textContent).toContain('All matching transactions are shown.');
+    expect(document.activeElement).toBe(status);
   });
 
-  it('offers 5, 10, 20 and 50 rows per page and restarts at page one with focus on the heading when the size changes', () => {
+  it('counts loaded rows when the server sends no total', () => {
+    const fixture = render();
+    http.expectOne((req) => req.url === '/api/v1/transactions')
+      .flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'cursor-2' } });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="transactions-status"]').textContent)
+      .toContain('Showing 1+ transactions');
+  });
+
+  it('keeps loaded rows when loading more fails and retries the same cursor', () => {
+    const fixture = render();
+    respond([item], 'cursor-2', 2);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!.click();
+    http.expectOne((req) => req.url === '/api/v1/transactions').flush('error', { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
+    expect(element.querySelector('[data-testid="more-error"]')?.getAttribute('role')).toBe('alert');
+    expect(element.textContent).toContain('Woolworths');
+
+    element.querySelector<HTMLButtonElement>('[data-testid="retry-more"]')!.click();
+    const retry = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(retry.request.params.get('cursor')).toBe('cursor-2');
+    retry.flush({ items: [{ ...item, id: 'second', description: 'Checkers' }], pageInfo: { hasNextPage: false }, totalCount: 2 });
+    fixture.detectChanges();
+    expect(element.querySelector('[data-testid="more-error"]')).toBeNull();
+    expect(element.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+
+  it('offers a reload instead of a futile retry when the cursor is rejected', () => {
+    const fixture = render();
+    respond([item], 'stale', 2);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!.click();
+    http.expectOne((req) => req.url === '/api/v1/transactions')
+      .flush({ errors: [{ pointer: '/cursor', code: 'cursor.invalid', message: 'Invalid cursor.' }] }, { status: 400, statusText: 'Bad Request' });
+    fixture.detectChanges();
+    expect(element.querySelector('[data-testid="retry-more"]')).toBeNull();
+    element.querySelector<HTMLButtonElement>('[data-testid="reload"]')!.click();
+    const reload = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(reload.request.params.has('cursor')).toBe(false);
+    expect(reload.request.params.get('pageNumber')).toBe('1');
+    reload.flush({ items: [item], pageInfo: { hasNextPage: false }, totalCount: 1 });
+  });
+
+  it('restarts from the first page with the applied filters replacing loaded rows', () => {
+    const fixture = render();
+    respond([item], 'cursor-2', 2);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!.click();
+    http.expectOne((req) => req.url === '/api/v1/transactions')
+      .flush({ items: [{ ...item, id: 'second', description: 'Checkers' }], pageInfo: { hasNextPage: true, nextCursor: 'cursor-3' }, totalCount: 3 });
+    fixture.detectChanges();
+    const search = element.querySelector<HTMLInputElement>('[name="search"]')!;
+    search.value = 'Woolworths';
+    search.dispatchEvent(new Event('input'));
+    element.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit'));
+    const request = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(request.request.params.has('cursor')).toBe(false);
+    expect(request.request.params.get('pageNumber')).toBe('1');
+    expect(request.request.params.get('search')).toBe('Woolworths');
+    request.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'filtered-2' }, totalCount: 2 });
+    fixture.detectChanges();
+    expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
+
+    element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!.click();
+    const next = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(next.request.params.get('cursor')).toBe('filtered-2');
+    expect(next.request.params.get('search')).toBe('Woolworths');
+    next.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 2 });
+  });
+
+  it('offers 5, 10, 20 and 50 rows per page and restarts with focus on the heading when the size changes', () => {
     const fixture = render();
     const initial = http.expectOne((request) => request.url === '/api/v1/transactions');
     expect(initial.request.params.get('pageSize')).toBe('5');
-    initial.flush({ items: [item], pageNumber: 1, pageSize: 5, totalCount: 6, totalPages: 2, hasNextPage: true });
+    initial.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'cursor-2' }, totalCount: 6 });
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLButtonElement>('[data-testid="next"]')!.click();
+    element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!.click();
     http.expectOne((request) => request.url === '/api/v1/transactions')
-      .flush({ items: [item], pageNumber: 2, pageSize: 5, totalCount: 6, totalPages: 2, hasNextPage: false });
+      .flush({ items: [{ ...item, id: 'second' }], pageInfo: { hasNextPage: true, nextCursor: 'cursor-3' }, totalCount: 6 });
     fixture.detectChanges();
 
     const size = element.querySelector<HTMLSelectElement>('.page-size select')!;
@@ -131,33 +230,12 @@ describe('TransactionsPage', () => {
     const resized = http.expectOne((request) => request.url === '/api/v1/transactions');
     expect(resized.request.params.get('pageSize')).toBe('10');
     expect(resized.request.params.get('pageNumber')).toBe('1');
-    resized.flush({ items: [item], pageNumber: 1, pageSize: 10, totalCount: 6, totalPages: 1, hasNextPage: false });
+    expect(resized.request.params.has('cursor')).toBe(false);
+    resized.flush({ items: [item], pageInfo: { hasNextPage: false }, totalCount: 6 });
     fixture.detectChanges();
     expect(element.querySelector<HTMLSelectElement>('.page-size select')!.value).toBe('10');
+    expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
     expect(document.activeElement).toBe(element.querySelector('#transactions-heading'));
-  });
-
-  it('moves focus to the transaction heading after next and previous page loads', () => {
-    const fixture = render();
-    respond([item], true);
-    fixture.detectChanges();
-    const element = fixture.nativeElement as HTMLElement;
-    const heading = element.querySelector<HTMLElement>('#transactions-heading')!;
-    const next = element.querySelector<HTMLButtonElement>('[data-testid="next"]')!;
-    next.focus();
-    next.click();
-    http.expectOne((request) => request.url === '/api/v1/transactions')
-      .flush({ items: [item], pageNumber: 2, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: false });
-    fixture.detectChanges();
-    expect(document.activeElement).toBe(heading);
-
-    const previous = element.querySelector<HTMLButtonElement>('.pagination button')!;
-    previous.focus();
-    previous.click();
-    http.expectOne((request) => request.url === '/api/v1/transactions')
-      .flush({ items: [item], pageNumber: 1, pageSize: 20, totalCount: 21, totalPages: 2, hasNextPage: true });
-    fixture.detectChanges();
-    expect(document.activeElement).toBe(heading);
   });
 
   it('explains an invalid date range without sending it and allows correction', () => {
@@ -186,7 +264,7 @@ describe('TransactionsPage', () => {
     form.dispatchEvent(new Event('submit'));
     const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
     expect(request.request.params.get('toDate')).toBe('2026-11-11');
-    request.flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
+    request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
   });
 
   it('shows filter dates as dd MMM yyyy, sends ISO dates and rejects unreadable dates', () => {
@@ -222,7 +300,7 @@ describe('TransactionsPage', () => {
     const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
     expect(request.request.params.get('fromDate')).toBe('2026-11-01');
     expect(request.request.params.get('toDate')).toBe('2026-11-10');
-    request.flush({ items: [], pageNumber: 1, pageSize: 5, totalCount: 0, totalPages: 0, hasNextPage: false });
+    request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
   });
 
   it('shows server validation messages instead of offering a futile retry', () => {
@@ -274,6 +352,6 @@ describe('TransactionsPage', () => {
     expect(request.request.params.get('toDate')).toBe('2026-11-10');
     expect(request.request.params.get('pageNumber')).toBe('1');
     expect(request.request.params.get('search')).toBe('Woolworths');
-    request.flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
+    request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
   });
 });

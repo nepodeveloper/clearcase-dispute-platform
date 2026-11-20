@@ -22,6 +22,8 @@ describe('DisputeForm', () => {
     financialStatus: 'NotInitiated',
     statusDescription: 'Your dispute was received and is awaiting review.',
     createdAt: '2026-11-12T10:00:00Z',
+    version: 1,
+    canWithdraw: true,
     timeline: [{
       id: 'f7d8c9b0-1111-4222-8333-444455556666',
       sequenceNumber: 1,

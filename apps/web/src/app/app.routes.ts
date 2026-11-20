@@ -12,6 +12,8 @@ export const routes: Routes = [
     canActivate: [authGuard], data: { role: 'Customer', label: 'My disputes', section: 'disputes' } },
   { path: 'disputes/:id', title: 'Dispute timeline | ClearCase', loadComponent: () => import('./disputes/dispute-details-page').then(m => m.DisputeDetailsPage),
     canActivate: [authGuard], data: { role: 'Customer', label: 'Dispute timeline', section: 'disputes' } },
+  { path: 'notifications', title: 'Notifications | ClearCase', loadComponent: () => import('./notifications/notifications-page').then(m => m.NotificationsPage),
+    canActivate: [authGuard], data: { role: 'Customer', label: 'Notifications', section: 'notifications' } },
   { path: 'agent/disputes', title: 'Agent work queue | ClearCase', loadComponent: () => import('./operations/agent-queue-page').then(m => m.AgentQueuePage),
     canActivate: [authGuard], data: { role: 'Agent', label: 'Agent work queue', section: 'agent' } },
   { path: 'agent/disputes/:id', title: 'Case investigation | ClearCase', loadComponent: () => import('./operations/investigation-page').then(m => m.InvestigationPage),

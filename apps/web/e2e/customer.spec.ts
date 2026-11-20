@@ -39,11 +39,10 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(pending.getByRole('link', { name: /^View details for/ })).toBeVisible();
   await expect(pending.getByRole('link', { name: /^View and dispute/ })).toHaveCount(0);
   await capture(page, info, 'transactions');
-  const secondPage = page.waitForResponse(response => new URL(response.url()).searchParams.get('pageNumber') === '2');
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  const secondPage = page.waitForResponse(response => new URL(response.url()).searchParams.has('cursor'));
+  await page.getByRole('button', { name: 'Load more', exact: true }).click();
   const second: TransactionPage = await (await secondPage).json();
-  await expect(page.locator('tbody tr')).toHaveCount(second.items.length);
-  await expect(page.locator('main h1')).toBeFocused();
+  await expect(page.locator('tbody tr')).toHaveCount(first.items.length + second.items.length);
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
@@ -126,7 +125,7 @@ test('customer completes the persisted journey for all categories, with filterin
     await expect(summary).toContainText('Review decision: Awaiting a decision');
     await expect(summary).toContainText('Money update: Not started');
     await expect(page.getByRole('heading', { name: 'What happens next?' })).toBeVisible();
-    await expect(page.getByText('No completion date has been confirmed.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Expected resolution by', { exact: false })).toBeVisible();
     await expect(page.getByText('Times shown in your local time (Africa/Johannesburg).', { exact: true })).toBeVisible();
     const firstEvent = [...dispute.timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber)[0];
     const time = page.getByRole('list', { name: 'Dispute timeline' }).locator('time').first();

@@ -254,14 +254,14 @@ describe('TransactionDetailsPage', () => {
 
     expect(TestBed.inject(Router).url).toBe('/');
     http.expectOne((request) => request.url === '/api/v1/transactions')
-      .flush({ items: [], pageNumber: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false });
+      .flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
   });
 
   it('opens details when a transaction is selected in the list', async () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/', TransactionsPage);
     http.expectOne((request) => request.url === '/api/v1/transactions')
-      .flush({ items: [transaction], pageNumber: 1, pageSize: 20, totalCount: 1, totalPages: 1, hasNextPage: false });
+      .flush({ items: [transaction], pageInfo: { hasNextPage: false }, totalCount: 1 });
     harness.detectChanges();
     (harness.routeNativeElement?.querySelector('[data-testid="transaction-link"]') as HTMLAnchorElement).click();
     await harness.fixture.whenStable();
