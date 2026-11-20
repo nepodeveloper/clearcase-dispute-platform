@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { finalize, firstValueFrom } from 'rxjs';
 import { AuthService } from '../auth/auth-service';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
+import { createFilterDebouncer } from '../ui/filter-debounce';
 import { defaultPageSize, MinorUnitsMoney, PageHeading, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import { assignmentFailureReason } from './assignment-errors';
 import {
@@ -46,13 +47,13 @@ interface BulkResult { total: number; succeeded: number; failures: { reference: 
       <cc-stat label="Needs review" [value]="needsReview()" hint="In current results" />
       <cc-stat label="Escalated" [value]="escalated()" hint="In current results" />
     </div>
-    <section class="panel" aria-labelledby="queue-heading">
+    <section class="panel" aria-labelledby="queue-heading" [attr.aria-busy]="loading()">
       <div class="panel-title"><h2 id="queue-heading">Assigned case queue</h2>
         <span class="muted">Persisted operational cases</span></div>
       <div class="filter-bar operations-filters">
         <label class="cc-field search-field"><span>Search cases</span>
           <input class="cc-control" type="search" #query placeholder="Search case reference or customer"
-            [value]="search()" (input)="search.set(query.value)"></label>
+            [value]="search()" (input)="searchTyped(query.value)" (keydown.enter)="applyNow()"></label>
         <label class="cc-field"><span>Case status</span>
           <select class="cc-control" #statusFilter (change)="setStatus(statusFilter.value)">
             <option value="" [selected]="status() === ''">All statuses</option>
@@ -70,9 +71,8 @@ interface BulkResult { total: number; succeeded: number; failures: { reference: 
             @for (option of assignmentOptions; track option.value) {
               <option [value]="option.value" [selected]="assignment() === option.value">{{ option.label }}</option> }
           </select></label>
-        <button class="cc-button cc-button--secondary" type="button" [disabled]="loading()"
-          (click)="applyFilters()">Search</button>
       </div>
+      <p class="muted filter-hint">Results update as you type or choose a filter.</p>
       <details class="queue-presets">
         <summary>Saved filters</summary>
         <div class="filter-bar">
@@ -220,6 +220,7 @@ export class AgentQueuePage {
   private cursors: (string | null)[] = [null];
   private requestId = 0;
   private activeFilters: AgentDisputeFilters = { search: '', category: '', caseStatus: '', assignment: 'all' };
+  private readonly filterDebounce = createFilterDebouncer(this.destroyRef, () => this.applyFilters());
   protected readonly items = computed(() => this.page()?.items ?? []);
   protected readonly hasNextPage = computed(() => this.page()?.pageInfo.hasNextPage === true);
   protected readonly selectedCount = computed(() => this.selected().size);
@@ -256,10 +257,23 @@ export class AgentQueuePage {
   }
 
   protected applyFilters(): void {
-    this.activeFilters = {
-      search: this.search(), category: this.category(), caseStatus: this.status(), assignment: this.assignment(),
+    this.filterDebounce.cancel();
+    const next: AgentDisputeFilters = {
+      search: this.search().trim(), category: this.category(), caseStatus: this.status(), assignment: this.assignment(),
     };
+    if (next.search === this.activeFilters.search && next.category === this.activeFilters.category
+      && next.caseStatus === this.activeFilters.caseStatus && next.assignment === this.activeFilters.assignment) return;
+    this.activeFilters = next;
     this.resetPaging();
+  }
+
+  protected searchTyped(value: string): void {
+    this.search.set(value);
+    this.filterDebounce.schedule();
+  }
+
+  protected applyNow(): void {
+    this.filterDebounce.now();
   }
 
   protected setPageSize(size: PageSize): void {
@@ -288,12 +302,15 @@ export class AgentQueuePage {
     this.load();
   }
 
+  /** Dropdown choices apply straight away. */
   protected setStatus(value: string): void {
     this.status.set(caseStatuses.find(item => item === value) ?? '');
+    this.applyFilters();
   }
 
   protected setCategory(value: string): void {
     this.category.set(categories.find(item => item === value) ?? '');
+    this.applyFilters();
   }
 
   /** Assignment is a quick filter, so choosing a value searches straight away. */

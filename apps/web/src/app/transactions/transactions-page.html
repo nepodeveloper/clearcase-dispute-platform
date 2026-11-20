@@ -16,10 +16,10 @@
   <section class="panel" aria-labelledby="recent-transactions-heading">
     <div class="panel-title">
       <h2 id="recent-transactions-heading">Recent transactions</h2>
-      <span class="muted" [attr.role]="rows().length > 0 ? 'status' : null" id="transactions-status" #transactionsStatus tabindex="-1"
+      <span class="muted" [attr.role]="state().kind === 'loaded' && rows().length > 0 ? 'status' : null" id="transactions-status" #transactionsStatus tabindex="-1"
         data-testid="transactions-status">{{ countSummary() }}</span>
     </div>
-    <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filter-bar">
+    <form [formGroup]="filters" (ngSubmit)="applyFilters(true)" (keydown.enter)="enterPressed($event)" class="filter-bar">
       <label class="cc-field search-field"><span>Search transactions</span>
         <input class="cc-control" name="search" type="search" formControlName="search" maxlength="100"
           placeholder="Merchant, description or reference">
@@ -38,15 +38,14 @@
       <cc-date-field label="To date" inputName="toDate" formControlName="toDate"
         [ariaInvalid]="dateError()?.field === 'toDate'"
         [ariaDescribedBy]="dateError()?.field === 'toDate' ? 'date-error' : null" />
-      <button class="cc-button cc-button--secondary" type="submit">Apply filters</button>
       @if (dateError(); as error) {
         <p class="cc-form-error" id="date-error" role="alert">{{ error.message }}</p>
       }
     </form>
-    <p class="muted">Dates are shown in your local time. Date filters use UTC calendar days.</p>
+    <p class="muted">Results update as you type or choose a filter. Dates are shown in your local time. Date filters use UTC calendar days.</p>
 
     @let view = state();
-    @if (view.kind === 'loading') {
+    @if (view.kind === 'loading' && rows().length === 0) {
       <p class="state-message" role="status">Loading transactions...</p>
     } @else if (view.kind === 'error') {
       <div class="state-message" role="alert">

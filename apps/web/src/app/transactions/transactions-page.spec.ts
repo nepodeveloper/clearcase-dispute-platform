@@ -226,7 +226,9 @@ describe('TransactionsPage', () => {
     size.value = '10';
     size.dispatchEvent(new Event('change'));
     fixture.detectChanges();
-    expect(element.querySelector('.page-size select')).toBeNull();
+    // Rows stay visible (dimmed) while the next page size loads.
+    expect(element.querySelector('.page-size select')).not.toBeNull();
+    expect(element.querySelector('section')!.getAttribute('aria-busy')).toBe('true');
     const resized = http.expectOne((request) => request.url === '/api/v1/transactions');
     expect(resized.request.params.get('pageSize')).toBe('10');
     expect(resized.request.params.get('pageNumber')).toBe('1');
@@ -245,12 +247,13 @@ describe('TransactionsPage', () => {
     const element = fixture.nativeElement as HTMLElement;
     const from = element.querySelector<HTMLInputElement>('[name="fromDate"]')!;
     const to = element.querySelector<HTMLInputElement>('[name="toDate"]')!;
-    const form = element.querySelector<HTMLFormElement>('form')!;
     from.value = '2026-11-10';
     from.dispatchEvent(new Event('input'));
+    http.expectOne((request) => request.url === '/api/v1/transactions')
+      .flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
+
     to.value = '2026-11-09';
     to.dispatchEvent(new Event('input'));
-    form.dispatchEvent(new Event('submit'));
     fixture.detectChanges();
 
     http.expectNone((request) => request.url === '/api/v1/transactions');
@@ -261,13 +264,12 @@ describe('TransactionsPage', () => {
 
     to.value = '2026-11-11';
     to.dispatchEvent(new Event('input'));
-    form.dispatchEvent(new Event('submit'));
     const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
     expect(request.request.params.get('toDate')).toBe('2026-11-11');
     request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
   });
 
-  it('shows filter dates as dd MMM yyyy, sends ISO dates and rejects unreadable dates', () => {
+  it('shows filter dates as dd MMM yyyy, sends ISO dates and stays quiet about half-typed dates', () => {
     const fixture = render();
     respond();
     fixture.detectChanges();
@@ -279,6 +281,9 @@ describe('TransactionsPage', () => {
 
     from.value = '31 Feb 2026';
     from.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    http.expectNone((request) => request.url === '/api/v1/transactions');
+    expect(element.textContent).not.toContain('Enter dates as dd MMM yyyy');
     form.dispatchEvent(new Event('submit'));
     fixture.detectChanges();
     http.expectNone((request) => request.url === '/api/v1/transactions');
@@ -288,6 +293,9 @@ describe('TransactionsPage', () => {
     from.value = '1 nov 2026';
     from.dispatchEvent(new Event('input'));
     from.dispatchEvent(new Event('blur'));
+    const fromRequest = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
+    expect(fromRequest.request.params.get('fromDate')).toBe('2026-11-01');
+    fromRequest.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
     const picker = element.querySelectorAll<HTMLInputElement>('cc-date-field input[type="date"]')[1];
     picker.value = '2026-11-10';
     picker.dispatchEvent(new Event('change'));
@@ -296,7 +304,6 @@ describe('TransactionsPage', () => {
     expect(to.value).toBe('10 Nov 2026');
     expect(from.getAttribute('aria-invalid')).toBeNull();
 
-    form.dispatchEvent(new Event('submit'));
     const request = http.expectOne((candidate) => candidate.url === '/api/v1/transactions');
     expect(request.request.params.get('fromDate')).toBe('2026-11-01');
     expect(request.request.params.get('toDate')).toBe('2026-11-10');
@@ -328,7 +335,7 @@ describe('TransactionsPage', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="retry"]')).toBeNull();
   });
 
-  it('sends filters and resets to page one', () => {
+  it('applies the type and dates immediately, with the trimmed search, and resets to page one', () => {
     const fixture = render();
     respond();
     fixture.detectChanges();
@@ -337,21 +344,91 @@ describe('TransactionsPage', () => {
     const from = element.querySelector<HTMLInputElement>('[name="fromDate"]')!;
     const to = element.querySelector<HTMLInputElement>('[name="toDate"]')!;
     const search = element.querySelector<HTMLInputElement>('[name="search"]')!;
+    const nextRequest = () => http.expectOne((req) => req.url === '/api/v1/transactions');
+    const empty = { items: [], pageInfo: { hasNextPage: false }, totalCount: 0 };
+
     search.value = '  Woolworths  ';
     search.dispatchEvent(new Event('input'));
+    // Choosing a type does not wait for the typing pause and carries the text typed so far.
     type.value = 'DebitOrder';
     type.dispatchEvent(new Event('change'));
+    const byType = nextRequest();
+    expect(byType.request.params.get('transactionType')).toBe('DebitOrder');
+    expect(byType.request.params.get('search')).toBe('Woolworths');
+    byType.flush(empty);
     from.value = '2026-11-01';
     from.dispatchEvent(new Event('input'));
+    nextRequest().flush(empty);
     to.value = '2026-11-10';
     to.dispatchEvent(new Event('input'));
-    element.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit'));
-    const request = http.expectOne((req) => req.url === '/api/v1/transactions');
+    const request = nextRequest();
     expect(request.request.params.get('transactionType')).toBe('DebitOrder');
     expect(request.request.params.get('fromDate')).toBe('2026-11-01');
     expect(request.request.params.get('toDate')).toBe('2026-11-10');
     expect(request.request.params.get('pageNumber')).toBe('1');
     expect(request.request.params.get('search')).toBe('Woolworths');
-    request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
+    request.flush(empty);
+  });
+
+  describe('automatic filtering', () => {
+    const typeSearch = (element: HTMLElement, text: string) => {
+      const search = element.querySelector<HTMLInputElement>('[name="search"]')!;
+      search.value = text;
+      search.dispatchEvent(new Event('input'));
+      return search;
+    };
+
+    afterEach(() => vi.useRealTimers());
+
+    it('searches once after typing pauses instead of on every keystroke', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const element = fixture.nativeElement as HTMLElement;
+      typeSearch(element, 'W');
+      vi.advanceTimersByTime(200);
+      typeSearch(element, 'Wool');
+      vi.advanceTimersByTime(200);
+      typeSearch(element, ' Woolworths ');
+      vi.advanceTimersByTime(349);
+      http.expectNone((req) => req.url === '/api/v1/transactions');
+
+      vi.advanceTimersByTime(1);
+      const request = http.expectOne((req) => req.url === '/api/v1/transactions');
+      expect(request.request.params.get('search')).toBe('Woolworths');
+      request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
+    });
+
+    it('does not refetch when typing ends on the filters already applied', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const element = fixture.nativeElement as HTMLElement;
+      typeSearch(element, 'abc');
+      typeSearch(element, '   ');
+      vi.advanceTimersByTime(1000);
+      http.expectNone((req) => req.url === '/api/v1/transactions');
+    });
+
+    it('applies on Enter without waiting and drops the pending pause', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const search = typeSearch(fixture.nativeElement as HTMLElement, 'ATM');
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      const request = http.expectOne((req) => req.url === '/api/v1/transactions');
+      expect(request.request.params.get('search')).toBe('ATM');
+      request.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 0 });
+      vi.advanceTimersByTime(1000);
+    });
+
+    it('has no Apply button because filters apply themselves', () => {
+      const fixture = render();
+      respond();
+      const element = fixture.nativeElement as HTMLElement;
+      expect(element.querySelector('form button[type="submit"]')).toBeNull();
+      expect(element.textContent).not.toContain('Apply filters');
+      expect(element.textContent).toContain('Results update as you type');
+    });
   });
 });

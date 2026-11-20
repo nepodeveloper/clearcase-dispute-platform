@@ -6,6 +6,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { DateField } from '../ui/date-field';
+import { createFilterDebouncer } from '../ui/filter-debounce';
 import { defaultPageSize, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import { Transaction, TransactionApi, TransactionPage, TransactionQuery, TransactionType } from './transaction-api';
 import { transactionStatusLabel, transactionTypeLabel } from './transaction-type-label';
@@ -67,7 +68,6 @@ export class TransactionsPage implements OnInit {
   protected readonly loadingMore = signal(false);
   protected readonly moreError = signal<MoreError | null>(null);
   protected readonly pageSize = signal<PageSize>(defaultPageSize);
-  // Keeps the summary cards steady while a new filter result is loading.
   private readonly total = signal<number | undefined>(undefined);
   protected readonly hasMore = computed(() => this.nextCursor() !== undefined);
   protected readonly totalCount = computed(() => this.total() ?? (this.state().kind === 'loaded'
@@ -77,6 +77,7 @@ export class TransactionsPage implements OnInit {
   protected readonly pageSummary = computed(() => this.state().kind !== 'loaded' && this.rows().length === 0
     ? 'Loading' : this.hasMore() ? 'More available' : 'All matching loaded');
   protected readonly countSummary = computed(() => {
+    if (this.state().kind === 'loading' && this.rows().length > 0) return 'Updating results\u2026';
     if (this.state().kind !== 'loaded') return '';
     const count = this.rows().length;
     const total = this.total();
@@ -93,18 +94,31 @@ export class TransactionsPage implements OnInit {
   private query: TransactionQuery = { pageSize: defaultPageSize, ...this.filters.getRawValue() };
   private focusAfterLoad = false;
   private request: Subscription | null = null;
+  private lastSearchText = '';
+  private readonly filterDebounce = createFilterDebouncer(this.destroyRef, () => this.applyFilters(false));
 
   ngOnInit(): void {
-    this.filters.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.dateError.set(null));
+    this.filters.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(value => {
+      this.dateError.set(null);
+      const search = value.search ?? '';
+      if (search !== this.lastSearchText) {
+        this.lastSearchText = search;
+        this.filterDebounce.schedule();
+      } else {
+        this.filterDebounce.now();
+      }
+    });
     this.destroyRef.onDestroy(() => this.request?.unsubscribe());
     this.load();
   }
 
-  protected applyFilters(): void {
+
+  protected applyFilters(explicit = true): void {
+    this.filterDebounce.cancel();
     const unreadable = (['fromDate', 'toDate'] as const).find(field => this.filters.controls[field].invalid);
     if (unreadable !== undefined) {
-      this.dateError.set({ field: unreadable, message: 'Enter dates as dd MMM yyyy, for example 01 Nov 2026.' });
+      if (explicit)
+        this.dateError.set({ field: unreadable, message: 'Enter dates as dd MMM yyyy, for example 01 Nov 2026.' });
       return;
     }
     const filters = this.filters.getRawValue();
@@ -113,9 +127,18 @@ export class TransactionsPage implements OnInit {
       return;
     }
     this.dateError.set(null);
+    const next = { ...filters, search: filters.search.trim() };
+    if (!explicit && next.search === this.query.search && next.transactionType === this.query.transactionType
+      && next.fromDate === this.query.fromDate && next.toDate === this.query.toDate) return;
     this.focusAfterLoad = false;
-    this.query = { ...this.query, ...filters, search: filters.search.trim() };
+    this.query = { ...this.query, ...next };
     this.load();
+  }
+
+  protected enterPressed(event: Event): void {
+    if (!(event.target instanceof HTMLInputElement)) return;
+    event.preventDefault();
+    this.applyFilters(true);
   }
 
   protected changePageSize(pageSize: PageSize): void {
@@ -125,7 +148,6 @@ export class TransactionsPage implements OnInit {
     this.load();
   }
 
-  /** Loads the first page for the applied filters, replacing every row and cancelling any request in flight. */
   protected load(): void {
     this.request?.unsubscribe();
     this.loadingMore.set(false);
@@ -144,7 +166,6 @@ export class TransactionsPage implements OnInit {
     });
   }
 
-  /** Appends the next page using the server cursor, keeping the applied filters and the rows already shown. */
   protected loadMore(): void {
     const cursor = this.nextCursor();
     if (cursor === undefined || this.loadingMore()) return;
@@ -156,7 +177,6 @@ export class TransactionsPage implements OnInit {
       next: (page) => {
         this.accept(page, true);
         this.loadingMore.set(false);
-        // The button disappears with the last page, so keep keyboard focus on the announced summary.
         if (hadFocus && !this.hasMore())
           afterNextRender(() => this.status()?.nativeElement.focus(), { injector: this.injector });
       },

@@ -3,6 +3,7 @@ import { Component, computed, DestroyRef, ElementRef, inject, signal, viewChild 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
+import { createFilterDebouncer } from '../ui/filter-debounce';
 import { defaultPageSize, PageHeading, PageSize, PageSizeSelect, StatCard, StatusBadge } from '../ui/ui-components';
 import { EscalationStatus, SupervisorEscalationPage, SupervisorEscalationsApi } from './supervisor-escalations-api';
 
@@ -21,19 +22,20 @@ const escalationStatuses: readonly EscalationStatus[] = ['Open', 'Acknowledged',
       <cc-stat label="Acknowledged" [value]="acknowledged()" hint="On current page" />
       <cc-stat label="Resolved" [value]="resolved()" hint="On current page; no money moved" />
     </div>
-    <section class="panel" aria-labelledby="supervisor-queue-heading">
+    <section class="panel" aria-labelledby="supervisor-queue-heading" [attr.aria-busy]="loading()">
       <div class="panel-title"><h2 id="supervisor-queue-heading" tabindex="-1" #listHeading>Needs your attention</h2>
         <span class="muted">Persisted escalations</span></div>
       <div class="filter-bar operations-filters">
         <label class="cc-field search-field"><span>Search escalations</span>
           <input class="cc-control" #query type="search" placeholder="Search by reference or customer"
-            [value]="search()" (input)="setSearch(query.value)"></label>
+            [value]="search()" (input)="setSearch(query.value)" (keydown.enter)="applyNow()"></label>
         <label class="cc-field"><span>Escalation status</span>
           <select class="cc-control" #state [value]="status()" (change)="setStatus(state.value)">
             <option value="">All statuses</option>
             <option>Open</option><option>Acknowledged</option><option>Resolved</option>
           </select></label>
       </div>
+      <p class="muted filter-hint">Results update as you type or choose a filter.</p>
       @if (error()) {
         <div class="cc-form-error" role="alert"><p>{{ error() }}</p>
           <button class="cc-button cc-button--secondary" type="button" (click)="load()">Retry</button>
@@ -74,6 +76,8 @@ export class SupervisorQueuePage {
   private readonly heading = viewChild<ElementRef<HTMLElement>>('listHeading');
   private readonly cursors: (string | null)[] = [null];
   private requestId = 0;
+  private applied: { search: string; status: EscalationStatus | '' } = { search: '', status: '' };
+  private readonly filterDebounce = createFilterDebouncer(this.destroyRef, () => this.applyFilters());
   protected readonly search = signal('');
   protected readonly status = signal<EscalationStatus | ''>('');
   protected readonly pageSize = signal<PageSize>(defaultPageSize);
@@ -91,13 +95,26 @@ export class SupervisorQueuePage {
     this.load();
   }
 
+  /** Text search applies after a typing pause. */
   protected setSearch(value: string): void {
     this.search.set(value);
-    this.resetPaging();
+    this.filterDebounce.schedule();
+  }
+
+  protected applyNow(): void {
+    this.filterDebounce.now();
   }
 
   protected setStatus(value: string): void {
     this.status.set(escalationStatuses.find(status => status === value) ?? '');
+    this.applyFilters();
+  }
+
+  private applyFilters(): void {
+    this.filterDebounce.cancel();
+    const next = { search: this.search().trim(), status: this.status() };
+    if (next.search === this.applied.search && next.status === this.applied.status) return;
+    this.applied = next;
     this.resetPaging();
   }
 
@@ -110,7 +127,7 @@ export class SupervisorQueuePage {
     const requestId = ++this.requestId;
     this.loading.set(true);
     this.error.set('');
-    this.api.list(this.search(), this.status(), this.cursors[this.pageNumber() - 1] ?? null, this.pageSize())
+    this.api.list(this.applied.search, this.applied.status, this.cursors[this.pageNumber() - 1] ?? null, this.pageSize())
       .pipe(takeUntilDestroyed(this.destroyRef), finalize(() => {
         if (requestId === this.requestId) this.loading.set(false);
       }))

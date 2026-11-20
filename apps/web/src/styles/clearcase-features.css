@@ -50,3 +50,6 @@ kbd { padding: 1px 7px; border: 1px solid var(--cc-border-strong); border-bottom
   .header-tools { gap: var(--cc-space-2); }
   .theme-toggle button { padding: 0 8px; }
 }
+
+/* Filters apply automatically, so previous results stay visible (dimmed) while the next ones load. */
+[aria-busy='true'] .cc-table-scroll { opacity: .6; transition: opacity .15s ease; }

@@ -50,9 +50,12 @@ test('customer completes the persisted journey for all categories, with filterin
   const fromDate = new Date(currentSeedDate - 10 * 86_400_000).toISOString().slice(0, 10);
   const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
   await page.getByLabel('From date', { exact: true }).fill(fromDate);
+  const filteredResponse = page.waitForResponse(response => {
+    const params = new URL(response.url()).searchParams;
+    return params.get('transactionType') === 'BankCharge' && params.get('fromDate') === fromDate
+      && params.get('toDate') === toDate;
+  });
   await page.getByLabel('To date', { exact: true }).fill(toDate);
-  const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
   expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe(fromDate);
 
@@ -66,9 +69,9 @@ test('customer completes the persisted journey for all categories, with filterin
     && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
-  await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
+  // Typing pauses for the debounce, then the search applies without any button.
   const searchedResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('search') === 'ATM WITHDRAWAL');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
   const searched: TransactionPage = await (await searchedResponse).json();
   expect(searched.totalCount).toBe(1);
   expect(searched.items[0].id).toBe(transactionId(6));
@@ -78,7 +81,6 @@ test('customer completes the persisted journey for all categories, with filterin
 
   await page.getByLabel('From date', { exact: true }).fill('2200-01-01');
   await page.getByLabel('To date', { exact: true }).fill('2200-01-02');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('status')).toContainText('No transactions found');
 
   const indexes = info.project.name === 'customer-mobile' ? [7, 5, 9] : [1, 2, 6];

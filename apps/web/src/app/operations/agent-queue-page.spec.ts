@@ -79,21 +79,16 @@ describe('Agent queue', () => {
     expect(fixture.nativeElement.textContent).toContain('CUS-7B2A31D940E2');
   });
 
-  it('applies search and filters and continues with the opaque server cursor', () => {
+  it('applies dropdown choices immediately and continues with the opaque server cursor', () => {
     const fixture = render();
     respond({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'opaque-cursor' } });
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
-    search.value = ' DSP-AGENT ';
-    search.dispatchEvent(new Event('input'));
     const category = root.querySelectorAll<HTMLSelectElement>('.operations-filters select')[1];
     category.value = 'CardPurchase';
     category.dispatchEvent(new Event('change'));
-    root.querySelector<HTMLButtonElement>('.operations-filters button')!.click();
 
     const filtered = http.expectOne(request => request.url === '/api/v1/agent/disputes');
-    expect(filtered.request.params.get('search')).toBe('DSP-AGENT');
     expect(filtered.request.params.get('category')).toBe('CardPurchase');
     expect(filtered.request.params.has('cursor')).toBe(false);
     filtered.flush({ items: [item], pageInfo: { hasNextPage: true, nextCursor: 'opaque-cursor' } });
@@ -105,6 +100,64 @@ describe('Agent queue', () => {
     next.flush({ items: [], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No matching cases');
+  });
+
+  describe('automatic filtering', () => {
+    function type(root: HTMLElement, text: string) {
+      const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
+      search.value = text;
+      search.dispatchEvent(new Event('input'));
+      return search;
+    }
+
+    it('searches once after typing pauses and sends the trimmed text', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const root = fixture.nativeElement as HTMLElement;
+      type(root, 'D');
+      vi.advanceTimersByTime(200);
+      type(root, 'DSP');
+      vi.advanceTimersByTime(200);
+      type(root, ' DSP-AGENT ');
+      vi.advanceTimersByTime(349);
+      http.expectNone(request => request.url === '/api/v1/agent/disputes');
+
+      vi.advanceTimersByTime(1);
+      const filtered = http.expectOne(request => request.url === '/api/v1/agent/disputes');
+      expect(filtered.request.params.get('search')).toBe('DSP-AGENT');
+      filtered.flush({ items: [], pageInfo: { hasNextPage: false } });
+    });
+
+    it('does not refetch when typing ends on the filters already applied', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const root = fixture.nativeElement as HTMLElement;
+      type(root, 'abc');
+      type(root, '  ');
+      vi.advanceTimersByTime(1000);
+      http.expectNone(request => request.url === '/api/v1/agent/disputes');
+    });
+
+    it('applies the typed search straight away on Enter and drops the pending pause', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const fixture = render();
+      respond();
+      const search = type(fixture.nativeElement as HTMLElement, 'DSP-ENTER');
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      const filtered = http.expectOne(request => request.url === '/api/v1/agent/disputes');
+      expect(filtered.request.params.get('search')).toBe('DSP-ENTER');
+      filtered.flush({ items: [], pageInfo: { hasNextPage: false } });
+      vi.advanceTimersByTime(1000);
+    });
+
+    it('has no Search button because filters apply themselves', () => {
+      const fixture = render();
+      respond();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.operations-filters button')).toBeNull();
+      expect(fixture.nativeElement.textContent).toContain('Results update as you type');
+    });
   });
 
   it('restarts at page one with the chosen page size', () => {

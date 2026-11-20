@@ -67,8 +67,11 @@ test('Agent escalation is independently reviewed and private notes remain custom
     new URL(response.url()).pathname === '/api/v1/agent/disputes');
   await page.goto('/agent/disputes');
   await queueResponse;
+  const searchedQueue = page.waitForResponse(response =>
+    new URL(response.url()).pathname === '/api/v1/agent/disputes'
+    && new URL(response.url()).searchParams.get('search') === dispute.reference);
   await page.getByRole('searchbox', { name: 'Search cases' }).fill(dispute.reference);
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await searchedQueue;
   await expect(page.getByRole('link', { name: dispute.reference, exact: true })).toBeVisible();
   await capture(page, info, `${info.project.name}-agent-queue`);
 
