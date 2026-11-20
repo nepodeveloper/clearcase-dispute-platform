@@ -127,6 +127,7 @@ Frontend, from `apps/web`:
 
 ```powershell
 npm ci
+npm run lint                             # ESLint (warnings fail the build)
 npm run test:ci                          # unit tests
 npm run build
 npx playwright install chromium          # first time only
@@ -164,7 +165,7 @@ $env:Messaging__Kafka__BootstrapServers = 'localhost:9092'
 
 - [ci.yml](.github/workflows/ci.yml) runs on pull requests and pushes to `main`. It covers
   repository policy, the backend build (locked NuGet restore), tests, migration checks and coverage gates,
-  dependency audits, the frontend tests and build, the Playwright browser tests, Helm lint and schema validation,
+  dependency audits, frontend lint, the frontend tests and build, the Playwright browser tests, Helm lint and schema validation,
   container image builds and a Kubernetes smoke test on kind with mock data.
 - [security.yml](.github/workflows/security.yml) runs CodeQL and dependency review;
   [package-images.yml](.github/workflows/package-images.yml) is a manual workflow that pushes attested images to GHCR.

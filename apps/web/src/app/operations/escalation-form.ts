@@ -20,6 +20,7 @@ export const ESCALATION_REASONS = [
     <p class="muted">{{ reference() }} &middot; Referred for specialist assessment</p>
     <form class="form-stack" [formGroup]="form" (ngSubmit)="submit()" novalidate>
       <div class="cc-field"><label for="escalation-reason">Escalation reason <span class="required">*</span></label>
+        <!-- eslint-disable-next-line @angular-eslint/template/no-autofocus -- focuses the first field when the modal opens -->
         <select class="cc-control" id="escalation-reason" formControlName="reason" required autofocus>
           @for (reason of reasons; track reason) { <option [value]="reason">{{ reason }}</option> }
         </select>

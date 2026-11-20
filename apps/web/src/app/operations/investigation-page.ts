@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { afterNextRender, Component, computed, effect, ElementRef, inject, Injector, input, signal, viewChild } from '@angular/core';
+import { afterNextRender, Component, effect, ElementRef, inject, Injector, input, signal, viewChild } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -119,6 +119,7 @@ import { StaffEvidence } from './staff-evidence';
           </aside>
         </div>
       </div>
+      <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -- keydown only traps Tab inside the modal -->
       <dialog #escalationDialog class="cc-dialog" aria-labelledby="escalation-heading"
         (keydown)="dialogKeydown($event)" (close)="dialogClosed()">
         @if (dialogOpen()) {
@@ -259,7 +260,6 @@ export class InvestigationPage {
     await this.changeAssignment(() => this.api.release(this.id()), 'You released this case.', 'release');
   }
 
-  // Assignment is informational: it never changes the case or blocks any command.
   private async changeAssignment(request: () => ReturnType<AgentDisputesApi['claim']>, success: string, verb: string): Promise<void> {
     if (this.assignmentBusy()) return;
     this.assignmentBusy.set(true);

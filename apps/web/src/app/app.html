@@ -1,6 +1,7 @@
 <a class="skip-link" href="#main-content">Skip to main content</a>
 <div class="app-frame" [class.signed-out]="auth.user() === null">
   @if (auth.user()) {
+    <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -- keydown only traps Tab for focus inside the open drawer -->
     <aside #sidebar class="sidebar" [class.is-open]="menuOpen()" [attr.role]="menuOpen() ? 'dialog' : null"
       [attr.aria-modal]="menuOpen() ? 'true' : null" aria-label="Workspace navigation" (keydown)="menuKeydown($event)">
       @if (menuOpen()) {

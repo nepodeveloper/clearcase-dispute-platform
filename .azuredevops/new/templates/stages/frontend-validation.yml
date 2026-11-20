@@ -5,7 +5,7 @@ parameters:
   type: string
 stages:
 - stage: Frontend
-  displayName: Angular dependency scan, tests, build and E2E
+  displayName: Angular dependency scan, lint, tests, build and E2E
   dependsOn: Governance
   jobs:
   - job: BuildTest
@@ -26,6 +26,7 @@ stages:
         npm install --global npm@${{ parameters.npmVersion }}
         npm ci
         npm audit --omit=dev --audit-level=high
+        npm run lint
         npm run test:ci
         npm run build
         npx playwright install --with-deps chromium

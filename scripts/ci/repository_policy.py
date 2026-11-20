@@ -35,7 +35,7 @@ def validate(root: Path = ROOT) -> list[str]:
     if (root / ".github/workflows/ci.yml").is_file():
         workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         for requirement in ("NuGetAuditLevel=high", "npm audit --omit=dev --audit-level=high",
-                            "test:e2e", "Migration", "coverage.cobertura.xml"):
+                            "npm run lint", "test:e2e", "Migration", "coverage.cobertura.xml"):
             if requirement not in workflow:
                 errors.append(f"Missing mandatory GitHub CI evidence gate: {requirement}")
     return errors

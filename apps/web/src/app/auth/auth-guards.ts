@@ -15,6 +15,7 @@ export function loginDestination(user: AuthUser, returnUrl: string | null): stri
   const allowed = (customerPath && user.roles.includes('Customer'))
     || (/^\/agent\/disputes(?:\/[0-9a-f-]{36})?$/i.test(path) && user.roles.includes('Agent'))
     || (path === '/supervisor/escalations' && user.roles.includes('Supervisor'));
+  // eslint-disable-next-line no-control-regex -- control characters are exactly what a redirect target must not contain
   return allowed && returnUrl !== null && !/[\\\u0000-\u001f]/.test(returnUrl) ? returnUrl : homeUrl(user);
 }
 

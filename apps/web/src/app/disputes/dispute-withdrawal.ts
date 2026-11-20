@@ -8,7 +8,6 @@ export const withdrawalReasonMaxLength = 500;
 
 type Outcome = { kind: 'success' | 'error'; text: string };
 
-/** Withdraw action and confirmation dialog. Whether a withdrawal is allowed is decided by the server (canWithdraw). */
 @Component({
   selector: 'cc-dispute-withdrawal',
   imports: [ReactiveFormsModule],
@@ -27,6 +26,7 @@ type Outcome = { kind: 'success' | 'error'; text: string };
         <p class="cc-form-error" role="alert" data-testid="withdraw-outcome">{{ result.text }}</p>
       }
     }
+    <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -- keydown only traps Tab inside the modal -->
     <dialog #withdrawDialog class="cc-dialog" aria-labelledby="withdraw-heading"
       (keydown)="dialogKeydown($event)" (close)="dialogClosed()">
       @if (dialogOpen()) {
