@@ -26,7 +26,9 @@ public sealed class OutboxRecoveryEndpointsTests : IClassFixture<SqliteWebApplic
     [Fact]
     public async Task OnlySupervisorCanInspectOrRequeueParkedEventsAndAllRecoveryIsAudited()
     {
-        await using (var scope = _factory.Services.CreateAsyncScope())
+        // Testing hosts run no hosted workers; the base (Development) host would race the test by republishing the requeued event.
+        using var testingHost = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
+        await using (var scope = testingHost.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
             var occurredAt = new DateTimeOffset(2026, 11, 12, 9, 0, 0, TimeSpan.Zero);
@@ -88,7 +90,7 @@ public sealed class OutboxRecoveryEndpointsTests : IClassFixture<SqliteWebApplic
         });
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
 
-        await using var verificationScope = _factory.Services.CreateAsyncScope();
+        await using var verificationScope = testingHost.Services.CreateAsyncScope();
         var database = verificationScope.ServiceProvider.GetRequiredService<TransactionDbContext>();
         var item = await database.OutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(eventId, item.EventId);

@@ -26,7 +26,10 @@ describe('Supervisor queue', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    vi.useRealTimers();
+    http.verify();
+  });
 
   function render() {
     const fixture = TestBed.createComponent(SupervisorQueuePage);
@@ -35,6 +38,7 @@ describe('Supervisor queue', () => {
   }
 
   it('loads persisted escalations and uses status, search, and opaque cursor filters', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const fixture = render();
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector<HTMLSelectElement>('select')!.value).toBe('');
@@ -49,6 +53,8 @@ describe('Supervisor queue', () => {
     const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
     search.value = ' DSP-SUPERVISOR ';
     search.dispatchEvent(new Event('input'));
+    http.expectNone(request => request.url === '/api/v1/supervisor/escalations');
+    vi.advanceTimersByTime(350);
     const filtered = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
     expect(filtered.request.params.get('search')).toBe('DSP-SUPERVISOR');
     expect(filtered.request.params.has('status')).toBe(false);
@@ -81,5 +87,35 @@ describe('Supervisor queue', () => {
     resized.flush({ items: [item], pageInfo: { hasNextPage: false } });
     fixture.detectChanges();
     expect(root.textContent).toContain('Page 1');
+  });
+
+  it('collapses rapid typing into one search, skips unchanged filters and applies Enter immediately', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const fixture = render();
+    const root = fixture.nativeElement as HTMLElement;
+    http.expectOne(request => request.url === '/api/v1/supervisor/escalations')
+      .flush({ items: [], pageInfo: { hasNextPage: false } });
+    const search = root.querySelector<HTMLInputElement>('input[type="search"]')!;
+    const type = (text: string) => { search.value = text; search.dispatchEvent(new Event('input')); };
+
+    type('E'); vi.advanceTimersByTime(200);
+    type('ESC'); vi.advanceTimersByTime(200);
+    type('ESC-1'); vi.advanceTimersByTime(349);
+    http.expectNone(request => request.url === '/api/v1/supervisor/escalations');
+    vi.advanceTimersByTime(1);
+    const typed = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
+    expect(typed.request.params.get('search')).toBe('ESC-1');
+    typed.flush({ items: [], pageInfo: { hasNextPage: false } });
+
+    type('ESC-1  ');
+    vi.advanceTimersByTime(1000);
+    http.expectNone(request => request.url === '/api/v1/supervisor/escalations');
+
+    type('ESC-2');
+    search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const entered = http.expectOne(request => request.url === '/api/v1/supervisor/escalations');
+    expect(entered.request.params.get('search')).toBe('ESC-2');
+    entered.flush({ items: [], pageInfo: { hasNextPage: false } });
+    vi.advanceTimersByTime(1000);
   });
 });

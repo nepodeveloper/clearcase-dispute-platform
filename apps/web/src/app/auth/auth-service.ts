@@ -9,8 +9,12 @@ export interface AuthUser {
   actorType: 'customer' | 'bankEmployee';
   roles: AuthRole[];
   customerId?: string | null;
+  /** Present for bank employees when the identity endpoint supplies it; used only to label "assigned to me". */
+  employeeId?: string | null;
 }
 export interface AuthSession extends AuthUser { csrfToken: string }
+
+export const sessionEndedMessage = 'Your session has ended. Please sign in again.';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -89,7 +93,7 @@ export class AuthService {
   expire(): void {
     this.identity.set(null);
     this.csrf.clear();
-    this.failure.set('Your session has ended. Please sign in again.');
+    this.failure.set(sessionEndedMessage);
   }
 
   private accept({ csrfToken, ...user }: AuthSession): void {

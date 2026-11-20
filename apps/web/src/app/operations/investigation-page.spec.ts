@@ -22,6 +22,9 @@ describe('Agent investigation', () => {
     financialStatus: 'NotInitiated',
     createdAt: '2026-11-12T10:00:00Z',
     version: 1,
+    slaDueAt: '2026-11-17T10:00:00Z',
+    slaStatus: 'OnTrack',
+    financialOperations: [],
     transaction: {
       description: 'Synthetic debit order',
       amountMinorUnits: '10005',
@@ -56,7 +59,12 @@ describe('Agent investigation', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    // The evidence panel loads on its own; tests that do not care about it leave an empty list.
+    http.match(request => request.url.endsWith('/evidence'))
+      .forEach(request => { if (!request.cancelled) request.flush({ items: [] }); });
+    http.verify();
+  });
 
   function renderDetails() {
     const fixture = TestBed.createComponent(InvestigationPage);
@@ -94,6 +102,90 @@ describe('Agent investigation', () => {
     expect(root.textContent).toContain('Escalate case');
     expect(Array.from(root.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Start review')).toBe(true);
     expect(root.querySelector('#escalation-note')).toBeNull();
+  });
+
+  it('shows SLA, assignment with an informational notice, and lets the agent claim and release', async () => {
+    const fixture = renderDetails();
+    respondDetails({
+      ...details, slaStatus: 'Breached', slaDueAt: '2026-11-17T10:00:00Z',
+      assignedTo: { employeeId: 'emp-2', displayName: 'Sipho Colleague' },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const panel = root.querySelector('[aria-labelledby="assignment-heading"]')!;
+    expect(panel.textContent).toContain('Breached');
+    expect(panel.textContent).toContain('17 Nov 2026, 10:00 UTC');
+    expect(root.querySelector('[data-testid="assignee"]')?.textContent).toContain('Sipho Colleague');
+    expect(root.querySelector('[data-testid="assignment-notice"]')?.textContent)
+      .toContain('you can still act on this case');
+    expect(Array.from(root.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Start review')).toBe(true);
+
+    root.querySelector<HTMLButtonElement>('[data-testid="release"]')!.click();
+    const release = http.expectOne(`/api/v1/agent/disputes/${caseId}/assignment`);
+    expect(release.request.method).toBe('DELETE');
+    release.flush({ ...details, slaStatus: 'Breached' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-testid="assignee"]')?.textContent).toContain('Unassigned');
+    expect(root.querySelector('[data-testid="assignment-notice"]')).toBeNull();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="claim"]')!.click();
+    const claim = http.expectOne(`/api/v1/agent/disputes/${caseId}/assignment`);
+    expect(claim.request.method).toBe('POST');
+    claim.flush({ code: 'dispute.alreadyAssigned' }, { status: 409, statusText: 'Conflict' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-testid="assignment-status"]')?.textContent)
+      .toContain('Could not claim this case: already assigned to another employee.');
+    expect(root.querySelector('[data-testid="claim"]')).not.toBeNull();
+  });
+
+  it('renders financial operation status read-only and warns not to retry an unknown outcome', async () => {
+    const fixture = renderDetails();
+    respondDetails({
+      ...details,
+      financialOperations: [
+        { kind: 'Reversal', operationReference: 'OP-1', status: 'Succeeded', updatedAt: '2026-11-12T11:00:00Z' },
+        { kind: 'Settlement', operationReference: 'OP-2', status: 'Unknown', updatedAt: '2026-11-12T12:00:00Z' },
+        { kind: 'Adjustment', operationReference: 'OP-3', status: 'InFlight', updatedAt: '2026-11-12T12:30:00Z' },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="operation"]'));
+    expect(rows.map(row => row.querySelector('.cc-status')?.textContent?.trim())).toEqual(['Succeeded', 'Unknown', 'In flight']);
+    expect(rows[1].textContent).toContain('OP-2');
+    expect(rows[1].querySelector('[data-testid="operation-unknown"]')?.textContent)
+      .toContain('Do not retry - use Reconcile if offered');
+    expect(rows[0].querySelector('[data-testid="operation-unknown"]')).toBeNull();
+    expect(rows[0].querySelector('button')).toBeNull();
+  });
+
+  it('lists customer evidence for staff with authenticated download links and a retry', async () => {
+    const fixture = renderDetails();
+    respondDetails();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    http.expectOne(`/api/v1/agent/disputes/${caseId}/evidence`).flush({}, { status: 500, statusText: 'Error' });
+    fixture.detectChanges();
+    expect(root.querySelector('[aria-labelledby="staff-evidence-heading"] [role="alert"]')?.textContent)
+      .toContain('Unable to load customer evidence');
+
+    root.querySelector<HTMLButtonElement>('[data-testid="evidence-retry"]')!.click();
+    http.expectOne(`/api/v1/agent/disputes/${caseId}/evidence`).flush({ items: [{
+      id: 'ev-1', fileName: 'receipt.pdf', contentType: 'application/pdf', sizeBytes: 2048,
+      uploadedAt: '2026-11-12T11:00:00Z', note: 'Receipt from the shop',
+    }] });
+    fixture.detectChanges();
+    const link = root.querySelector<HTMLAnchorElement>('[data-testid="evidence-download"]')!;
+    expect(link.getAttribute('href')).toBe(`/api/v1/agent/disputes/${caseId}/evidence/ev-1/content`);
+    expect(link.hasAttribute('download')).toBe(true);
+    expect(root.textContent).toContain('receipt.pdf');
+    expect(root.textContent).toContain('2.0 KB');
+    expect(root.textContent).toContain('Receipt from the shop');
+    expect(root.querySelector('[aria-labelledby="staff-evidence-heading"] input[type="file"]')).toBeNull();
   });
 
   it('reuses an idempotency key when retrying the same private note', async () => {

@@ -1,6 +1,12 @@
 using System.Globalization;
 using ClearCase.Application.Disputes;
 using ClearCase.Application.Chargebacks;
+using ClearCase.Application.AgentDisputes;
+using ClearCase.Application.Evidence;
+using ClearCase.Application.Notifications;
+using ClearCase.Infrastructure.Assignments;
+using ClearCase.Infrastructure.Evidence;
+using ClearCase.Infrastructure.Notifications;
 using ClearCase.Application.Transactions;
 using ClearCase.Infrastructure.Disputes;
 using ClearCase.Infrastructure.Chargebacks;
@@ -37,6 +43,10 @@ public static class SqlitePersistence
         services.AddScoped<IDebitOrderProcessingStore, SqliteDisputeStore>();
         services.AddScoped<IChargebackProcessingStore, SqliteChargebackProcessingStore>();
         services.AddScoped<IBankChargeProcessingStore, SqliteBankChargeProcessingStore>();
+        services.AddScoped<IDisputeWithdrawalStore, SqliteDisputeWithdrawalStore>();
+        services.AddScoped<IDisputeAssignmentStore, SqliteDisputeAssignmentStore>();
+        services.AddScoped<ICustomerEvidenceStore, SqliteCustomerEvidenceStore>();
+        services.AddScoped<ICustomerNotificationStore, SqliteCustomerNotificationStore>();
         return services;
     }
 

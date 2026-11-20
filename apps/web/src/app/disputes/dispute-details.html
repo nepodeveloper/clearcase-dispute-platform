@@ -1,5 +1,6 @@
 @let current = dispute();
 <div class="split-grid unequal">
+  <div class="stack">
   <section class="panel" aria-labelledby="case-timeline-heading">
     <div class="panel-title"><div>
       <h2 id="case-timeline-heading">Case timeline</h2>
@@ -13,9 +14,18 @@
     <div class="soft-box">
       <h3>What happens next?</h3>
       <p>{{ nextStep() }}</p>
-      @if (!finished()) { <p>No completion date has been confirmed.</p> }
+      @if (!finished()) {
+        @if (current.expectedResolutionBy; as expected) {
+          <p data-testid="expected-resolution">Expected resolution by
+            <time [attr.datetime]="expected"><strong>{{ expected | date:'mediumDate' }}</strong></time>.</p>
+        } @else {
+          <p>No completion date has been confirmed.</p>
+        }
+      }
     </div>
   </section>
+  <ng-content select="[slot=primary]" />
+  </div>
 
   <div class="stack">
     <aside class="panel" aria-label="Case summary">
@@ -54,5 +64,6 @@
       <p>An investigation decision and a financial adjustment are separate steps. An approved decision does not
         mean funds have been returned, and no real money moves in this assessment environment.</p>
     </aside>
+    <ng-content select="[slot=secondary]" />
   </div>
 </div>

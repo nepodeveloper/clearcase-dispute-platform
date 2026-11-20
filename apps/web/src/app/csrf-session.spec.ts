@@ -83,6 +83,24 @@ describe('CSRF session interceptor', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it('does not redirect when a 401 answers a request sent without a session token', () => {
+    csrf.clear();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    client.get('/api/v1/notifications').subscribe({ error: () => undefined });
+    http.expectOne('/api/v1/notifications').flush({}, { status: 401, statusText: 'Unauthorized' });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect while sign-out is in progress', () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    void TestBed.inject(AuthService).logout();
+    const logout = http.expectOne('/api/v1/auth/logout');
+    client.get('/api/v1/transactions').subscribe({ error: () => undefined });
+    http.expectOne('/api/v1/transactions').flush({}, { status: 401, statusText: 'Unauthorized' });
+    expect(navigate).not.toHaveBeenCalled();
+    logout.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
   it('does not clear the session when an external service returns 401', () => {
     client.get('https://external.invalid/api/v1/auth/me').subscribe({ error: () => undefined });
     http.expectOne('https://external.invalid/api/v1/auth/me').flush({}, { status: 401, statusText: 'Unauthorized' });

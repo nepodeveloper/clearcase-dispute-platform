@@ -39,11 +39,10 @@ test('customer completes the persisted journey for all categories, with filterin
   await expect(pending.getByRole('link', { name: /^View details for/ })).toBeVisible();
   await expect(pending.getByRole('link', { name: /^View and dispute/ })).toHaveCount(0);
   await capture(page, info, 'transactions');
-  const secondPage = page.waitForResponse(response => new URL(response.url()).searchParams.get('pageNumber') === '2');
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  const secondPage = page.waitForResponse(response => new URL(response.url()).searchParams.has('cursor'));
+  await page.getByRole('button', { name: 'Load more', exact: true }).click();
   const second: TransactionPage = await (await secondPage).json();
-  await expect(page.locator('tbody tr')).toHaveCount(second.items.length);
-  await expect(page.locator('main h1')).toBeFocused();
+  await expect(page.locator('tbody tr')).toHaveCount(first.items.length + second.items.length);
   expect(second.items.every(item => !first.items.some(previous => previous.id === item.id))).toBe(true);
 
   await page.getByRole('combobox', { name: 'Transaction type', exact: true }).selectOption('BankCharge');
@@ -51,9 +50,12 @@ test('customer completes the persisted journey for all categories, with filterin
   const fromDate = new Date(currentSeedDate - 10 * 86_400_000).toISOString().slice(0, 10);
   const toDate = new Date(currentSeedDate + 86_400_000).toISOString().slice(0, 10);
   await page.getByLabel('From date', { exact: true }).fill(fromDate);
+  const filteredResponse = page.waitForResponse(response => {
+    const params = new URL(response.url()).searchParams;
+    return params.get('transactionType') === 'BankCharge' && params.get('fromDate') === fromDate
+      && params.get('toDate') === toDate;
+  });
   await page.getByLabel('To date', { exact: true }).fill(toDate);
-  const filteredResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('transactionType') === 'BankCharge');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
   const filtered: TransactionPage = await (await filteredResponse).json();
   expect(new URL((await filteredResponse).url()).searchParams.get('fromDate')).toBe(fromDate);
 
@@ -67,9 +69,9 @@ test('customer completes the persisted journey for all categories, with filterin
     && item.transactionDate.slice(0, 10) >= fromDate && item.transactionDate.slice(0, 10) <= toDate)).toBe(true);
   await expect(page.locator('tbody tr')).toHaveCount(filtered.items.length);
 
-  await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
+  // Typing pauses for the debounce, then the search applies without any button.
   const searchedResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('search') === 'ATM WITHDRAWAL');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await page.getByLabel('Search transactions', { exact: true }).fill('  ATM WITHDRAWAL  ');
   const searched: TransactionPage = await (await searchedResponse).json();
   expect(searched.totalCount).toBe(1);
   expect(searched.items[0].id).toBe(transactionId(6));
@@ -79,7 +81,6 @@ test('customer completes the persisted journey for all categories, with filterin
 
   await page.getByLabel('From date', { exact: true }).fill('2200-01-01');
   await page.getByLabel('To date', { exact: true }).fill('2200-01-02');
-  await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('status')).toContainText('No transactions found');
 
   const indexes = info.project.name === 'customer-mobile' ? [7, 5, 9] : [1, 2, 6];
@@ -126,7 +127,7 @@ test('customer completes the persisted journey for all categories, with filterin
     await expect(summary).toContainText('Review decision: Awaiting a decision');
     await expect(summary).toContainText('Money update: Not started');
     await expect(page.getByRole('heading', { name: 'What happens next?' })).toBeVisible();
-    await expect(page.getByText('No completion date has been confirmed.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Expected resolution by', { exact: false })).toBeVisible();
     await expect(page.getByText('Times shown in your local time (Africa/Johannesburg).', { exact: true })).toBeVisible();
     const firstEvent = [...dispute.timeline].sort((left, right) => left.sequenceNumber - right.sequenceNumber)[0];
     const time = page.getByRole('list', { name: 'Dispute timeline' }).locator('time').first();

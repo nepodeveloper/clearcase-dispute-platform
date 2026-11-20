@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using ClearCase.Application.AgentDisputes;
+using ClearCase.Infrastructure.Disputes;
 using ClearCase.Domain.DisputeEligibility;
 using ClearCase.Domain.Disputes;
 using ClearCase.Domain.Transactions;
@@ -9,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClearCase.Infrastructure.AgentDisputes;
 
-public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAgentDisputeReader
+public sealed class SqliteAgentDisputeReader(TransactionDbContext context, TimeProvider clock) : IAgentDisputeReader
 {
     public Task<AgentDisputeProcessingTarget?> ReadProcessingTargetAsync(
         Guid disputeId, CancellationToken cancellationToken) =>
@@ -40,6 +41,15 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
             matches = matches.Where(item => item.Dispute.Category == category);
         if (query.CaseStatus is { } caseStatus)
             matches = matches.Where(item => item.Dispute.CaseStatus == caseStatus);
+        if (query.Assignment == AgentAssignmentFilter.Unassigned)
+            matches = matches.Where(item => !context.DisputeAssignments
+                .Any(assignment => assignment.DisputeId == item.Dispute.Id));
+        else if (query.Assignment == AgentAssignmentFilter.Mine)
+        {
+            var employeeId = query.EmployeeId ?? Guid.Empty;
+            matches = matches.Where(item => context.DisputeAssignments
+                .Any(assignment => assignment.DisputeId == item.Dispute.Id && assignment.EmployeeId == employeeId));
+        }
         if (query.After is { } cursor)
         {
             matches = matches.Where(item => item.Dispute.CreatedAt < cursor.CreatedAt
@@ -67,19 +77,35 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
                     .Where(entry => entry.DisputeId == item.Dispute.Id)
                     .Select(entry => (DateTimeOffset?)entry.OccurredAt)
                     .Max() ?? item.Dispute.CreatedAt,
-                item.Dispute.Version))
+                item.Dispute.Version,
+                context.DisputeAssignments
+                    .Where(assignment => assignment.DisputeId == item.Dispute.Id)
+                    .Select(assignment => (Guid?)assignment.EmployeeId).FirstOrDefault()))
             .Take(query.PageSize + 1)
             .ToArrayAsync(cancellationToken);
 
+        var assignees = await ReadAssigneesAsync(
+            rows.Select(row => row.AssignedEmployeeId).OfType<Guid>().Distinct().ToArray(), cancellationToken);
         var items = rows.Take(query.PageSize)
             .Select(row => new AgentDisputeListItem(
                 row.Id, row.Reference, CustomerReference(row.CustomerId), row.Category,
                 row.TransactionDescription, row.AmountMinorUnits, row.Currency, row.ReasonCode,
                 row.CaseStatus, row.DecisionStatus, row.FinancialStatus, row.CreatedAt,
-                row.LastActivityAt, row.Version))
+                row.LastActivityAt, row.Version,
+                row.AssignedEmployeeId is { } assigned ? Assignee(assignees, assigned) : null))
             .ToArray();
         return new AgentDisputePage(items, rows.Length > query.PageSize);
     }
+
+    private async Task<Dictionary<Guid, string>> ReadAssigneesAsync(
+        Guid[] employeeIds, CancellationToken cancellationToken) =>
+        employeeIds.Length == 0
+            ? []
+            : await context.Users.AsNoTracking().Where(user => employeeIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id, user => user.UserName ?? string.Empty, cancellationToken);
+
+    private static AgentAssignee Assignee(Dictionary<Guid, string> names, Guid employeeId) =>
+        new(employeeId, names.TryGetValue(employeeId, out var name) && name.Length > 0 ? name : "Unknown employee");
 
     public async Task<AgentDisputeDetails?> ReadAsync(
         Guid disputeId, CancellationToken cancellationToken)
@@ -154,6 +180,22 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
         var activeEscalation = storedEscalation is null ? null : new AgentEscalationSummary(
             storedEscalation.Id, storedEscalation.Reference, storedEscalation.Reason,
             storedEscalation.Status.ToString(), storedEscalation.CreatedAt);
+        var assignedEmployeeId = await context.DisputeAssignments.AsNoTracking()
+            .Where(item => item.DisputeId == disputeId)
+            .Select(item => (Guid?)item.EmployeeId).SingleOrDefaultAsync(cancellationToken);
+        var assignee = assignedEmployeeId is { } assigned
+            ? Assignee(await ReadAssigneesAsync([assigned], cancellationToken), assigned) : null;
+        var now = clock.GetUtcNow();
+        var operations = (await context.FinancialOperationIntents.AsNoTracking()
+                .Where(item => item.DisputeId == disputeId)
+                .OrderBy(item => item.CreatedAt).ThenBy(item => item.Id)
+                .Select(item => new { item.Kind, item.OperationReference, item.Stage, item.Outcome,
+                    item.LeaseUntilAt, item.UpdatedAt })
+                .ToArrayAsync(cancellationToken))
+            .Select(item => new AgentFinancialOperation(item.Kind.ToString(), item.OperationReference,
+                FinancialOperationStatusMapper.Map(item.Stage, item.Outcome, item.LeaseUntilAt, now),
+                item.UpdatedAt))
+            .ToArray();
 
         return new AgentDisputeDetails(
             row.Id,
@@ -178,7 +220,9 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
             cardWorkflow,
             activeEscalation,
             timeline,
-            []);
+            [],
+            assignee,
+            operations);
     }
 
     public Task<bool> ExistsAsync(Guid disputeId, CancellationToken cancellationToken) =>
@@ -204,7 +248,8 @@ public sealed class SqliteAgentDisputeReader(TransactionDbContext context) : IAg
         DisputeFinancialStatus FinancialStatus,
         DateTimeOffset CreatedAt,
         DateTimeOffset LastActivityAt,
-        long Version);
+        long Version,
+        Guid? AssignedEmployeeId);
 
     private sealed record AgentDisputeDetailRow(
         Guid Id,

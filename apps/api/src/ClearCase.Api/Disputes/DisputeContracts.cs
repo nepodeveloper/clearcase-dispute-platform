@@ -25,7 +25,9 @@ public sealed record DisputeResponse(
     string StatusDescription,
     IReadOnlyList<DisputeTimelineEventResponse> Timeline,
     DisputedTransactionResponse Transaction,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ChargebackResponse? Chargeback = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ChargebackResponse? Chargeback = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? ExpectedResolutionBy = null,
+    bool CanWithdraw = false)
 {
     public static DisputeResponse From(DisputeView view) =>
         new(view.Id, view.Reference, view.TransactionId, view.Category.ToString(), view.ReasonCode,
@@ -34,7 +36,8 @@ public sealed record DisputeResponse(
             DescribeStatus(view.CaseStatus, view.DecisionStatus, view.FinancialStatus),
             view.Timeline.Select(DisputeTimelineEventResponse.From).ToArray(),
             DisputedTransactionResponse.From(view.Transaction),
-            view.Chargeback is { } chargeback ? ChargebackResponse.From(chargeback) : null);
+            view.Chargeback is { } chargeback ? ChargebackResponse.From(chargeback) : null,
+            view.ExpectedResolutionBy, view.CanWithdraw);
 
     internal static string DescribeStatus(DisputeCaseStatus status, DisputeDecisionStatus decision, DisputeFinancialStatus financial) =>
         financial switch

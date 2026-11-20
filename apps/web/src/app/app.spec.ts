@@ -133,8 +133,55 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const icons = (fixture.nativeElement as HTMLElement).querySelectorAll('#primary-navigation svg.nav-icon');
-    expect(icons.length).toBe(2);
+    expect(icons.length).toBe(3);
     icons.forEach(icon => expect(icon.getAttribute('aria-hidden')).toBe('true'));
+  });
+
+  it('adds a notifications link and a bell whose accessible name carries the unread count', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('nav[aria-label="Customer navigation"] a[href="/notifications"]')?.textContent)
+      .toContain('Notifications');
+    const bell = element.querySelector<HTMLAnchorElement>('[data-testid="notification-bell"]')!;
+    expect(bell.getAttribute('href')).toBe('/notifications');
+    expect(bell.getAttribute('aria-label')).toBe('Notifications');
+    expect(element.querySelector('[data-testid="notification-badge"]')).toBeNull();
+
+    const poll = http.expectOne(request => request.url === '/api/v1/notifications');
+    expect(poll.request.params.get('limit')).toBe('1');
+    poll.flush({ unreadCount: 3, items: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(bell.getAttribute('aria-label')).toBe('Notifications, 3 unread');
+    const badge = element.querySelector('[data-testid="notification-badge"]')!;
+    expect(badge.textContent?.trim()).toBe('3');
+    expect(badge.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('lets the user choose System, Light or Dark and remembers only that choice', async () => {
+    localStorage.clear();
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    const group = element.querySelector('[role="group"][aria-label="Colour theme"]')!;
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button'));
+    expect(buttons.map(button => button.textContent?.trim())).toEqual(['System', 'Light', 'Dark']);
+    expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+
+    buttons[2].click();
+    fixture.detectChanges();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+    expect(localStorage.getItem('clearcase.theme')).toBe('dark');
+    expect(localStorage.length).toBe(1);
+
+    buttons[0].click();
+    fixture.detectChanges();
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.clear();
   });
 
   it('shows only operations navigation for an authenticated employee', async () => {
@@ -148,6 +195,9 @@ describe('App', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('nav[aria-label="Customer navigation"]')).toBeNull();
     expect(element.querySelector('a[href="/disputes"]')).toBeNull();
+    expect(element.querySelector('[data-testid="notification-bell"]')).toBeNull();
+    expect(element.querySelector('a[href="/notifications"]')).toBeNull();
+    TestBed.inject(HttpTestingController).expectNone(request => request.url === '/api/v1/notifications');
     expect(element.querySelector('nav[aria-label="Operations navigation"] a[href="/agent/disputes"]')).not.toBeNull();
   });
 });

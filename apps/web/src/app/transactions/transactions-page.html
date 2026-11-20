@@ -8,7 +8,7 @@
   </div>
   <div class="stats-grid">
     <cc-stat label="Transactions found" [value]="totalCount()" hint="Matching your current filters" />
-    <cc-stat label="On this page" [value]="shownCount()" [hint]="pageSummary()" />
+    <cc-stat label="Loaded" [value]="shownCount()" [hint]="pageSummary()" />
     <div class="stat-card cta-stat"><small>Need help?</small><strong>We're here to help.</strong>
       <a routerLink="/disputes">Track existing disputes &rarr;</a></div>
   </div>
@@ -16,13 +16,10 @@
   <section class="panel" aria-labelledby="recent-transactions-heading">
     <div class="panel-title">
       <h2 id="recent-transactions-heading">Recent transactions</h2>
-      @if (state(); as current) {
-        @if (current.kind === 'loaded') {
-          <span class="muted">Showing {{ current.page.items.length }} of {{ current.page.totalCount }}</span>
-        }
-      }
+      <span class="muted" [attr.role]="state().kind === 'loaded' && rows().length > 0 ? 'status' : null" id="transactions-status" #transactionsStatus tabindex="-1"
+        data-testid="transactions-status">{{ countSummary() }}</span>
     </div>
-    <form [formGroup]="filters" (ngSubmit)="applyFilters()" class="filter-bar">
+    <form [formGroup]="filters" (ngSubmit)="applyFilters(true)" (keydown.enter)="enterPressed($event)" class="filter-bar">
       <label class="cc-field search-field"><span>Search transactions</span>
         <input class="cc-control" name="search" type="search" formControlName="search" maxlength="100"
           placeholder="Merchant, description or reference">
@@ -41,15 +38,14 @@
       <cc-date-field label="To date" inputName="toDate" formControlName="toDate"
         [ariaInvalid]="dateError()?.field === 'toDate'"
         [ariaDescribedBy]="dateError()?.field === 'toDate' ? 'date-error' : null" />
-      <button class="cc-button cc-button--secondary" type="submit">Apply filters</button>
       @if (dateError(); as error) {
         <p class="cc-form-error" id="date-error" role="alert">{{ error.message }}</p>
       }
     </form>
-    <p class="muted">Dates are shown in your local time. Date filters use UTC calendar days.</p>
+    <p class="muted">Results update as you type or choose a filter. Dates are shown in your local time. Date filters use UTC calendar days.</p>
 
     @let view = state();
-    @if (view.kind === 'loading') {
+    @if (view.kind === 'loading' && rows().length === 0) {
       <p class="state-message" role="status">Loading transactions...</p>
     } @else if (view.kind === 'error') {
       <div class="state-message" role="alert">
@@ -67,13 +63,8 @@
           }
         </ul>
       </div>
-    } @else if (view.page.items.length === 0) {
+    } @else if (rows().length === 0) {
       <p class="cc-empty" role="status">No transactions found.</p>
-      @if (view.page.pageNumber > 1) {
-        <div class="panel-footer">
-          <button class="cc-button cc-button--secondary" type="button" (click)="changePage(view.page.pageNumber - 1)">Previous</button>
-        </div>
-      }
     } @else {
       <div class="cc-table-scroll" role="region" aria-label="Recent transactions, scroll horizontally on small screens" tabindex="0">
         <table class="cc-table">
@@ -81,7 +72,7 @@
           <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th>
             <th scope="col">Amount</th><th scope="col">Status</th><th scope="col"><span class="cc-sr-only">Action</span></th></tr></thead>
           <tbody>
-            @for (transaction of view.page.items; track transaction.id) {
+            @for (transaction of rows(); track transaction.id) {
               <tr>
                 <td><time [attr.datetime]="transaction.transactionDate">{{ transaction.transactionDate | date:'mediumDate' }}</time></td>
                 <td><a data-testid="transaction-link" [routerLink]="['/transactions', transaction.id]"><strong>{{ transaction.description }}</strong></a>
@@ -106,16 +97,27 @@
           </tbody>
         </table>
       </div>
-      <nav aria-label="Transaction pages" class="panel-footer pagination">
-        <span>Page {{ view.page.pageNumber }} of {{ view.page.totalPages }}</span>
+      <div class="panel-footer pagination">
         <div class="pager">
-          <cc-page-size [value]="view.page.pageSize" (valueChange)="changePageSize($event)" />
-          <div class="paging">
-            <button type="button" aria-label="Previous" [disabled]="view.page.pageNumber <= 1" (click)="changePage(view.page.pageNumber - 1)">&lsaquo;</button>
-            <button type="button" aria-label="Next" data-testid="next" [disabled]="!view.page.hasNextPage" (click)="changePage(view.page.pageNumber + 1)">&rsaquo;</button>
-          </div>
+          <cc-page-size [value]="pageSize()" (valueChange)="changePageSize($event)" />
+          @if (hasMore()) {
+            <button class="cc-button cc-button--secondary" type="button" #loadMoreButton data-testid="load-more"
+              [attr.aria-disabled]="loadingMore()" (click)="loadMore()">{{ loadingMore() ? 'Loading more...' : 'Load more' }}</button>
+          } @else {
+            <span>All matching transactions are shown.</span>
+          }
         </div>
-      </nav>
+      </div>
+      @if (moreError(); as failure) {
+        <div class="state-message" role="alert" data-testid="more-error">
+          <p>{{ failure.message }}</p>
+          @if (failure.reload) {
+            <button class="cc-button cc-button--secondary" type="button" data-testid="reload" (click)="load()">Reload transactions</button>
+          } @else {
+            <button class="cc-button cc-button--secondary" type="button" data-testid="retry-more" (click)="loadMore()">Retry</button>
+          }
+        </div>
+      }
     }
   </section>
 </section>

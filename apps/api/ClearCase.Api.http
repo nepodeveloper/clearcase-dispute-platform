@@ -35,6 +35,19 @@ GET {{baseUrl}}/api/v1/transactions?search=woolworths&pageSize=10
 ### Invalid query returns Problem Details
 GET {{baseUrl}}/v1/transactions?pageSize=101
 
+### Cursor paging: copy pageInfo.nextCursor from the previous page (never combine with pageNumber)
+GET {{baseUrl}}/api/v1/transactions?pageSize=5
+
+### Support contact details (anonymous)
+GET {{baseUrl}}/api/v1/support
+
+### In-app notifications (customer), then mark all as read
+GET {{baseUrl}}/api/v1/notifications?limit=20
+
+###
+POST {{baseUrl}}/api/v1/notifications/read
+X-CSRF-TOKEN: {{csrfToken}}
+
 ### Owned synthetic transaction details (Development or Testing only)
 GET {{baseUrl}}/api/v1/transactions/00000000-0000-0000-0000-000000000001
 X-Correlation-ID: demo-transaction-details
@@ -213,6 +226,32 @@ X-CSRF-TOKEN: {{csrfToken}}
 ### Refresh case status and timeline; approval is not financial confirmation
 GET {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}
 
+### Upload supporting evidence (PDF/PNG/JPEG up to 5 MB, 5 files per dispute); replace receipt.pdf locally
+POST {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}/evidence
+X-CSRF-TOKEN: {{csrfToken}}
+Content-Type: multipart/form-data; boundary=ClearCaseBoundary
+
+--ClearCaseBoundary
+Content-Disposition: form-data; name="note"
+
+Statement showing the fee
+--ClearCaseBoundary
+Content-Disposition: form-data; name="file"; filename="receipt.pdf"
+Content-Type: application/pdf
+
+< ./receipt.pdf
+--ClearCaseBoundary--
+
+### List evidence for the case (oldest first)
+GET {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}/evidence
+
+### Withdraw an undecided dispute (409 dispute.withdrawalNotAllowed once decided, paid, escalated or charged back)
+POST {{baseUrl}}/api/v1/disputes/{{bankFeeCase.response.body.$.id}}/withdrawals
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
+
+{ "expectedVersion": 1, "reason": "Resolved directly with the bank" }
+
 ### Logout requires the authenticated cookie and current CSRF token
 POST {{baseUrl}}/api/v1/auth/logout
 X-CSRF-TOKEN: {{csrfToken}}
@@ -233,6 +272,20 @@ GET {{baseUrl}}/api/v1/auth/me
 ### Use a fresh bankFeeCase above; skip the preceding customer simulator commands
 # @name employeeCase
 GET {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}
+
+### Claim the case (workload only; 409 dispute.alreadyAssigned if someone else holds it)
+POST {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}/assignment
+X-CSRF-TOKEN: {{employeeMe.response.body.$.csrfToken}}
+
+### List only my cases (assignment=mine|unassigned|all); items carry slaStatus and slaDueAt
+GET {{baseUrl}}/api/v1/agent/disputes?assignment=mine
+
+### Release the assignment (assignee or Supervisor)
+DELETE {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}/assignment
+X-CSRF-TOKEN: {{employeeMe.response.body.$.csrfToken}}
+
+### Read customer evidence (read-only); the detail response also lists financialOperations
+GET {{baseUrl}}/api/v1/agent/disputes/{{bankFeeCase.response.body.$.id}}/evidence
 
 ### Refresh employeeCase before each command: StartReview, Approve, RequestAdjustment, ExecuteAdjustment, Close
 # Alternatively StartReview, Reject, Close. Approval alone never confirms funds.

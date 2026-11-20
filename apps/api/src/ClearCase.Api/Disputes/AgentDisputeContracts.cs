@@ -26,14 +26,31 @@ public sealed record AgentDisputeListItemResponse(
     string FinancialStatus,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastActivityAt,
-    long Version)
+    long Version,
+    DateTimeOffset SlaDueAt,
+    string SlaStatus,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentAssigneeResponse? AssignedTo = null)
 {
     public static AgentDisputeListItemResponse From(AgentDisputeListItem item) =>
         new(item.Id, item.Reference, item.CustomerReference, item.Category.ToString(),
             item.TransactionDescription, item.AmountMinorUnits.ToString(CultureInfo.InvariantCulture),
             item.Currency, item.ReasonCode,
             item.CaseStatus.ToString(), item.DecisionStatus.ToString(), item.FinancialStatus.ToString(),
-            item.CreatedAt, item.LastActivityAt, item.Version);
+            item.CreatedAt, item.LastActivityAt, item.Version,
+            item.Sla!.DueAt, item.Sla.Status.ToString(),
+            item.AssignedTo is { } assignee ? AgentAssigneeResponse.From(assignee) : null);
+}
+
+public sealed record AgentAssigneeResponse(Guid EmployeeId, string DisplayName)
+{
+    public static AgentAssigneeResponse From(AgentAssignee assignee) => new(assignee.EmployeeId, assignee.DisplayName);
+}
+
+public sealed record AgentFinancialOperationResponse(
+    string Kind, string OperationReference, string Status, DateTimeOffset UpdatedAt)
+{
+    public static AgentFinancialOperationResponse From(AgentFinancialOperation operation) =>
+        new(operation.Kind, operation.OperationReference, operation.Status.ToString(), operation.UpdatedAt);
 }
 
 public sealed record AgentDisputeDetailResponse(
@@ -57,7 +74,11 @@ public sealed record AgentDisputeDetailResponse(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentEscalationResponse? ActiveEscalation,
     IReadOnlyList<AgentTimelineEventResponse> Timeline,
     IReadOnlyList<InvestigationNoteResponse> Notes,
-    IReadOnlyList<AvailableStaffActionResponse> AvailableActions)
+    IReadOnlyList<AvailableStaffActionResponse> AvailableActions,
+    DateTimeOffset SlaDueAt,
+    string SlaStatus,
+    IReadOnlyList<AgentFinancialOperationResponse> FinancialOperations,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentAssigneeResponse? AssignedTo = null)
 {
     public static AgentDisputeDetailResponse From(AgentDisputeDetails detail, bool simulatedExternalUpdatesAllowed) =>
         new(detail.Id, detail.Reference, detail.CustomerReference, detail.Category.ToString(),
@@ -71,7 +92,10 @@ public sealed record AgentDisputeDetailResponse(
             detail.Timeline.Select(AgentTimelineEventResponse.From).ToArray(),
             detail.Notes.Select(InvestigationNoteResponse.From).ToArray(),
             StaffActionCatalog.For(detail, simulatedExternalUpdatesAllowed)
-                .Select(AvailableStaffActionResponse.From).ToArray());
+                .Select(AvailableStaffActionResponse.From).ToArray(),
+            detail.Sla!.DueAt, detail.Sla.Status.ToString(),
+            (detail.FinancialOperations ?? []).Select(AgentFinancialOperationResponse.From).ToArray(),
+            detail.AssignedTo is { } assignee ? AgentAssigneeResponse.From(assignee) : null);
 }
 
 public sealed record AvailableStaffActionResponse(

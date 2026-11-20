@@ -113,7 +113,7 @@ public sealed class KafkaInboxTests
         await db.SaveChangesAsync();
 
         await migrator.MigrateAsync();
-        Assert.Equal(19, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(20, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Single(await db.ConsumerInbox.AsNoTracking().ToArrayAsync());
 
         var processor = new SqliteKafkaRecordProcessor(db,

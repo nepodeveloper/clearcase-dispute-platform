@@ -22,7 +22,16 @@
     <div class="state-message" role="alert"><p>{{ current.message }}</p></div>
     @if (current.retryable) { <button class="cc-button cc-button--secondary" type="button" data-testid="retry" (click)="refresh()">Retry</button> }
   } @else {
-    <app-dispute-details [dispute]="current.dispute" />
+    <cc-dispute-withdrawal [dispute]="current.dispute" (withdrawn)="withdrawn($event)" (refreshRequested)="refresh()" />
+    <app-dispute-details [dispute]="current.dispute">
+      <cc-dispute-evidence slot="primary" [disputeId]="current.dispute.id"
+        [closed]="current.dispute.caseStatus === 'Closed'" (refreshRequested)="refresh()" />
+      <aside slot="secondary" class="panel" aria-labelledby="support-heading">
+        <h2 id="support-heading">Contact support</h2>
+        <p class="muted">Need help with this case? Reach the support team using the details below.</p>
+        <cc-support-contact heading="" [reference]="current.dispute.reference" />
+      </aside>
+    </app-dispute-details>
     <div class="panel-footer">
       <button class="cc-button cc-button--secondary" type="button" data-testid="refresh-dispute"
               [attr.aria-disabled]="current.refreshing" (click)="refresh()">{{ current.refreshing ? 'Refreshing...' : 'Refresh status' }}</button>

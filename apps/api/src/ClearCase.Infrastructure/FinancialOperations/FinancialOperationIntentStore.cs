@@ -51,7 +51,8 @@ public sealed class FinancialOperationIntentStore(TransactionDbContext database,
             CorrelationId = string.IsNullOrWhiteSpace(request.CorrelationId)
                 ? "local" : request.CorrelationId,
             Stage = FinancialOperationStage.Pending,
-            CreatedAt = clock.GetUtcNow()
+            CreatedAt = clock.GetUtcNow(),
+            UpdatedAt = clock.GetUtcNow()
         };
         database.FinancialOperationIntents.Add(intent);
         await database.SaveChangesAsync(cancellationToken);
@@ -95,6 +96,7 @@ public sealed class FinancialOperationIntentStore(TransactionDbContext database,
                 .SetProperty(item => item.Outcome, recoveredUnknown ? "Unknown" : current.Outcome)
                 .SetProperty(item => item.LeaseId, leaseId)
                 .SetProperty(item => item.LeaseUntilAt, now.Add(LeaseDuration))
+                .SetProperty(item => item.UpdatedAt, now)
                 .SetProperty(item => item.Attempts, item => item.Attempts + 1), cancellationToken);
         if (updated != 1) throw new DisputeConcurrencyConflictException();
         await transaction.CommitAsync(cancellationToken);
@@ -108,12 +110,14 @@ public sealed class FinancialOperationIntentStore(TransactionDbContext database,
     public async Task<bool> RecordResultAsync(
         Guid id, Guid leaseId, string outcome, CancellationToken cancellationToken)
     {
+        var now = clock.GetUtcNow();
         var updated = await database.FinancialOperationIntents
             .Where(item => item.Id == id && item.LeaseId == leaseId
                 && item.Stage == FinancialOperationStage.Dispatched)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.Outcome, outcome)
-                .SetProperty(item => item.Stage, FinancialOperationStage.ResultRecorded),
+                .SetProperty(item => item.Stage, FinancialOperationStage.ResultRecorded)
+                .SetProperty(item => item.UpdatedAt, now),
                 cancellationToken);
         return updated == 1;
     }
@@ -121,13 +125,15 @@ public sealed class FinancialOperationIntentStore(TransactionDbContext database,
     public async Task<bool> CompleteAsync(
         Guid id, Guid leaseId, CancellationToken cancellationToken)
     {
+        var now = clock.GetUtcNow();
         var updated = await database.FinancialOperationIntents
             .Where(item => item.Id == id && item.LeaseId == leaseId
                 && item.Stage == FinancialOperationStage.ResultRecorded)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.Stage, FinancialOperationStage.Completed)
                 .SetProperty(item => item.LeaseId, (Guid?)null)
-                .SetProperty(item => item.LeaseUntilAt, (DateTimeOffset?)null),
+                .SetProperty(item => item.LeaseUntilAt, (DateTimeOffset?)null)
+                .SetProperty(item => item.UpdatedAt, now),
                 cancellationToken);
         return updated == 1;
     }

@@ -82,7 +82,24 @@ internal static class DisputePersistenceModel
             value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
         audit.HasOne<PersistedDispute>().WithMany()
             .HasForeignKey(item => item.DisputeId).OnDelete(DeleteBehavior.Restrict);
+
+        var withdrawal = modelBuilder.Entity<PersistedDisputeWithdrawal>();
+        withdrawal.ToTable("DisputeWithdrawals");
+        withdrawal.HasKey(item => item.DisputeId);
+        withdrawal.Property(item => item.Reason).HasMaxLength(DisputeWithdrawalRules.ReasonMaxLength);
+        withdrawal.Property(item => item.WithdrawnAt).HasConversion(
+            value => value.UtcTicks, value => new DateTimeOffset(value, TimeSpan.Zero));
+        withdrawal.HasOne<PersistedDispute>().WithMany()
+            .HasForeignKey(item => item.DisputeId).OnDelete(DeleteBehavior.Restrict);
     }
+}
+
+/// <summary>The customer's optional reason for walking away; the case itself is closed through the transition writer.</summary>
+public sealed class PersistedDisputeWithdrawal
+{
+    public Guid DisputeId { get; set; }
+    public string? Reason { get; set; }
+    public DateTimeOffset WithdrawnAt { get; set; }
 }
 
 public sealed class PersistedDispute

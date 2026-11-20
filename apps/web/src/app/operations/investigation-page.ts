@@ -4,15 +4,20 @@ import { afterNextRender, Component, computed, effect, ElementRef, inject, Injec
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../auth/auth-service';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
 import { MinorUnitsMoney, PageHeading, StatusBadge } from '../ui/ui-components';
-import { AgentEscalationCreation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi } from './agent-disputes-api';
+import { AgentEscalationCreation, agentCaseStatusLabel, AgentDisputeDetails, AgentDisputesApi, slaStatusLabel } from './agent-disputes-api';
+import { assignmentFailureReason } from './assignment-errors';
 import { EscalationForm } from './escalation-form';
+import { OperationStatus } from './operation-status';
 import { StaffCommandPanel } from './staff-command-panel';
+import { StaffEvidence } from './staff-evidence';
 
 @Component({
   selector: 'cc-investigation',
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm, StaffCommandPanel],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, MinorUnitsMoney, PageHeading, StatusBadge, EscalationForm, StaffCommandPanel,
+    OperationStatus, StaffEvidence],
   template: `
     @if (loading() && dispute() === null) {
       <p class="notice" role="status">Loading persisted investigation...</p>
@@ -49,6 +54,7 @@ import { StaffCommandPanel } from './staff-command-panel';
             </dl>
             <div class="soft-box"><small>Customer statement</small><p>{{ item.customerStatement }}</p></div>
           </section>
+          <cc-staff-evidence [disputeId]="item.id" />
           <section class="panel private-notes"><h2>Investigation notes</h2>
             <p class="muted">Internal operational notes are private and never displayed in customer views.</p>
             @for (entry of item.notes; track entry.id) {
@@ -68,6 +74,32 @@ import { StaffCommandPanel } from './staff-command-panel';
           </section>
         </div>
         <div class="stack">
+          <section class="panel" aria-labelledby="assignment-heading">
+            <div class="panel-title"><h2 id="assignment-heading">Assignment &amp; SLA</h2>
+              @if (slaLabel(item.slaStatus); as label) { <cc-status-badge [label]="label" [status]="item.slaStatus" /> }</div>
+            <dl class="description-grid">
+              <dt>Assigned to</dt>
+              <dd data-testid="assignee">{{ item.assignedTo ? item.assignedTo.displayName : 'Unassigned' }}{{ assignedToMe(item) ? ' (you)' : '' }}</dd>
+              <dt>SLA due</dt>
+              <dd><time [attr.datetime]="item.slaDueAt">{{ item.slaDueAt | date:'dd MMM yyyy, HH:mm':'UTC' }} UTC</time>
+                @if (item.slaStatus === 'Complete') { (case complete) }</dd>
+            </dl>
+            @if (item.assignedTo && !assignedToMe(item)) {
+              <p class="notice" data-testid="assignment-notice">This case is assigned to {{ item.assignedTo.displayName }}.
+                Assignment is workload information only; you can still act on this case.</p>
+            }
+            <div class="button-row">
+              @if (!item.assignedTo) {
+                <button class="cc-button cc-button--secondary" type="button" data-testid="claim"
+                  [disabled]="assignmentBusy()" (click)="claim()">Claim case</button>
+              } @else {
+                <button class="cc-button cc-button--secondary" type="button" data-testid="release"
+                  [disabled]="assignmentBusy()" (click)="release()">Release case</button>
+              }
+            </div>
+            <p class="muted" role="status" data-testid="assignment-status">{{ assignmentMessage() }}</p>
+          </section>
+          <cc-operation-status [operations]="item.financialOperations" />
           <section class="panel"><h2>Case milestones</h2><ul class="mini-timeline" aria-label="Customer-visible case timeline">
             @for (event of item.timeline; track event.id) {
               <li><span class="dot" aria-hidden="true"></span><span>{{ event.eventType }} &middot; {{ event.occurredAt | date:'dd MMM':'UTC' }}</span></li>
@@ -99,6 +131,7 @@ import { StaffCommandPanel } from './staff-command-panel';
 export class InvestigationPage {
   readonly id = input.required<string>();
   private readonly api = inject(AgentDisputesApi);
+  private readonly auth = inject(AuthService);
   private readonly injector = inject(Injector);
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('escalationDialog');
   private opener: HTMLElement | null = null;
@@ -106,6 +139,9 @@ export class InvestigationPage {
   protected readonly loading = signal(true);
   protected readonly loadError = signal('');
   protected readonly notePending = signal(false);
+  protected readonly assignmentBusy = signal(false);
+  protected readonly assignmentMessage = signal('');
+  protected readonly slaLabel = slaStatusLabel;
   private noteRequest: { key: string; text: string } | null = null;
   protected readonly typeLabel = transactionTypeLabel;
   protected readonly statusLabel = agentCaseStatusLabel;
@@ -120,6 +156,7 @@ export class InvestigationPage {
       this.note.reset();
       this.noteError.set('');
       this.confirmation.set('');
+      this.assignmentMessage.set('');
       this.noteRequest = null;
       this.dispute.set(null);
       void this.loadDispute(id);
@@ -205,6 +242,35 @@ export class InvestigationPage {
       this.noteError.set('Unable to save the note. Retry with the same text.');
     } finally {
       this.notePending.set(false);
+    }
+  }
+
+  protected assignedToMe(dispute: AgentDisputeDetails): boolean {
+    const employeeId = this.auth.user()?.employeeId;
+    return dispute.assignedTo !== undefined && employeeId !== undefined && employeeId !== null
+      && dispute.assignedTo.employeeId === employeeId;
+  }
+
+  protected async claim(): Promise<void> {
+    await this.changeAssignment(() => this.api.claim(this.id()), 'You claimed this case.', 'claim');
+  }
+
+  protected async release(): Promise<void> {
+    await this.changeAssignment(() => this.api.release(this.id()), 'You released this case.', 'release');
+  }
+
+  // Assignment is informational: it never changes the case or blocks any command.
+  private async changeAssignment(request: () => ReturnType<AgentDisputesApi['claim']>, success: string, verb: string): Promise<void> {
+    if (this.assignmentBusy()) return;
+    this.assignmentBusy.set(true);
+    this.assignmentMessage.set('');
+    try {
+      this.dispute.set(await firstValueFrom(request()));
+      this.assignmentMessage.set(success);
+    } catch (error: unknown) {
+      this.assignmentMessage.set(`Could not ${verb} this case: ${assignmentFailureReason(error)}.`);
+    } finally {
+      this.assignmentBusy.set(false);
     }
   }
 

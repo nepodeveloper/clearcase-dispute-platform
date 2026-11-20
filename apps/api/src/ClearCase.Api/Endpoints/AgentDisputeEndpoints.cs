@@ -27,9 +27,11 @@ public static class AgentDisputeEndpoints
             .WithName("ListAgentDisputes")
             .WithSummary("List persisted disputes within the synthetic bank-wide Agent scope")
             .WithDescription("Searches case reference, transaction description, or reason code. "
-                + "Filters by category and caseStatus. Ordered newest first, then reference ascending. "
+                + "Filters by category, caseStatus and assignment (mine, unassigned or all; default all). "
+                + "Ordered newest first, then reference ascending. "
                 + "The server returns at most 100 records; pass pageInfo.nextCursor unchanged to continue. "
-                + "Cases are visible to authorized bank employees; no case assignment is implied.")
+                + "Cases are visible to authorized bank employees; assignment is workload information only. "
+                + "Each item carries slaDueAt and slaStatus (OnTrack, DueSoon, Breached or Complete).")
             .Produces<AgentDisputeListResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -80,6 +82,7 @@ public static class AgentDisputeEndpoints
         [FromQuery] string? search,
         [FromQuery] string? category,
         [FromQuery] string? caseStatus,
+        [FromQuery] string? assignment,
         HttpContext context,
         IListAgentDisputesHandler handler,
         CancellationToken cancellationToken)
@@ -121,13 +124,27 @@ public static class AgentDisputeEndpoints
                 parsedStatus = parsed;
         }
 
+        var parsedAssignment = AgentAssignmentFilter.All;
+        if (assignment is not null && !TryParseAssignment(assignment, out parsedAssignment))
+            errors.Add(new("/assignment", "assignment.invalid", "Choose mine, unassigned, or all."));
+
         if (errors.Count != 0)
             return ApiProblem.Create(context, StatusCodes.Status400BadRequest,
                 "Invalid agent dispute query", "agentDispute.invalidQuery", errors: errors);
 
+        Guid? employeeId = null;
+        if (parsedAssignment == AgentAssignmentFilter.Mine)
+        {
+            if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var current)
+                || current == Guid.Empty)
+                return ApiProblem.Create(context, StatusCodes.Status403Forbidden,
+                    "Bank employee identity is unavailable", "auth.employeeIdentityRequired");
+            employeeId = current;
+        }
+
         var page = await handler.HandleAsync(
             new ListAgentDisputesQuery(size, string.IsNullOrEmpty(querySearch) ? null : querySearch,
-                parsedCategory, parsedStatus, after), cancellationToken);
+                parsedCategory, parsedStatus, after, parsedAssignment, employeeId), cancellationToken);
         var nextCursor = page.HasNextPage ? EncodeCursor(page.Items[^1]) : null;
         return TypedResults.Ok(new AgentDisputeListResponse(
             page.Items.Select(AgentDisputeListItemResponse.From).ToArray(),
@@ -251,6 +268,18 @@ public static class AgentDisputeEndpoints
     private static bool IsValidIdempotencyKey(string? key) =>
         key is { Length: > 0 and <= IdempotencyKeyMaxLength }
         && key.All(character => character is > ' ' and <= '~');
+
+    private static bool TryParseAssignment(string value, out AgentAssignmentFilter filter)
+    {
+        (var valid, filter) = value switch
+        {
+            "all" => (true, AgentAssignmentFilter.All),
+            "mine" => (true, AgentAssignmentFilter.Mine),
+            "unassigned" => (true, AgentAssignmentFilter.Unassigned),
+            _ => (false, AgentAssignmentFilter.All)
+        };
+        return valid;
+    }
 
     private static string EncodeCursor(AgentDisputeListItem item) =>
         Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(

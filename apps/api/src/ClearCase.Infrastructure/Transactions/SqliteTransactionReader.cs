@@ -34,11 +34,15 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
 
         var totalCount = await matching.CountAsync(cancellationToken);
         var totalPages = (int)(((long)totalCount + query.PageSize - 1) / query.PageSize);
-        var offset = ((long)query.PageNumber - 1) * query.PageSize;
+        var cursorMode = query.After is not null;
+        if (query.After is { } after)
+            matching = matching.Where(item => item.TransactionDate < after.TransactionDate
+                || (item.TransactionDate == after.TransactionDate && item.Id.CompareTo(after.Id) > 0));
+        var offset = cursorMode ? 0 : ((long)query.PageNumber - 1) * query.PageSize;
         var records = offset >= totalCount
             ? []
             : await matching.OrderByDescending(item => item.TransactionDate).ThenBy(item => item.Id)
-                .Skip((int)offset).Take(query.PageSize)
+                .Skip((int)offset).Take(query.PageSize + 1)
                 .Select(item => new
                 {
                     Transaction = item,
@@ -46,6 +50,8 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
                         && dispute.TransactionId == item.Id && dispute.CaseStatus != DisputeCaseStatus.Closed)
                         .Select(dispute => (Guid?)dispute.Id).FirstOrDefault()
                 }).ToArrayAsync(cancellationToken);
+        var hasNextPage = records.Length > query.PageSize;
+        records = records.Take(query.PageSize).ToArray();
         var items = records.Select(row =>
         {
             var item = row.Transaction;
@@ -53,9 +59,12 @@ public sealed class SqliteTransactionReader(TransactionDbContext context) : ITra
                 Amount(item).ToString("0.00", CultureInfo.InvariantCulture), item.Currency,
                 item.TransactionDate, item.Status.ToString(), CanOfferDispute(item), row.ActiveDisputeId);
         }).ToArray();
+        var last = records.Length == 0 ? null : records[^1].Transaction;
 
         return new TransactionListResponse(
-            items, query.PageNumber, query.PageSize, totalCount, totalPages, query.PageNumber < totalPages);
+            items, cursorMode ? 1 : query.PageNumber, query.PageSize, totalCount, totalPages,
+            cursorMode ? hasNextPage : query.PageNumber < totalPages,
+            hasNextPage && last is not null ? new TransactionCursor(last.TransactionDate, last.Id).Encode() : null);
     }
 
     public async Task<TransactionDetails?> ReadByIdAsync(

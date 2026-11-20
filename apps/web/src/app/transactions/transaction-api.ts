@@ -15,13 +15,20 @@ export interface Transaction {
   activeDisputeId?: string;
 }
 
+export interface TransactionPageInfo {
+  hasNextPage: boolean;
+  nextCursor?: string;
+}
+
 export interface TransactionPage {
   items: Transaction[];
-  pageNumber: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
-  hasNextPage: boolean;
+  pageInfo: TransactionPageInfo;
+  // Legacy page-number fields are still returned; the UI pages with pageInfo.nextCursor only.
+  totalCount?: number;
+  pageNumber?: number;
+  pageSize?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 export interface TransactionDetails extends Transaction {
@@ -52,8 +59,9 @@ export interface TransactionDisputeEligibility {
 }
 
 export interface TransactionQuery {
-  pageNumber: number;
   pageSize: number;
+  /** Opaque continuation from the previous page's pageInfo.nextCursor; omitted for the first page. */
+  cursor?: string;
   transactionType: TransactionType | '';
   fromDate: string;
   toDate: string;
@@ -65,9 +73,9 @@ export class TransactionApi {
   private readonly http = inject(HttpClient);
 
   list(query: TransactionQuery) {
-    let params = new HttpParams()
-      .set('pageNumber', query.pageNumber)
-      .set('pageSize', query.pageSize);
+    // The server rejects a cursor combined with pageNumber, so the first page is the only one that names a page.
+    let params = new HttpParams().set('pageSize', query.pageSize);
+    params = query.cursor === undefined ? params.set('pageNumber', 1) : params.set('cursor', query.cursor);
     if (query.transactionType !== '') params = params.set('transactionType', query.transactionType);
     if (query.fromDate !== '') params = params.set('fromDate', query.fromDate);
     if (query.toDate !== '') params = params.set('toDate', query.toDate);

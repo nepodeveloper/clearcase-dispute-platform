@@ -1,5 +1,7 @@
 using ClearCase.Api.Endpoints;
 using ClearCase.Api.Features;
+using ClearCase.Api.Features.AgentDisputes.AssignDispute;
+using ClearCase.Api.Features.Evidence;
 using ClearCase.Api.Middleware;
 using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.Transactions;
@@ -71,6 +73,8 @@ public static class WebApplicationExtensions
         app.MapCustomerFeatures();
         app.MapAgentDisputeEndpoints();
         app.MapAgentDisputeCommands();
+        DisputeAssignmentEndpoints.Map(app);
+        StaffEvidenceEndpoints.Map(app);
         app.MapSupervisorEscalationEndpoints();
         app.MapOutboxRecoveryEndpoints();
         app.MapDebitOrderSimulation();

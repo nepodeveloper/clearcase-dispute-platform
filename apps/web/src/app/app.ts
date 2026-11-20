@@ -1,10 +1,12 @@
-import { afterNextRender, Component, computed, ElementRef, HostListener, inject, Injector, signal, viewChild } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, effect, ElementRef, HostListener, inject, Injector, signal, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService, AuthUser } from './auth/auth-service';
 import { homeUrl } from './auth/auth-guards';
 import { SessionTimeoutService } from './auth/session-timeout-service';
+import { NotificationsService } from './notifications/notifications-service';
+import { ThemePreference, ThemeService } from './theme/theme-service';
 
 interface NavigationLink { label: string; url: string; section: string }
 
@@ -12,7 +14,8 @@ function navigationLinks(user: AuthUser): NavigationLink[] {
   const links: NavigationLink[] = [];
   if (user.roles.includes('Customer')) links.push(
     { label: 'Transactions', url: '/', section: 'transactions' },
-    { label: 'My disputes', url: '/disputes', section: 'disputes' });
+    { label: 'My disputes', url: '/disputes', section: 'disputes' },
+    { label: 'Notifications', url: '/notifications', section: 'notifications' });
   if (user.roles.includes('Agent'))
     links.push({ label: 'Agent work queue', url: '/agent/disputes', section: 'agent' });
   if (user.roles.includes('Supervisor'))
@@ -30,11 +33,23 @@ export class App {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
   protected readonly sessionTimeout = inject(SessionTimeoutService);
+  protected readonly notifications = inject(NotificationsService);
+  protected readonly theme = inject(ThemeService);
+  protected readonly themeOptions: readonly { value: ThemePreference; label: string }[] = [
+    { value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }];
   protected readonly home = computed(() => {
     const user = this.auth.user();
     return user === null ? '/login' : homeUrl(user);
   });
   protected readonly customer = computed(() => this.auth.user()?.roles.includes('Customer') === true);
+  protected readonly unreadLabel = computed(() => {
+    const unread = this.notifications.unreadCount();
+    return unread === 0 ? 'Notifications' : `Notifications, ${unread} unread`;
+  });
+  protected readonly unreadBadge = computed(() => {
+    const unread = this.notifications.unreadCount();
+    return unread > 99 ? '99+' : String(unread);
+  });
   protected readonly links = computed(() => {
     const user = this.auth.user();
     return user === null ? [] : navigationLinks(user);
@@ -48,6 +63,11 @@ export class App {
   private readonly main = viewChild<ElementRef<HTMLElement>>('main');
 
   constructor() {
+    effect(() => {
+      const customer = this.customer();
+      untracked(() => customer ? this.notifications.start() : this.notifications.stop());
+    });
+    inject(DestroyRef).onDestroy(() => this.notifications.stop());
     this.router.events.pipe(filter(event => event instanceof NavigationEnd), takeUntilDestroyed()).subscribe(() => {
       let route = this.router.routerState.snapshot.root;
       while (route.firstChild !== null) route = route.firstChild;

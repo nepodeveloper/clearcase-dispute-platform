@@ -5,9 +5,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, filter, interval, map, merge, of, startWith, Subject, switchMap } from 'rxjs';
 import { transactionTypeLabel } from '../transactions/transaction-type-label';
+import { SupportContactPanel } from '../support/support-contact';
 import { StatusBadge } from '../ui/ui-components';
 import { Dispute, DisputeApi, DisputeQueryError, disputeQueryError } from './dispute-api';
 import { DisputeDetails, disputeStatusLabel } from './dispute-details';
+import { DisputeEvidencePanel } from './dispute-evidence-panel';
+import { DisputeWithdrawal } from './dispute-withdrawal';
 
 type ViewState = { kind: 'loading' } | { kind: 'not-found' }
   | ({ kind: 'error' } & DisputeQueryError)
@@ -15,7 +18,7 @@ type ViewState = { kind: 'loading' } | { kind: 'not-found' }
 
 @Component({
   selector: 'app-dispute-details-page',
-  imports: [DisputeDetails, RouterLink, StatusBadge],
+  imports: [DisputeDetails, DisputeEvidencePanel, DisputeWithdrawal, RouterLink, StatusBadge, SupportContactPanel],
   templateUrl: './dispute-details-page.html',
 })
 export class DisputeDetailsPage implements OnInit {
@@ -73,5 +76,9 @@ export class DisputeDetailsPage implements OnInit {
   protected refresh(): void {
     const state = this.state();
     if (state.kind !== 'loaded' || !state.refreshing) this.refreshes.next();
+  }
+
+  protected withdrawn(dispute: Dispute): void {
+    this.state.set({ kind: 'loaded', dispute, refreshing: false });
   }
 }

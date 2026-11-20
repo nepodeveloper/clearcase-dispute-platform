@@ -23,7 +23,13 @@ public sealed record DisputeView(
     string? ReversalOperationReference = null,
     Chargeback? Chargeback = null,
     string? BankChargeAdjustmentReference = null,
-    long Version = 1);
+    long Version = 1,
+    bool HasActiveEscalation = false,
+    DateTimeOffset? ExpectedResolutionBy = null)
+{
+    public bool CanWithdraw => DisputeWithdrawalRules.CanWithdraw(
+        CaseStatus, DecisionStatus, FinancialStatus, HasActiveEscalation, Chargeback is not null);
+}
 
 public enum DisputeAddResult
 {
