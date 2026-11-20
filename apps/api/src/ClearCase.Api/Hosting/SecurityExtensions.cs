@@ -6,6 +6,7 @@ using ClearCase.Api.Middleware;
 using ClearCase.Infrastructure.Authentication;
 using ClearCase.Infrastructure.Transactions;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -95,6 +96,14 @@ public static class SecurityExtensions
             options.Cookie.SecurePolicy = cookieSecurePolicy;
             options.SlidingExpiration = true;
             options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+        });
+        services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+        {
+            options.Events.OnCheckSlidingExpiration = context =>
+            {
+                if (BackgroundCheckRequest.IsRequested(context.HttpContext.Request)) context.ShouldRenew = false;
+                return Task.CompletedTask;
+            };
         });
         services.AddAuthentication(options =>
             {

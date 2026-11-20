@@ -27,7 +27,8 @@ public static class NotificationEndpoints
             .WithSummary("In-app notifications derived from the customer's dispute timelines")
             .WithDescription("Newest first; limit is 1 to 50 (default 20). Messages are the customer-safe public timeline "
                 + "descriptions and never include staff notes. isRead is true when the event is not later than the "
-                + "customer's read marker. This is an in-app feed only: no email, SMS or push is sent.")
+                + "customer's read marker. This is an in-app feed only: no email, SMS or push is sent. Automatic polls "
+                + "should send X-Background-Check: true so they do not extend the signed-in session.")
             .Produces<NotificationFeedResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)

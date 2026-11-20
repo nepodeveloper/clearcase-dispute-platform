@@ -102,7 +102,7 @@
           <cc-page-size [value]="pageSize()" (valueChange)="changePageSize($event)" />
           @if (hasMore()) {
             <button class="cc-button cc-button--secondary" type="button" #loadMoreButton data-testid="load-more"
-              [attr.aria-disabled]="loadingMore()" (click)="loadMore()">{{ loadingMore() ? 'Loading more...' : 'Load more' }}</button>
+              [attr.aria-disabled]="loadMoreBlocked()" (click)="loadMore()">{{ loadingMore() ? 'Loading more...' : 'Load more' }}</button>
           } @else {
             <span>All matching transactions are shown.</span>
           }

@@ -1,7 +1,7 @@
 import { computed, DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { AuthService } from './auth-service';
 
-/** The API session lifetime is sliding: each successful API call restarts it. */
+/** The API session lifetime is sliding: user-initiated API calls extend it, while background checks never do. */
 export const sessionLifetimeMs = 30 * 60_000;
 export const sessionWarningMs = 5 * 60_000;
 const tickIntervalMs = 10_000;

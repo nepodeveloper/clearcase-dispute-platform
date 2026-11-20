@@ -118,6 +118,34 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
     }
 
     [Fact]
+    public async Task BackgroundCheck_DoesNotRenewAgedSessionCookie_WhileUserCallsDo()
+    {
+        using var host = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
+        using var login = host.CreateClient();
+        using var loginResponse = await login.PostAsJsonAsync("/api/v1/auth/login",
+            new { username = "customer.demo", password = TestIdentityPasswords.For("customer.demo") });
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+
+        var options = host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme);
+        var ticket = options.TicketDataFormat.Unprotect(SessionCookieValue(loginResponse))!;
+        ticket.Properties.IssuedUtc = DateTimeOffset.UtcNow.AddMinutes(-20);
+        ticket.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10);
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("Cookie", $"clearcase.auth={options.TicketDataFormat.Protect(ticket)}");
+
+        using var check = new HttpRequestMessage(HttpMethod.Get, "/api/v1/notifications?limit=1");
+        check.Headers.Add("X-Background-Check", "true");
+        using var checkResponse = await client.SendAsync(check);
+        Assert.Equal(HttpStatusCode.OK, checkResponse.StatusCode);
+        Assert.False(HasSessionCookie(checkResponse));
+
+        using var userResponse = await client.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.OK, userResponse.StatusCode);
+        Assert.True(HasSessionCookie(userResponse));
+    }
+
+    [Fact]
     public async Task Logout_EndsCookieSession_WhenCompatibilityPathDisabled()
     {
         using var client = CreateClient("Testing", compatibilityPath: false);
@@ -290,6 +318,19 @@ public sealed class AuthEndpointsTests : IClassFixture<SqliteWebApplicationFacto
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return body.RootElement.GetProperty("csrfToken").GetString()
                ?? throw new InvalidOperationException("Expected csrfToken.");
+    }
+
+    private static bool HasSessionCookie(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("Set-Cookie", out var cookies)
+        && cookies.Any(cookie => cookie.StartsWith("clearcase.auth=", StringComparison.Ordinal));
+
+    private static string SessionCookieValue(HttpResponseMessage response)
+    {
+        const string prefix = "clearcase.auth=";
+        var cookie = response.Headers.GetValues("Set-Cookie")
+            .Select(header => header.Split(';', 2)[0])
+            .Single(pair => pair.StartsWith(prefix, StringComparison.Ordinal));
+        return cookie[prefix.Length..];
     }
 
     private static async Task<JsonDocument> ReadJson(HttpResponseMessage response) =>

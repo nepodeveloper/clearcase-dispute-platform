@@ -112,4 +112,68 @@ describe('NotificationsService', () => {
     await retried;
     expect(service.state()).toBe('loaded');
   });
+
+  it('discards feed responses that finish after stop(), successes and failures alike', async () => {
+    const first = service.load();
+    service.stop();
+    const second = service.load();
+    const [staleFeed, currentFeed] = http.match(request => request.url === '/api/v1/notifications');
+    staleFeed.flush({ unreadCount: 3, items: [unread] });
+    await first;
+    expect(service.items()).toEqual([]);
+    expect(service.unreadCount()).toBe(0);
+    expect(service.state()).toBe('loading');
+
+    currentFeed.flush({}, { status: 503, statusText: 'Unavailable' });
+    await second;
+    expect(service.state()).toBe('error');
+
+    const staleFailure = service.load();
+    const failed = poll();
+    service.stop();
+    failed.flush({}, { status: 503, statusText: 'Unavailable' });
+    await staleFailure;
+    expect(service.state()).toBe('idle');
+  });
+
+  it('ignores an unread count from a stopped session even after a new start()', async () => {
+    service.start();
+    const staleCheck = poll();
+    service.stop();
+    service.start();
+    const currentCheck = poll();
+    staleCheck.flush({ unreadCount: 9, items: [] });
+    await settle();
+    expect(service.unreadCount()).toBe(0);
+
+    currentCheck.flush({ unreadCount: 2, items: [] });
+    await settle();
+    expect(service.unreadCount()).toBe(2);
+  });
+
+  it('does not report a failed mark-all-read from a stopped session', async () => {
+    const marking = service.markAllRead();
+    const request = http.expectOne('/api/v1/notifications/read');
+    service.stop();
+    request.flush({}, { status: 500, statusText: 'Error' });
+    expect(await marking).toBe(false);
+    expect(service.markError()).toBe(false);
+    expect(service.markingRead()).toBe(false);
+  });
+
+  it('keeps the current mark-all-read pending when an older one settles after stop()', async () => {
+    const older = service.markAllRead();
+    const olderRequest = http.expectOne('/api/v1/notifications/read');
+    service.stop();
+    const current = service.markAllRead();
+    const currentRequest = http.expectOne('/api/v1/notifications/read');
+
+    olderRequest.flush(null, { status: 204, statusText: 'No Content' });
+    expect(await older).toBe(false);
+    expect(service.markingRead()).toBe(true);
+
+    currentRequest.flush(null, { status: 204, statusText: 'No Content' });
+    expect(await current).toBe(true);
+    expect(service.markingRead()).toBe(false);
+  });
 });

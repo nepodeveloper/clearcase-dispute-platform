@@ -140,6 +140,58 @@ describe('Agent investigation', () => {
     expect(root.querySelector('[data-testid="claim"]')).not.toBeNull();
   });
 
+  it('ignores an assignment response that arrives after the agent opened another case', async () => {
+    const fixture = renderDetails();
+    respondDetails();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('[data-testid="claim"]')!.click();
+    const claim = http.expectOne(`/api/v1/agent/disputes/${caseId}/assignment`);
+
+    const otherCaseId = '00000000-0000-0000-0000-000000000005';
+    fixture.componentRef.setInput('id', otherCaseId);
+    fixture.detectChanges();
+    http.expectOne(`/api/v1/agent/disputes/${otherCaseId}`)
+      .flush({ ...details, id: otherCaseId, reference: 'DSP-AGENT000002' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    claim.flush({ ...details, assignedTo: { employeeId: 'emp-1', displayName: 'Agent Demo' } });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.textContent).toContain('DSP-AGENT000002');
+    expect(root.textContent).not.toContain('DSP-AGENT000001');
+    expect(root.querySelector('[data-testid="assignee"]')?.textContent).toContain('Unassigned');
+    expect(root.querySelector('[data-testid="assignment-status"]')?.textContent).toBe('');
+  });
+
+  it('merges only the assignee from a claim response, keeping actions from a newer workflow snapshot', async () => {
+    const fixture = renderDetails();
+    respondDetails();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('[data-testid="claim"]')!.click();
+    const claim = http.expectOne(`/api/v1/agent/disputes/${caseId}/assignment`);
+
+    const textarea = root.querySelector<HTMLTextAreaElement>('#agent-note')!;
+    textarea.value = 'Please verify the merchant authorization record.';
+    textarea.dispatchEvent(new Event('input'));
+    root.querySelector<HTMLFormElement>('.private-notes form')!.dispatchEvent(new Event('submit'));
+    http.expectOne(`/api/v1/agent/disputes/${caseId}/notes`).flush({});
+    await fixture.whenStable();
+    http.expectOne(`/api/v1/agent/disputes/${caseId}`).flush({ ...details, availableActions: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    claim.flush({ ...details, assignedTo: { employeeId: 'emp-1', displayName: 'Agent Demo' } });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-testid="assignee"]')?.textContent).toContain('Agent Demo');
+    expect(Array.from(root.querySelectorAll('button')).some(b => b.textContent?.trim() === 'Start review')).toBe(false);
+  });
+
   it('renders financial operation status read-only and warns not to retry an unknown outcome', async () => {
     const fixture = renderDetails();
     respondDetails({

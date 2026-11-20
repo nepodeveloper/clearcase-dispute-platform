@@ -2,6 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { NotificationsService } from '../notifications/notifications-service';
 import { AuthService } from './auth-service';
 import { sessionInterceptor } from './session-interceptor';
 import { sessionClock, SessionTimeoutService, sessionLifetimeMs, sessionWarningMs } from './session-timeout-service';
@@ -88,6 +89,17 @@ describe('SessionTimeoutService', () => {
     expect(await extended).toBe(true);
     expect(service.busy()).toBe(false);
     expect(service.warning()).toBe(false);
+  });
+
+  it('lets background checks neither restart the idle window nor renew the server session', async () => {
+    advance(sessionLifetimeMs - sessionWarningMs);
+    expect(service.warning()).toBe(true);
+    const polled = TestBed.inject(NotificationsService).pollUnread();
+    const check = http.expectOne(request => request.url === '/api/v1/notifications');
+    expect(check.request.headers.get('X-Background-Check')).toBe('true');
+    check.flush({ unreadCount: 0, items: [] });
+    await polled;
+    expect(service.warning()).toBe(true);
   });
 
   it('has no countdown once the user is signed out', () => {

@@ -70,6 +70,7 @@ export class TransactionsPage implements OnInit {
   protected readonly pageSize = signal<PageSize>(defaultPageSize);
   private readonly total = signal<number | undefined>(undefined);
   protected readonly hasMore = computed(() => this.nextCursor() !== undefined);
+  protected readonly loadMoreBlocked = computed(() => this.loadingMore() || this.state().kind === 'loading');
   protected readonly totalCount = computed(() => this.total() ?? (this.state().kind === 'loaded'
     ? `${this.rows().length}${this.hasMore() ? '+' : ''}` : '\u2013'));
   protected readonly shownCount = computed(() => this.rows().length === 0 && this.state().kind !== 'loaded'
@@ -168,7 +169,7 @@ export class TransactionsPage implements OnInit {
 
   protected loadMore(): void {
     const cursor = this.nextCursor();
-    if (cursor === undefined || this.loadingMore()) return;
+    if (cursor === undefined || this.loadMoreBlocked()) return;
     const hadFocus = document.activeElement === this.loadMoreButton()?.nativeElement;
     this.loadingMore.set(true);
     this.moreError.set(null);

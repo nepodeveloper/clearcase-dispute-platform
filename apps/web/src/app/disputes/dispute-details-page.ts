@@ -80,5 +80,6 @@ export class DisputeDetailsPage implements OnInit {
 
   protected withdrawn(dispute: Dispute): void {
     this.state.set({ kind: 'loaded', dispute, refreshing: false });
+    this.refreshes.next();
   }
 }

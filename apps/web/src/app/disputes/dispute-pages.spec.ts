@@ -394,8 +394,10 @@ describe('Dispute tracking pages', () => {
       element.querySelector<HTMLFormElement>('dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
       const request = http.expectOne(`${detailUrl}/withdrawals`);
       expect(request.request.body).toEqual({ expectedVersion: 7 });
-      request.flush({ ...withdrawable, caseStatus: 'Closed', canWithdraw: false, version: 8,
-        expectedResolutionBy: undefined });
+      const closed = { ...withdrawable, caseStatus: 'Closed', canWithdraw: false, version: 8, expectedResolutionBy: undefined };
+      request.flush(closed);
+      await harness.fixture.whenStable();
+      http.expectOne(detailUrl).flush(closed);
       await harness.fixture.whenStable();
       harness.detectChanges();
 
@@ -405,6 +407,31 @@ describe('Dispute tracking pages', () => {
       expect(element.textContent).toContain('This case is closed');
       expect(element.querySelector('#evidence-file')).toBeNull();
       expect(element.querySelector('[data-testid="evidence-closed"]')).not.toBeNull();
+    });
+
+    it('cancels a status read begun before the withdrawal so it cannot reopen the case', async () => {
+      const harness = await open(withdrawable);
+      http.expectOne(evidenceUrl).flush({ items: [] });
+      http.expectOne('/api/v1/support').flush({}, { status: 503, statusText: 'Unavailable' });
+      harness.detectChanges();
+      const element = harness.routeNativeElement!;
+      element.querySelector<HTMLButtonElement>('[data-testid="refresh-dispute"]')!.click();
+      element.querySelector<HTMLButtonElement>('[data-testid="withdraw-dispute"]')!.click();
+      await harness.fixture.whenStable();
+      element.querySelector<HTMLFormElement>('dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+      http.expectOne(`${detailUrl}/withdrawals`)
+        .flush({ ...withdrawable, caseStatus: 'Closed', canWithdraw: false, version: 8 });
+      await harness.fixture.whenStable();
+      harness.detectChanges();
+
+      const [obsolete, replacement] = http.match(detailUrl);
+      expect(obsolete.cancelled).toBe(true);
+      replacement.flush({}, { status: 503, statusText: 'Unavailable' });
+      await harness.fixture.whenStable();
+      harness.detectChanges();
+      expect(element.querySelector('[data-testid="withdraw-dispute"]')).toBeNull();
+      expect(element.textContent).toContain('This case is closed');
+      expect(element.textContent).toContain('Showing the last loaded case.');
     });
 
     it('refreshes the case after a stale-version withdrawal and explains what happened', async () => {

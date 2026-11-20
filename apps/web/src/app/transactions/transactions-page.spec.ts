@@ -207,6 +207,28 @@ describe('TransactionsPage', () => {
     next.flush({ items: [], pageInfo: { hasNextPage: false }, totalCount: 2 });
   });
 
+  it('does not continue with the previous cursor while a replacement page is loading', () => {
+    const fixture = render();
+    respond([item], 'cursor-2', 2);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const size = element.querySelector<HTMLSelectElement>('.page-size select')!;
+    size.value = '10';
+    size.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    const more = element.querySelector<HTMLButtonElement>('[data-testid="load-more"]')!;
+    expect(more.getAttribute('aria-disabled')).toBe('true');
+
+    more.click();
+    const replacement = http.expectOne((req) => req.url === '/api/v1/transactions');
+    expect(replacement.request.params.get('pageSize')).toBe('10');
+    expect(replacement.request.params.has('cursor')).toBe(false);
+    replacement.flush({ items: [{ ...item, id: 'second', description: 'Checkers' }], pageInfo: { hasNextPage: false }, totalCount: 1 });
+    fixture.detectChanges();
+    expect(Array.from(element.querySelectorAll('tbody tr'), row => row.textContent)).toEqual([
+      expect.stringContaining('Checkers')]);
+  });
+
   it('offers 5, 10, 20 and 50 rows per page and restarts with focus on the heading when the size changes', () => {
     const fixture = render();
     const initial = http.expectOne((request) => request.url === '/api/v1/transactions');

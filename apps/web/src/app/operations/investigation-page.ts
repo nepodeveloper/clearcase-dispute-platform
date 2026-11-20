@@ -262,13 +262,16 @@ export class InvestigationPage {
 
   private async changeAssignment(request: () => ReturnType<AgentDisputesApi['claim']>, success: string, verb: string): Promise<void> {
     if (this.assignmentBusy()) return;
+    const caseId = this.id();
     this.assignmentBusy.set(true);
     this.assignmentMessage.set('');
     try {
-      this.dispute.set(await firstValueFrom(request()));
+      const updated = await firstValueFrom(request());
+      if (this.id() !== caseId) return;
+      this.dispute.update(current => current === null ? null : { ...current, assignedTo: updated.assignedTo });
       this.assignmentMessage.set(success);
     } catch (error: unknown) {
-      this.assignmentMessage.set(`Could not ${verb} this case: ${assignmentFailureReason(error)}.`);
+      if (this.id() === caseId) this.assignmentMessage.set(`Could not ${verb} this case: ${assignmentFailureReason(error)}.`);
     } finally {
       this.assignmentBusy.set(false);
     }
